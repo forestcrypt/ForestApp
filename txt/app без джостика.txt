@@ -1,0 +1,568 @@
+# main.py
+from kivy.app import App
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.button import Button
+from kivy.uix.screenmanager import ScreenManager, Screen
+from kivy.uix.scrollview import ScrollView
+from kivy.uix.gridlayout import GridLayout
+from kivy.uix.textinput import TextInput
+from kivy.uix.popup import Popup
+from kivy.uix.label import Label
+from kivy.properties import NumericProperty, BooleanProperty, ObjectProperty, ListProperty
+from kivy.core.window import Window
+from kivy.graphics import Color, Rectangle, Line
+import sqlite3
+import pandas as pd
+import os
+from openpyxl import load_workbook, Workbook
+
+class AutoCompleteTextInput(TextInput):
+    next_widget = ObjectProperty(None)
+    prev_widget = ObjectProperty(None)
+    row_index = NumericProperty(0)
+    col_index = NumericProperty(0)
+    suggestions = ListProperty([])
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.bind(text=self.show_suggestions)
+        self.popup = None
+        self.suggestion_list = []
+
+    def keyboard_on_key_down(self, window, keycode, text, modifiers):
+        key = keycode[1]
+        if key == 'down':
+            self.focus_next('down')
+        elif key == 'up':
+            self.focus_previous('up')
+        elif key == 'right':
+            self.focus_next('right')
+        elif key == 'left':
+            self.focus_previous('left')
+        else:
+            super().keyboard_on_key_down(window, keycode, text, modifiers)
+        return True
+
+    def show_suggestions(self, instance, value):
+        if self.popup:
+            self.popup.dismiss()
+        
+        conn = sqlite3.connect('forest_data.db')
+        cursor = conn.cursor()
+        cursor.execute('SELECT value FROM suggestions WHERE column_index=? AND value LIKE ?',
+                      (self.col_index, f'{value}%'))
+        self.suggestion_list = [item[0] for item in cursor.fetchall()]
+        conn.close()
+        
+        if len(value) > 1 and self.suggestion_list:
+            layout = GridLayout(cols=1, spacing=5, size_hint_y=None)
+            layout.bind(minimum_height=layout.setter('height'))
+            
+            for suggestion in self.suggestion_list:
+                btn = Button(text=suggestion, size_hint_y=None, height=30,
+                           background_color=(0.9, 0.9, 1, 1))
+                btn.bind(on_release=lambda b: (setattr(self, 'text', b.text), 
+                                               self.popup.dismiss()))
+                layout.add_widget(btn)
+            
+            self.popup = Popup(title='Выберите вариант',
+                              content=layout,
+                              size_hint=(0.3, 0.3),
+                              pos_hint={'center_x': 0.5})
+            self.popup.open()
+
+    def get_table_screen(self):
+        return App.get_running_app().root.get_screen('table')
+
+    def focus_next(self, direction):
+        table_screen = self.get_table_screen()
+        if direction == 'right' and self.next_widget:
+            self.next_widget.focus = True
+        elif direction == 'down':
+            next_row = self.row_index + 1
+            if next_row < len(table_screen.inputs):
+                table_screen.inputs[next_row][self.col_index].focus = True
+
+    def focus_previous(self, direction):
+        table_screen = self.get_table_screen()
+        if direction == 'left' and self.prev_widget:
+            self.prev_widget.focus = True
+        elif direction == 'up':
+            prev_row = self.row_index - 1
+            if prev_row >= 0:
+                table_screen.inputs[prev_row][self.col_index].focus = True
+
+class MainMenu(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        layout = BoxLayout(orientation='vertical', spacing=15, padding=20)
+        
+        layout.add_widget(Label(text='Лесное хозяйство', font_size='24sp', color=(0.2, 0.4, 0.6, 1)))
+        btn_report = Button(text='Перечётная ведомость', size_hint_y=None, height=60)
+        btn_report.bind(on_press=self.show_add_section)
+        layout.add_widget(btn_report)
+        exit_btn = Button(text='Выход', size_hint_y=None, height=60)
+        exit_btn.bind(on_press=self.confirm_exit)
+        layout.add_widget(exit_btn)
+        
+        self.dynamic_area = BoxLayout(orientation='vertical')
+        layout.add_widget(self.dynamic_area)
+        self.add_widget(layout)
+
+    def show_add_section(self, instance):
+        self.dynamic_area.clear_widgets()
+        add_btn = Button(text='Добавить участок', size_hint_y=None, height=60)
+        add_btn.bind(on_press=self.switch_to_table)
+        self.dynamic_area.add_widget(add_btn)
+
+    def switch_to_table(self, instance):
+        App.get_running_app().root.current = 'table'
+
+    def confirm_exit(self, instance):
+        content = BoxLayout(orientation='vertical', spacing=10)
+        content.add_widget(Label(text='Вы уверены, что хотите выйти?'))
+        btn_box = BoxLayout(spacing=5)
+        
+        yes_btn = Button(text='Да', size_hint=(0.5, None), height=40)
+        yes_btn.bind(on_press=lambda x: App.get_running_app().stop())
+        
+        no_btn = Button(text='Нет', size_hint=(0.5, None), height=40)
+        btn_box.add_widget(yes_btn)
+        btn_box.add_widget(no_btn)
+        content.add_widget(btn_box)
+        
+        self.popup = Popup(title='Подтверждение выхода',
+                         content=content,
+                         size_hint=(0.7, 0.4))
+        no_btn.bind(on_press=lambda x: self.popup.dismiss())
+        self.popup.open()
+
+class TableScreen(Screen):
+    current_page = NumericProperty(0)
+    total_pages = NumericProperty(1)
+    unsaved_changes = BooleanProperty(False)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.filename = 'перечетная_ведомость.xlsx'
+        self.db_name = 'forest_data.db'
+        self.rows_per_page = 50
+        self.all_data = []
+        self.setup_database()
+        self.create_ui()
+        self.load_existing_data()
+        Window.bind(on_key_down=self.key_action)
+
+    def key_action(self, window, key, scancode, codepoint, modifier):
+        if key == 115 and 'ctrl' in modifier:
+            self.validate_and_save(None)
+
+    def setup_database(self):
+        conn = sqlite3.connect(self.db_name)
+        cursor = conn.cursor()
+        cursor.execute('''CREATE TABLE IF NOT EXISTS trees (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        tree_number INTEGER,
+                        species TEXT,
+                        age TEXT,
+                        count TEXT,
+                        diameter REAL,
+                        height REAL,
+                        condition TEXT,
+                        notes TEXT)''')
+        cursor.execute('''CREATE TABLE IF NOT EXISTS suggestions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        column_index INTEGER,
+                        value TEXT UNIQUE)''')
+        conn.commit()
+        conn.close()
+
+    def create_ui(self):
+        main_layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
+        
+        header = Label(text='ПЕРЕЧЕТНАЯ ВЕДОМОСТЬ', font_size='20sp', bold=True,
+                      color=(0.2, 0.2, 0.6, 1), size_hint_y=None, height=50)
+        main_layout.add_widget(header)
+
+        pagination = BoxLayout(size_hint_y=None, height=40, spacing=5)
+        self.page_label = Label(text=f'Страница {self.current_page+1} из {self.total_pages}', 
+                               size_hint_x=0.4, color=(0.3, 0.3, 0.7, 1))
+        prev_btn = Button(text='← Предыдущая', size_hint_x=0.3, background_color=(0.4, 0.6, 0.8, 1))
+        prev_btn.bind(on_press=lambda x: self.change_page(-1))
+        next_btn = Button(text='Следующая →', size_hint_x=0.3, background_color=(0.4, 0.6, 0.8, 1))
+        next_btn.bind(on_press=lambda x: self.change_page(1))
+        pagination.add_widget(prev_btn)
+        pagination.add_widget(self.page_label)
+        pagination.add_widget(next_btn)
+        main_layout.add_widget(pagination)
+
+        scroll = ScrollView(do_scroll_x=True, do_scroll_y=True, size_hint=(1, 0.85))
+        self.table = GridLayout(cols=8, size_hint=(1, None), spacing=5)
+        self.table.bind(minimum_height=self.table.setter('height'))
+        
+        headers = ['№ дерева*', 'Порода*', 'ж/ф', 'шт/либо лет',
+                 'D, см*', 'H, м*', 'Сост-е', 'Примечания']
+        for header in headers:
+            self.table.add_widget(Label(text=header, size_hint_y=None, height=30,
+                                      color=(0.3, 0.3, 0.7, 1), bold=True))
+
+        self.inputs = []
+        for row_idx in range(self.rows_per_page):
+            row = []
+            for col_idx in range(8):
+                inp = AutoCompleteTextInput(multiline=False, size_hint_y=None, height=30)
+                inp.row_index = row_idx
+                inp.col_index = col_idx
+                
+                if col_idx > 0:
+                    inp.prev_widget = row[col_idx-1]
+                    row[col_idx-1].next_widget = inp
+                
+                if row_idx > 0:
+                    inp.prev_widget = self.inputs[row_idx-1][col_idx]
+                    self.inputs[row_idx-1][col_idx].next_widget = inp
+
+                if col_idx in [0,4,5]:
+                    inp.input_filter = 'float' if col_idx in [4,5] else 'int'
+                if col_idx == 0:
+                    inp.bind(focus=self.auto_fill_tree_number)
+                
+                row.append(inp)
+                self.table.add_widget(inp)
+            self.inputs.append(row)
+
+        scroll.add_widget(self.table)
+        main_layout.add_widget(scroll)
+
+        controls = BoxLayout(size_hint_y=None, height=60, spacing=5)
+        save_btn = Button(text='Сохранить (Ctrl+S)', background_color=(0.2, 0.8, 0.2, 1))
+        save_btn.bind(on_press=self.validate_and_save)
+        open_btn = Button(text='Открыть Excel', background_color=(0.3, 0.5, 0.8, 1))
+        open_btn.bind(on_press=self.open_excel_file)
+        back_btn = Button(text='Назад', background_color=(0.8, 0.2, 0.2, 1))
+        back_btn.bind(on_press=self.go_back)
+        
+        controls.add_widget(save_btn)
+        controls.add_widget(open_btn)
+        controls.add_widget(back_btn)
+        main_layout.add_widget(controls)
+        
+        self.add_widget(main_layout)
+
+    def auto_fill_tree_number(self, instance, value):
+        if value and instance.focus:
+            try:
+                current_number = int(instance.text)
+            except ValueError:
+                current_number = 0
+                
+            for row_idx, row in enumerate(self.inputs):
+                if row_idx > instance.row_index:
+                    try:
+                        prev_num = int(self.inputs[row_idx-1][0].text)
+                        row[0].text = str(prev_num + 1)
+                    except (ValueError, IndexError):
+                        pass
+
+    def validate_and_save(self, instance):
+        error = False
+        new_data = []
+        error_fields = []
+        
+        for row in self.inputs:
+            row_data = [inp.text.strip() for inp in row]
+            if any(row_data):
+                errors = []
+                if not row_data[0].isdigit():
+                    errors.append(0)
+                if not row_data[1]:
+                    errors.append(1)
+                if not self.is_valid_number(row_data[4]):
+                    errors.append(4)
+                if not self.is_valid_number(row_data[5]):
+                    errors.append(5)
+                
+                if errors:
+                    error = True
+                    error_fields.extend([(row, col) for col in errors])
+                else:
+                    new_data.append(row_data)
+
+        if error:
+            self.highlight_errors(error_fields)
+            self.show_error("Обязательные поля не заполнены или содержат ошибки!")
+            return
+        
+        if new_data:
+            self.save_to_database(new_data)
+            self.save_to_excel(new_data)
+            self.unsaved_changes = False
+            self.show_success("Данные сохранены успешно!")
+            self.update_pagination()
+        else:
+            self.show_error("Нет данных для сохранения!")
+
+    def highlight_errors(self, error_fields):
+        for row, col in error_fields:
+            row[col].background_color = (1, 0.8, 0.8, 1)
+
+    def is_valid_number(self, value):
+        try:
+            float(value)
+            return True
+        except ValueError:
+            return False
+
+    def save_to_database(self, data):
+        conn = sqlite3.connect(self.db_name)
+        cursor = conn.cursor()
+        
+        for row in data:
+            cursor.execute('''INSERT INTO trees 
+                           (tree_number, species, age, count, diameter, height, condition, notes)
+                           VALUES (?,?,?,?,?,?,?,?)''',
+                           (row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7]))
+            
+            for col_idx, value in enumerate(row):
+                if value and col_idx in [1,2,3,6,7]:
+                    cursor.execute('INSERT OR IGNORE INTO suggestions (column_index, value) VALUES (?,?)',
+                                  (col_idx, value))
+        
+        conn.commit()
+        conn.close()
+
+    def save_to_excel(self, data):
+        try:
+            df = pd.DataFrame(data, columns=[
+                '№ дерева', 'Порода', 'ж/ф', 'шт/либо лет',
+                'D, см', 'H, м', 'Сост-е', 'Примечания'
+            ]).dropna(how='all')
+
+            if df.empty:
+                return
+
+            sheet_name = f'Страница_{self.current_page+1}'
+            
+            if not os.path.exists(self.filename):
+                with pd.ExcelWriter(self.filename, engine='openpyxl') as writer:
+                    df.to_excel(writer, sheet_name=sheet_name, index=False)
+            else:
+                try:
+                    book = load_workbook(self.filename)
+                except:
+                    with pd.ExcelWriter(self.filename, engine='openpyxl') as writer:
+                        df.to_excel(writer, sheet_name=sheet_name, index=False)
+                    return
+
+                if sheet_name in book.sheetnames:
+                    book.remove(book[sheet_name])
+                
+                with pd.ExcelWriter(self.filename, engine='openpyxl', mode='a') as writer:
+                    writer.book = book
+                    df.to_excel(writer, sheet_name=sheet_name, index=False)
+
+        except Exception as e:
+            self.show_error(f"Ошибка Excel: {str(e)}")
+
+    def open_excel_file(self, instance):
+        if os.path.exists(self.filename):
+            os.startfile(self.filename)
+        else:
+            self.show_error("Файл не найден! Сначала сохраните данные.")
+
+    def change_page(self, delta):
+        if self.unsaved_changes:
+            self.show_confirm_dialog(delta)
+        else:
+            self._change_page(delta)
+
+    def _change_page(self, delta):
+        self.current_page = max(0, self.current_page + delta)
+        self.load_page_data()
+        self.update_page_label()
+
+    def show_confirm_dialog(self, delta):
+        content = BoxLayout(orientation='vertical', spacing=10)
+        content.add_widget(Label(text='Есть несохраненные данные! Продолжить?'))
+        btn_box = BoxLayout(spacing=5)
+        
+        yes_btn = Button(text='Да', size_hint=(0.5, None), height=40)
+        yes_btn.bind(on_press=lambda x: (self._change_page(delta), self.popup.dismiss()))
+        
+        no_btn = Button(text='Нет', size_hint=(0.5, None), height=40)
+        btn_box.add_widget(yes_btn)
+        btn_box.add_widget(no_btn)
+        content.add_widget(btn_box)
+        
+        self.popup = Popup(title='Подтверждение',
+                         content=content,
+                         size_hint=(0.7, 0.3))
+        no_btn.bind(on_press=self.popup.dismiss)
+        self.popup.open()
+
+    def load_existing_data(self):
+        try:
+            if os.path.exists(self.filename):
+                sheets = pd.read_excel(self.filename, sheet_name=None)
+                self.all_data = []
+                for sheet in sheets.values():
+                    self.all_data.extend(sheet.values.tolist())
+                self.total_pages = len(sheets)
+                self.update_pagination()
+        except Exception as e:
+            self.show_error(f"Ошибка загрузки данных: {str(e)}")
+
+    def cache_current_page_data(self):
+        start = self.current_page * self.rows_per_page
+        page_data = []
+        for row in self.inputs:
+            page_data.append([inp.text for inp in row])
+        self.all_data[start:start+self.rows_per_page] = page_data
+
+    def load_page_data(self):
+        self.cache_current_page_data()
+        start = self.current_page * self.rows_per_page
+        end = start + self.rows_per_page
+        
+        for i, row in enumerate(self.inputs):
+            data_index = start + i
+            if data_index < len(self.all_data):
+                for j, inp in enumerate(row):
+                    inp.text = self.all_data[data_index][j] if j < len(self.all_data[data_index]) else ''
+            else:
+                for inp in row:
+                    inp.text = ''
+
+    def update_pagination(self):
+        self.total_pages = max(1, (len(self.all_data) // self.rows_per_page) + 1)
+        self.update_page_label()
+
+    def update_page_label(self):
+        self.page_label.text = f'Страница {self.current_page+1} из {self.total_pages}'
+
+    def go_back(self, instance):
+        if self.unsaved_changes:
+            self.show_confirm_dialog(0)
+        else:
+            App.get_running_app().root.current = 'main'
+
+    def show_error(self, message):
+        content = Label(text=f'[color=ff0000]{message}[/color]', markup=True)
+        Popup(title='Ошибка', content=content, size_hint=(0.7, 0.3)).open()
+
+    def show_success(self, message):
+        content = Label(text=f'[color=00ff00]{message}[/color]', markup=True)
+        Popup(title='Успешно', content=content, size_hint=(0.7, 0.3)).open()
+
+class ForestryApp(App):
+    def build(self):
+        sm = ScreenManager()
+        sm.add_widget(MainMenu(name='main'))
+        sm.add_widget(TableScreen(name='table'))
+        return sm
+
+if __name__ == '__main__':
+    ForestryApp().run()
+
+
+    # my.kv
+<AutoCompleteTextInput>:
+    background_color: (0.95, 0.95, 1, 1) if self.focus else (0.98, 0.98, 1, 1)
+    foreground_color: (0.1, 0.1, 0.4, 1)
+    font_size: '14sp'
+    padding: [10, (self.height - self.line_height)/2]
+    canvas.before:
+        Color:
+            rgba: 0.9, 0.9, 0.9, 1
+        Line:
+            width: 1
+            rectangle: self.x, self.y, self.width, self.height
+
+<MainMenu>:
+    canvas.before:
+        Color:
+            rgba: 0.96, 0.96, 0.98, 1
+        Rectangle:
+            pos: self.pos
+            size: self.size
+
+    Button:
+        background_color: (0.3, 0.6, 0.9, 1)
+        background_normal: ''
+        font_size: '18sp'
+        canvas.before:
+            Color:
+                rgba: 0.2, 0.4, 0.7, 1
+            Line:
+                width: 2
+                rounded_rectangle: self.x, self.y, self.width, self.height, 10
+
+<TableScreen>:
+    canvas.before:
+        Color:
+            rgba: 0.98, 0.98, 0.98, 1
+        Rectangle:
+            pos: self.pos
+            size: self.size
+
+    BoxLayout:
+        orientation: 'vertical'
+        padding: 20
+        spacing: 15
+        
+        Label:
+            text: 'ПЕРЕЧЕТНАЯ ВЕДОМОСТЬ'
+            font_size: '20sp'
+            bold: True
+            color: 0.2, 0.2, 0.6, 1
+            size_hint_y: None
+            height: 50
+
+        BoxLayout:
+            size_hint_y: None
+            height: 40
+            spacing: 5
+            Button:
+                text: '← Предыдущая'
+                size_hint_x: 0.3
+                background_color: 0.4, 0.6, 0.8, 1
+                on_press: root.change_page(-1)
+            Label:
+                text: root.page_label.text
+                size_hint_x: 0.4
+                halign: 'center'
+                color: 0.3, 0.3, 0.7, 1
+            Button:
+                text: 'Следующая →'
+                size_hint_x: 0.3
+                background_color: 0.4, 0.6, 0.8, 1
+                on_press: root.change_page(1)
+
+        ScrollView:
+            size_hint: 1, 0.85
+            do_scroll_x: True
+            do_scroll_y: True
+            GridLayout:
+                id: table_layout
+                cols: 8
+                size_hint: None, None
+                width: self.minimum_width
+                height: self.minimum_height
+                spacing: 5
+
+        BoxLayout:
+            size_hint_y: None
+            height: 60
+            spacing: 5
+            Button:
+                text: 'Сохранить (Ctrl+S)'
+                background_color: 0.2, 0.8, 0.2, 1
+                on_press: root.validate_and_save()
+            Button:
+                text: 'Открыть Excel'
+                background_color: 0.3, 0.5, 0.8, 1
+                on_press: root.open_excel_file()
+            Button:
+                text: 'Назад'
+                background_color: 0.8, 0.2, 0.2, 1
+                on_press: root.go_back

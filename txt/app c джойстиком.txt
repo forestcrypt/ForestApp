@@ -1,0 +1,829 @@
+from kivy.app import App
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.button import Button
+from kivy.uix.screenmanager import ScreenManager, Screen
+from kivy.uix.scrollview import ScrollView
+from kivy.uix.gridlayout import GridLayout
+from kivy.uix.textinput import TextInput
+from kivy.uix.popup import Popup
+from kivy.uix.label import Label
+from kivy.properties import NumericProperty, BooleanProperty, ObjectProperty, ListProperty, StringProperty
+from kivy.core.window import Window
+from kivy.graphics import Color, Rectangle, Line
+from kivy.clock import Clock
+import sqlite3
+import pandas as pd
+import os
+import datetime
+import re
+from openpyxl import load_workbook, Workbook
+from tkinter import Tk, filedialog
+
+class AutoCompleteTextInput(TextInput):
+    next_widget = ObjectProperty(None)
+    prev_widget = ObjectProperty(None)
+    row_index = NumericProperty(0)
+    col_index = NumericProperty(0)
+    suggestions = ListProperty([])
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.bind(text=self.show_suggestions)
+        self.popup = None
+        self.suggestion_list = []
+
+    def keyboard_on_key_down(self, window, keycode, text, modifiers):
+        key = keycode[1]
+        if key == 'down':
+            self.focus_next('down')
+        elif key == 'up':
+            self.focus_previous('up')
+        elif key == 'right':
+            self.focus_next('right')
+        elif key == 'left':
+            self.focus_previous('left')
+        else:
+            super().keyboard_on_key_down(window, keycode, text, modifiers)
+        return True
+
+    def show_suggestions(self, instance, value):
+        if self.popup:
+            self.popup.dismiss()
+        
+        conn = sqlite3.connect('forest_data.db')
+        cursor = conn.cursor()
+        cursor.execute('SELECT value FROM suggestions WHERE column_index=? AND value LIKE ?',
+                      (self.col_index, f'{value}%'))
+        self.suggestion_list = [item[0] for item in cursor.fetchall()]
+        conn.close()
+        
+        if len(value) > 1 and self.suggestion_list:
+            layout = GridLayout(cols=1, spacing=5, size_hint_y=None)
+            layout.bind(minimum_height=layout.setter('height'))
+            
+            for suggestion in self.suggestion_list:
+                btn = Button(text=suggestion, size_hint_y=None, height=30,
+                           background_color=(0.9, 0.9, 1, 1))
+                btn.bind(on_release=lambda b: (setattr(self, 'text', b.text), 
+                                               self.popup.dismiss()))
+                layout.add_widget(btn)
+            
+            self.popup = Popup(title='Выберите вариант',
+                              content=layout,
+                              size_hint=(0.3, 0.3),
+                              pos_hint={'center_x': 0.5})
+            self.popup.open()
+
+    def get_table_screen(self):
+        return App.get_running_app().root.get_screen('table')
+
+    def focus_next(self, direction):
+        table_screen = self.get_table_screen()
+        if direction == 'right' and self.next_widget:
+            self.next_widget.focus = True
+        elif direction == 'down':
+            next_row = self.row_index + 1
+            if next_row < len(table_screen.inputs):
+                table_screen.inputs[next_row][self.col_index].focus = True
+
+    def focus_previous(self, direction):
+        table_screen = self.get_table_screen()
+        if direction == 'left' and self.prev_widget:
+            self.prev_widget.focus = True
+        elif direction == 'up':
+            prev_row = self.row_index - 1
+            if prev_row >= 0:
+                table_screen.inputs[prev_row][self.col_index].focus = True
+
+class Joypad(BoxLayout):
+    def __init__(self, table_screen, **kwargs):
+        super().__init__(**kwargs)
+        self.table_screen = table_screen
+        self.orientation = 'vertical'
+        self.spacing = 5
+        self.size_hint = (None, None)
+        self.size = (200, 200)
+
+        up_btn = Button(text='↑', size_hint=(1, 0.3))
+        up_btn.bind(on_press=lambda x: self.move_focus('up'))
+        
+        mid_row = BoxLayout(size_hint=(1, 0.4))
+        left_btn = Button(text='←')
+        left_btn.bind(on_press=lambda x: self.move_focus('left'))
+        enter_btn = Button(text='Enter')
+        enter_btn.bind(on_press=self.confirm_input)
+        right_btn = Button(text='→')
+        right_btn.bind(on_press=lambda x: self.move_focus('right'))
+        mid_row.add_widget(left_btn)
+        mid_row.add_widget(enter_btn)
+        mid_row.add_widget(right_btn)
+        
+        down_btn = Button(text='↓', size_hint=(1, 0.3))
+        down_btn.bind(on_press=lambda x: self.move_focus('down'))
+
+        self.add_widget(up_btn)
+        self.add_widget(mid_row)
+        self.add_widget(down_btn)
+
+    def move_focus(self, direction):
+        current = self.table_screen.focused_cell
+        if not current: return
+        
+        row, col = current
+        if direction == 'up': row = max(0, row-1)
+        elif direction == 'down': row = min(len(self.table_screen.inputs)-1, row+1)
+        elif direction == 'left': col = max(0, col-1)
+        elif direction == 'right': col = min(7, col+1)
+        
+        self.table_screen.focused_cell = [row, col]
+        inp = self.table_screen.inputs[row][col]
+        
+        inp.focus = True
+        inp.cursor = (len(inp.text), 0)
+        
+        Clock.schedule_once(lambda dt: self._update_cursor(inp), 0.01)
+
+    def _update_cursor(self, inp):
+        inp.focus = True
+        inp.cursor = (len(inp.text), 0)
+        inp.text = inp.text
+
+    def confirm_input(self, instance):
+        self.table_screen.validate_and_save(None)
+
+class MainMenu(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        layout = BoxLayout(orientation='vertical', spacing=15, padding=20)
+        
+        layout.add_widget(Label(text='Лесное хозяйство', font_size='24sp', color=(0.2, 0.4, 0.6, 1)))
+        btn_report = Button(text='Перечётная ведомость', size_hint_y=None, height=60)
+        btn_report.bind(on_press=self.show_add_section)
+        layout.add_widget(btn_report)
+        exit_btn = Button(text='Выход', size_hint_y=None, height=60)
+        exit_btn.bind(on_press=self.confirm_exit)
+        layout.add_widget(exit_btn)
+        
+        self.dynamic_area = BoxLayout(orientation='vertical')
+        layout.add_widget(self.dynamic_area)
+        self.add_widget(layout)
+
+    def show_add_section(self, instance):
+        self.dynamic_area.clear_widgets()
+        add_btn = Button(text='Добавить участок', size_hint_y=None, height=60)
+        add_btn.bind(on_press=self.show_add_section_dialog)
+        self.dynamic_area.add_widget(add_btn)
+
+    def show_add_section_dialog(self, instance):
+        content = BoxLayout(orientation='vertical', spacing=10)
+        self.section_name_input = TextInput(hint_text="Введите имя участка", multiline=False)
+        
+        btn_box = BoxLayout(spacing=5)
+        ok_btn = Button(text="Создать", size_hint=(0.5, None), height=40)
+        cancel_btn = Button(text="Отмена", size_hint=(0.5, None), height=40)
+        
+        btn_box.add_widget(ok_btn)
+        btn_box.add_widget(cancel_btn)
+        
+        content.add_widget(Label(text="Имя участка:"))
+        content.add_widget(self.section_name_input)
+        content.add_widget(btn_box)
+        
+        self.popup = Popup(
+            title="Новый участок",
+            content=content,
+            size_hint=(0.7, 0.4))
+        
+        ok_btn.bind(on_press=lambda x: self.create_section())
+        cancel_btn.bind(on_press=self.popup.dismiss)
+        self.popup.open()
+
+    def create_section(self):
+        section_name = self.section_name_input.text.strip()
+        if section_name:
+            app = App.get_running_app()
+            table_screen = app.root.get_screen('table')
+            table_screen.current_section = section_name
+            table_screen.update_section_label()
+            self.popup.dismiss()
+            self.switch_to_table(None)
+
+    def switch_to_table(self, instance):
+        App.get_running_app().root.current = 'table'
+
+    def confirm_exit(self, instance):
+        content = BoxLayout(orientation='vertical', spacing=10)
+        content.add_widget(Label(text='Вы уверены, что хотите выйти?'))
+        btn_box = BoxLayout(spacing=5)
+        
+        yes_btn = Button(text='Да', size_hint=(0.5, None), height=40)
+        yes_btn.bind(on_press=lambda x: App.get_running_app().stop())
+        
+        no_btn = Button(text='Нет', size_hint=(0.5, None), height=40)
+        btn_box.add_widget(yes_btn)
+        btn_box.add_widget(no_btn)
+        content.add_widget(btn_box)
+        
+        self.popup = Popup(title='Подтверждение выхода',
+                         content=content,
+                         size_hint=(0.7, 0.4))
+        no_btn.bind(on_press=lambda x: self.popup.dismiss())
+        self.popup.open()
+
+class TableScreen(Screen):
+    current_page = NumericProperty(0)
+    total_pages = NumericProperty(1)
+    unsaved_changes = BooleanProperty(False)
+    focused_cell = ListProperty([0, 0])
+    edit_mode = BooleanProperty(False)
+    current_section = StringProperty("")
+    MAX_PAGES = 200
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.reports_dir = "reports"
+        os.makedirs(self.reports_dir, exist_ok=True)
+        self.db_name = 'forest_data.db'
+        self.rows_per_page = 50
+        self.page_data = {}
+        self.setup_database()
+        self.create_ui()
+        self.load_existing_data()
+        Window.bind(on_key_down=self.key_action)
+
+    def key_action(self, window, key, scancode, codepoint, modifier):
+        pass
+
+    def setup_database(self):
+        conn = sqlite3.connect(self.db_name)
+        cursor = conn.cursor()
+        cursor.execute('''CREATE TABLE IF NOT EXISTS trees (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        tree_number INTEGER,
+                        species TEXT,
+                        age TEXT,
+                        count TEXT,
+                        diameter REAL,
+                        height REAL,
+                        condition TEXT,
+                        notes TEXT)''')
+        cursor.execute('''CREATE TABLE IF NOT EXISTS suggestions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        column_index INTEGER,
+                        value TEXT UNIQUE)''')
+        conn.commit()
+        conn.close()
+
+    def create_ui(self):
+        main_layout = BoxLayout(orientation='horizontal', padding=10, spacing=10)
+        
+        header_layout = BoxLayout(orientation='vertical', size_hint=(1, None), height=30)
+        self.section_label = Label(text=f"Участок: {self.current_section}", 
+                                 color=(0.2, 0.4, 0.6, 1),
+                                 size_hint=(1, None),
+                                 height=30)
+        header_layout.add_widget(self.section_label)
+        
+        table_panel = BoxLayout(orientation='vertical', size_hint_x=0.7)
+        table_panel.add_widget(header_layout)
+
+        pagination = BoxLayout(size_hint_y=None, height=40, spacing=5)
+        self.page_label = Label(text=f'Страница {self.current_page+1} из {self.total_pages}', 
+                               size_hint_x=0.4, color=(0.3, 0.3, 0.7, 1))
+        prev_btn = Button(text='← Предыдущая', size_hint_x=0.3, background_color=(0.4, 0.6, 0.8, 1))
+        prev_btn.bind(on_press=lambda x: self.change_page(-1))
+        next_btn = Button(text='Следующая →', size_hint_x=0.3, background_color=(0.4, 0.6, 0.8, 1))
+        next_btn.bind(on_press=lambda x: self.change_page(1))
+        pagination.add_widget(prev_btn)
+        pagination.add_widget(self.page_label)
+        pagination.add_widget(next_btn)
+        table_panel.add_widget(pagination)
+
+        scroll = ScrollView(do_scroll_x=True, do_scroll_y=True, size_hint=(1, 0.85))
+        self.table = GridLayout(cols=8, size_hint=(1, None), spacing=5)
+        self.table.bind(minimum_height=self.table.setter('height'))
+        
+        headers = ['№ дерева*', 'Порода*', 'ж/ф', 'шт/либо лет',
+                 'D, см*', 'H, м', 'Сост-е', 'Примечания']
+        for header in headers:
+            self.table.add_widget(Label(text=header, size_hint_y=None, height=30,
+                                      color=(0.3, 0.3, 0.7, 1), bold=True))
+
+        self.inputs = []
+        for row_idx in range(self.rows_per_page):
+            row = []
+            for col_idx in range(8):
+                inp = AutoCompleteTextInput(multiline=False, size_hint_y=None, height=30)
+                inp.row_index = row_idx
+                inp.col_index = col_idx
+                inp.bind(focus=self.update_focus)
+                
+                if col_idx > 0:
+                    inp.prev_widget = row[col_idx-1]
+                    row[col_idx-1].next_widget = inp
+                
+                if row_idx > 0:
+                    inp.prev_widget = self.inputs[row_idx-1][col_idx]
+                    self.inputs[row_idx-1][col_idx].next_widget = inp
+
+                if col_idx in [0,4,5]:
+                    inp.input_filter = 'float' if col_idx in [4,5] else 'int'
+                if col_idx == 0:
+                    inp.bind(focus=self.auto_fill_tree_number)
+                
+                row.append(inp)
+                self.table.add_widget(inp)
+            self.inputs.append(row)
+
+        scroll.add_widget(self.table)
+        table_panel.add_widget(scroll)
+        main_layout.add_widget(table_panel)
+
+        control_panel = BoxLayout(orientation='vertical', size_hint_x=0.3, spacing=10)
+        
+        controls = BoxLayout(orientation='vertical', size_hint_y=None, height=380, spacing=5)
+        
+        save_report_btn = Button(
+            text='Сохранить отчет',
+            background_color=(0.2, 0.8, 0.2, 1),
+            on_press=self.show_save_dialog
+        )
+        controls.add_widget(save_report_btn)
+
+        open_folder_btn = Button(
+            text='Открыть папку',
+            background_color=(0.3, 0.5, 0.8, 1),
+            on_press=self.open_excel_file
+        )
+        controls.add_widget(open_folder_btn)
+
+        load_section_btn = Button(
+            text='Загрузить участок',
+            background_color=(0.4, 0.8, 0.4, 1),
+            on_press=self.load_section
+        )
+        controls.add_widget(load_section_btn)
+
+        save_page_btn = Button(
+            text='Сохранить страницу',
+            background_color=(0.5, 0.5, 0.8, 1),
+            on_press=self.save_current_page
+        )
+        controls.add_widget(save_page_btn)
+
+        edit_mode_btn = Button(
+            text='Редакт. режим',
+            background_color=(0.8, 0.6, 0.2, 1),
+            on_press=lambda instance: self.toggle_edit_mode(instance)
+        )
+        controls.add_widget(edit_mode_btn)
+
+        main_menu_btn = Button(
+            text='В главное меню',
+            background_color=(0.8, 0.2, 0.2, 1),
+            on_press=self.go_back
+        )
+        controls.add_widget(main_menu_btn)
+
+        control_panel.add_widget(controls)
+
+        joypad = Joypad(self)
+        control_panel.add_widget(joypad)
+        
+        main_layout.add_widget(control_panel)
+        self.add_widget(main_layout)
+
+    def update_section_label(self):
+        self.section_label.text = f"Участок: {self.current_section}"
+
+    def toggle_edit_mode(self, instance):
+        self.edit_mode = not self.edit_mode
+        instance.background_color = (0.9, 0.7, 0.3, 1) if self.edit_mode else (0.8, 0.6, 0.2, 1)
+
+    def update_focus(self, instance, value):
+        if value:
+            self.focused_cell = [instance.row_index, instance.col_index]
+
+    def auto_fill_tree_number(self, instance, value):
+        if self.edit_mode: return
+        
+        if value and instance.focus:
+            try:
+                current_number = int(instance.text)
+            except ValueError:
+                current_number = 0
+                
+            for row_idx, row in enumerate(self.inputs):
+                if row_idx > instance.row_index:
+                    try:
+                        prev_num = int(self.inputs[row_idx-1][0].text)
+                        row[0].text = str(prev_num + 1)
+                    except (ValueError, IndexError):
+                        pass
+
+    def validate_and_save(self, instance):
+        error = False
+        new_data = []
+        error_fields = []
+        
+        for row in self.inputs:
+            row_data = [inp.text.strip() for inp in row]
+            if any(row_data):
+                errors = []
+                if not row_data[0].isdigit():
+                    errors.append(0)
+                if not row_data[1]:
+                    errors.append(1)
+                if not self.is_valid_number(row_data[4]):
+                    errors.append(4)
+                
+                if errors:
+                    error = True
+                    error_fields.extend([(row, col) for col in errors])
+                else:
+                    new_data.append(row_data)
+
+        if error:
+            self.highlight_errors(error_fields)
+            self.show_error("Обязательные поля не заполнены или содержат ошибки!")
+            return
+        
+        if new_data:
+            self.save_to_database(new_data)
+            self.save_current_page(instance)
+            self.unsaved_changes = False
+            self.show_success("Данные сохранены успешно!")
+            self.update_pagination()
+        else:
+            self.show_error("Нет данных для сохранения!")
+
+    def save_current_page(self, instance=None):
+        page_data = []
+        for row in self.inputs:
+            page_data.append([inp.text for inp in row])
+        self.page_data[self.current_page] = page_data
+
+    def show_save_dialog(self, instance=None):
+        content = BoxLayout(orientation='vertical', spacing=10)
+        self.filename_input = TextInput(hint_text="Имя файла", multiline=False)
+        default_name = f"{self.current_section}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M')}"
+        self.filename_input.text = default_name
+        
+        btn_box = BoxLayout(spacing=5)
+        ok_btn = Button(text="Сохранить", size_hint=(0.5, None), height=40)
+        cancel_btn = Button(text="Отмена", size_hint=(0.5, None), height=40)
+        
+        btn_box.add_widget(ok_btn)
+        btn_box.add_widget(cancel_btn)
+        
+        content.add_widget(Label(text="Введите имя файла:"))
+        content.add_widget(self.filename_input)
+        content.add_widget(btn_box)
+        
+        self.save_popup = Popup(
+            title="Сохранение отчета",
+            content=content,
+            size_hint=(0.7, 0.4)
+        )
+        
+        ok_btn.bind(on_press=self.save_to_excel)
+        cancel_btn.bind(on_press=self.save_popup.dismiss)
+        self.save_popup.open()
+
+    def save_to_excel(self, instance):
+        filename = self.filename_input.text.strip()
+        if not filename:
+            self.show_error("Имя файла не может быть пустым!")
+            return
+        
+        filename = re.sub(r'[\\/*?:"<>|]', "", filename)
+        filename = f"{filename}.xlsx" if not filename.endswith(".xlsx") else filename
+        full_path = os.path.join(self.reports_dir, filename)
+        
+        try:
+            all_data = []
+            for page in sorted(self.page_data.keys()):
+                all_data.extend(self.page_data[page])
+            
+            df = pd.DataFrame(
+                all_data,
+                columns=['№ дерева','Порода','ж/ф','шт/либо лет','D, см','H, м','Сост-е','Примечания']
+            )
+            
+            df.to_excel(full_path, index=False)
+            self.save_popup.dismiss()
+            self.show_success(f"Файл сохранен: {filename}")
+            
+        except Exception as e:
+            self.show_error(f"Ошибка: {str(e)}")
+
+    def load_section(self, instance):
+        Tk().withdraw()
+        file_path = filedialog.askopenfilename(
+            initialdir=self.reports_dir,
+            title="Выберите файл участка",
+            filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")]
+        )
+        
+        if file_path:
+            try:
+                df = pd.read_excel(file_path)
+                self.current_section = os.path.splitext(os.path.basename(file_path))[0]
+                self.update_section_label()
+                
+                self.page_data.clear()
+                for page_num in range(0, len(df), self.rows_per_page):
+                    page = page_num // self.rows_per_page
+                    self.page_data[page] = df.iloc[
+                        page_num:page_num+self.rows_per_page
+                    ].values.tolist()
+                
+                self.current_page = 0
+                self.load_page_data()
+                self.update_pagination()
+                self.show_success("Данные успешно загружены!")
+                
+            except Exception as e:
+                self.show_error(f"Ошибка загрузки: {str(e)}")
+
+    def load_page_data(self):
+        for row in self.inputs:
+            for inp in row:
+                inp.unbind(text=inp.show_suggestions)
+
+        for row in self.inputs:
+            for inp in row:
+                inp.text = ''
+
+        if self.current_page in self.page_data:
+            for i, row_data in enumerate(self.page_data[self.current_page]):
+                if i >= len(self.inputs):
+                    break
+                for j, text in enumerate(row_data):
+                    if j < len(self.inputs[i]):
+                        # Исправление ошибки загрузки данных
+                        self.inputs[i][j].text = str(text) if not pd.isna(text) else ''
+
+        for row in self.inputs:
+            for inp in row:
+                inp.bind(text=inp.show_suggestions)
+
+    def highlight_errors(self, error_fields):
+        for row, col in error_fields:
+            row[col].background_color = (1, 0.8, 0.8, 1)
+
+    def is_valid_number(self, value):
+        try:
+            float(value)
+            return True
+        except ValueError:
+            return False
+
+    def save_to_database(self, data):
+        conn = sqlite3.connect(self.db_name)
+        cursor = conn.cursor()
+        
+        for row in data:
+            cursor.execute('''INSERT INTO trees 
+                           (tree_number, species, age, count, diameter, height, condition, notes)
+                           VALUES (?,?,?,?,?,?,?,?)''',
+                           (row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8]))
+            
+            for col_idx, value in enumerate(row):
+                if value and col_idx in [1,2,3,6,7]:
+                    cursor.execute('INSERT OR IGNORE INTO suggestions (column_index, value) VALUES (?,?)',
+                                  (col_idx, value))
+        
+        conn.commit()
+        conn.close()
+
+    def open_excel_file(self, instance):
+        if os.path.exists(self.reports_dir):
+            os.startfile(self.reports_dir)
+        else:
+            self.show_error("Папка reports не найдена!")
+
+    def change_page(self, delta):
+        new_page = self.current_page + delta
+        if 0 <= new_page < self.MAX_PAGES:
+            self.current_page = new_page
+            self.load_page_data()
+            self.update_page_label()
+
+    def update_pagination(self):
+        self.total_pages = len(self.page_data) if self.page_data else 1
+        self.total_pages = min(self.total_pages, self.MAX_PAGES)
+        self.update_page_label()
+
+    def update_page_label(self):
+        self.page_label.text = f'Страница {self.current_page+1} из {self.total_pages}'
+
+    def go_back(self, instance):
+        if self.unsaved_changes:
+            self.show_confirm_dialog(0)
+        else:
+            App.get_running_app().root.current = 'main'
+
+    def show_error(self, message):
+        content = Label(text=f'[color=ff0000]{message}[/color]', markup=True)
+        Popup(title='Ошибка', content=content, size_hint=(0.7, 0.3)).open()
+
+    def show_success(self, message):
+        content = Label(text=f'[color=00ff00]{message}[/color]', markup=True)
+        Popup(title='Успешно', content=content, size_hint=(0.7, 0.3)).open()
+
+    def load_existing_data(self):
+        pass
+
+class ForestryApp(App):
+    def build(self):
+        sm = ScreenManager()
+        sm.add_widget(MainMenu(name='main'))
+        sm.add_widget(TableScreen(name='table'))
+        return sm
+
+if __name__ == '__main__':
+    ForestryApp().run()
+
+
+   #:kivy 1.11.1
+
+<AutoCompleteTextInput>:
+    background_color: (0.95, 0.95, 1, 1) if self.focus else (0.98, 0.98, 1, 1)
+    foreground_color: (0.1, 0.1, 0.4, 1)
+    font_size: '14sp'
+    padding: [10, (self.height - self.line_height)/2]
+    canvas.before:
+        Color:
+            rgba: 0.9, 0.9, 0.9, 1
+        Line:
+            width: 1
+            rectangle: self.x, self.y, self.width, self.height
+    on_focus:
+        if self.focus: self.cursor = (len(self.text), 0)
+
+<Joypad>:
+    canvas.before:
+        Color:
+            rgba: 0.94, 0.94, 0.94, 1
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [15]
+        Color:
+            rgba: 0.7, 0.7, 0.9, 0.3
+        Line:
+            width: 1.2
+            rounded_rectangle: self.x, self.y, self.width, self.height, 15
+
+    Button:
+        background_color: 0.85, 0.85, 1, 1
+        background_normal: ''
+        color: 0.2, 0.2, 0.6, 1
+        bold: True
+        canvas.before:
+            Color:
+                rgba: 0.7, 0.7, 0.9, 1
+            Line:
+                width: 1
+                rounded_rectangle: self.x, self.y, self.width, self.height, 10
+
+<MainMenu>:
+    canvas.before:
+        Color:
+            rgba: 0.96, 0.96, 0.98, 1
+        Rectangle:
+            pos: self.pos
+            size: self.size
+
+    BoxLayout:
+        orientation: 'vertical'
+        spacing: 20
+        padding: 30
+        
+        Label:
+            text: 'Лесное хозяйство'
+            font_size: '28sp'
+            color: (0.2, 0.4, 0.6, 1)
+            size_hint_y: None
+            height: 60
+            
+        Button:
+            text: 'Перечётная ведомость'
+            size_hint_y: None
+            height: 60
+            background_color: (0.3, 0.6, 0.9, 1)
+            on_press: root.show_add_section()
+            
+        Button:
+            text: 'Выход'
+            size_hint_y: None
+            height: 60
+            background_color: (0.8, 0.2, 0.2, 1)
+            on_press: root.confirm_exit()
+            
+        BoxLayout:
+            id: dynamic_area
+            orientation: 'vertical'
+
+<TableScreen>:
+    canvas.before:
+        Color:
+            rgba: 0.98, 0.98, 0.98, 1
+        Rectangle:
+            pos: self.pos
+            size: self.size
+
+    BoxLayout:
+        orientation: 'horizontal'
+        padding: 15
+        spacing: 15
+
+        BoxLayout:
+            orientation: 'vertical'
+            size_hint_x: 0.7
+            spacing: 10
+
+            Label:
+                text: f'Участок: {root.current_section}'
+                font_size: '20sp'
+                color: (0.2, 0.4, 0.6, 1)
+                size_hint_y: None
+                height: 40
+
+            BoxLayout:
+                size_hint_y: None
+                height: 50
+                spacing: 10
+                Button:
+                    text: '← Назад'
+                    background_color: 0.4, 0.6, 0.8, 1
+                    on_press: root.change_page(-1)
+                Label:
+                    text: root.page_label.text
+                    color: 0.3, 0.3, 0.7, 1
+                    halign: 'center'
+                    bold: True
+                Button:
+                    text: 'Вперед →'
+                    background_color: 0.4, 0.6, 0.8, 1
+                    on_press: root.change_page(1)
+
+            ScrollView:
+                bar_width: 12
+                bar_color: 0.6, 0.6, 0.9, 1
+                scroll_type: ['bars', 'content']
+                
+                GridLayout:
+                    id: table_grid
+                    cols: 8
+                    size_hint: None, None
+                    width: self.minimum_width
+                    height: self.minimum_height
+                    spacing: 2
+
+        BoxLayout:
+            orientation: 'vertical'
+            size_hint_x: 0.3
+            spacing: 15
+
+            BoxLayout:
+                orientation: 'vertical'
+                size_hint_y: None
+                height: 380
+                spacing: 10
+
+                Button:
+                    text: 'Сохранить отчет'
+                    background_color: 0.2, 0.8, 0.2, 1
+                    on_press: root.show_save_dialog()
+
+                Button:
+                    text: 'Открыть папку'
+                    background_color: 0.3, 0.5, 0.8, 1
+                    on_press: root.open_excel_file()
+
+                Button:
+                    text: 'Загрузить участок'
+                    background_color: 0.4, 0.8, 0.4, 1
+                    on_press: root.load_section()
+
+                Button:
+                    text: 'Сохранить страницу'
+                    background_color: 0.5, 0.5, 0.8, 1
+                    on_press: root.save_current_page()
+
+                Button:
+                    text: 'Редакт. режим'
+                    background_color: 0.8, 0.6, 0.2, 1
+                    on_press: root.toggle_edit_mode(self)
+
+                Button:
+                    text: 'В главное меню'
+                    background_color: 0.8, 0.2, 0.2, 1
+                    on_press: root.go_back()
+
+            Joypad:
+                table_screen: root
+                size_hint: 1, None
+                height: 220
