@@ -217,15 +217,14 @@ class TreeDataInputPopup(Popup):
     def __init__(self, table_screen, row_index, **kwargs):
         super().__init__(
             title='Ввод данных дерева',
-            size_hint=(0.5, 0.5),
+            size_hint=(0.7, 0.8),
             separator_height=0,
-            background='',
+            background_color=(0.5, 0.5, 0.5, 1),  # Серый фон
             overlay_color=(0, 0, 0, 0.5),
             **kwargs
         )
         self.table_screen = table_screen
         self.row_index = row_index
-        self.current_field = 0
         self.fields = [
             ('Порода', 1),
             ('ж/ф', 2),
@@ -237,85 +236,86 @@ class TreeDataInputPopup(Popup):
             ('Примечания', 8)
         ]
         self.data = {}
-        self.show_next_field()
+        self.create_ui()
 
-    def show_next_field(self):
-        if self.current_field >= len(self.fields):
-            self.save_data()
-            return
-
-        field_name, col_index = self.fields[self.current_field]
+    def create_ui(self):
         content = FloatLayout()
 
-        with content.canvas.before:
-            Color(rgba=(0.9, 0.9, 0.9, 1))
-            RoundedRectangle(pos=(content.x-10, content.y-10), size=(content.width+20, content.height+20), radius=[30])
-
-        close_btn = ModernButton(
-            text='X',
-            size_hint=(None, None),
-            size=(40, 40),
-            pos_hint={'right': 0.95, 'top': 0.95},
-            bg_color=(1, 0, 0, 1),
-            no_shadow=True
-        )
-        close_btn.bind(on_press=self.dismiss)
-
         label = Label(
-            text=f'Введите {field_name}:',
+            text='Введите данные дерева:',
             font_name='Roboto',
             font_size='18sp',
-            color=(0.2, 0.2, 0.2, 1),
-            pos_hint={'center_x': 0.5, 'center_y': 0.65},
+            color=(1, 1, 1, 1),
+            pos_hint={'center_x': 0.5, 'center_y': 0.9},
             size_hint=(None, None),
-            size=(200, 50)
+            size=(250, 50)
         )
 
-        self.input_field = AutoCompleteTextInput(
-            multiline=False,
-            size_hint=(None, None),
-            size=(200, 40),
-            pos_hint={'center_x': 0.5, 'center_y': 0.45},
-            background_color=(1, 1, 1, 0.8),
-            col_index=col_index
-        )
-        self.input_field.bind(on_text_validate=self.next_field)
+        scroll = ScrollView(size_hint=(0.9, 0.7), pos_hint={'center_x': 0.5, 'center_y': 0.5})
+        layout = GridLayout(cols=1, spacing=10, size_hint_y=None)
+        layout.bind(minimum_height=layout.setter('height'))
 
-        btn = ModernButton(
-            text='Далее',
+        with layout.canvas.before:
+            Color(rgba=(0, 0, 0, 0))
+
+        self.input_fields = []
+        for field_name, col_index in self.fields:
+            field_layout = BoxLayout(orientation='vertical', size_hint_y=None, height=70, spacing=5)
+            field_label = Label(
+                text=field_name,
+                font_name='Roboto',
+                font_size='16sp',
+                color=(1, 1, 1, 1),
+                size_hint_y=None,
+                height=20
+            )
+            input_field = AutoCompleteTextInput(
+                multiline=False,
+                size_hint_y=None,
+                height=40,
+                background_color=(1, 1, 1, 0.8),
+                col_index=col_index,
+                font_name='Roboto'
+            )
+            self.input_fields.append(input_field)
+            field_layout.add_widget(field_label)
+            field_layout.add_widget(input_field)
+            layout.add_widget(field_layout)
+
+        scroll.add_widget(layout)
+
+        btn_box = BoxLayout(
+            orientation='horizontal',
+            spacing=10,
+            size_hint=(1, None),
+            height=40,
+            pos_hint={'center_x': 0.5, 'center_y': 0.1}
+        )
+        save_btn = ModernButton(
+            text='Сохранить',
             bg_color=get_color_from_hex('#00FF00'),
-            size_hint=(None, None),
-            size=(100, 40),
-            pos_hint={'center_x': 0.5, 'center_y': 0.25},
+            size_hint=(0.5, None),
+            height=40,
             no_shadow=True
         )
-        btn.bind(on_press=self.next_field)
+        save_btn.bind(on_press=self.save_data)
+        exit_btn = ModernButton(
+            text='Выйти',
+            bg_color=get_color_from_hex('#FF0000'),
+            size_hint=(0.5, None),
+            height=40,
+            no_shadow=True
+        )
+        exit_btn.bind(on_press=self.dismiss)
+        btn_box.add_widget(save_btn)
+        btn_box.add_widget(exit_btn)
 
-        content.add_widget(close_btn)
         content.add_widget(label)
-        content.add_widget(self.input_field)
-        content.add_widget(btn)
+        content.add_widget(scroll)
+        content.add_widget(btn_box)
 
         self.content = content
         self.open()
-        Clock.schedule_once(lambda dt: setattr(self.input_field, 'focus', True), 0.1)
-
-    def next_field(self, instance=None):
-        value = self.input_field.text.strip()
-        if value:
-            field_name, col_index = self.fields[self.current_field]
-            self.data[col_index] = value
-            # Save to suggestions
-            self.save_to_suggestions(col_index, value)
-        self.current_field += 1
-        self.dismiss()
-        if self.current_field < len(self.fields):
-            next_popup = TreeDataInputPopup(self.table_screen, self.row_index)
-            next_popup.current_field = self.current_field
-            next_popup.data = self.data
-            next_popup.show_next_field()
-        else:
-            self.save_data()
 
     def save_to_suggestions(self, col_index, value):
         try:
@@ -330,7 +330,14 @@ class TreeDataInputPopup(Popup):
         except Exception as e:
             print(f"Error saving suggestion: {e}")
 
-    def save_data(self):
+    def save_data(self, instance):
+        for i, (field_name, col_index) in enumerate(self.fields):
+            value = self.input_fields[i].text.strip()
+            if value:
+                self.data[col_index] = value
+                # Save to suggestions
+                self.save_to_suggestions(col_index, value)
+
         # Fill the row in the table
         for col_index, value in self.data.items():
             if col_index < len(self.table_screen.inputs[self.row_index]):
@@ -347,6 +354,7 @@ class TreeDataInputPopup(Popup):
 
         # Show success
         self.table_screen.show_success("Данные дерева сохранены!")
+        self.dismiss()
 
 class Joypad(FloatLayout):
     def __init__(self, table_screen, **kwargs):
@@ -418,19 +426,11 @@ class ExitConfirmPopup(Popup):
             title='',
             separator_height=0,
             size_hint=(0.4, 0.3),
-            background='',
+            background='atlas://data/images/defaulttheme/modalview-background',
             overlay_color=(0, 0, 0, 0.5)
         )
 
         content = FloatLayout()
-
-        with content.canvas.before:
-            Color(0.98, 0.98, 0.98, 1)
-            RoundedRectangle(
-                pos=(content.x-10, content.y-10),
-                size=(content.width+20, content.height+20),
-                radius=[50]
-            )
 
         close_btn = ModernButton(
             text='X',
@@ -461,16 +461,16 @@ class ExitConfirmPopup(Popup):
         )
         yes_btn = ModernButton(
             text='Выход',
-            bg_color=(1, 0, 0, 1),
-            color=(0, 0, 0, 1),
+            bg_color=get_color_from_hex('#FF0000'),
+            color=get_color_from_hex('#000000'),
             size_hint=(0.5, None),
             height=45,
             no_shadow=True
         )
         no_btn = ModernButton(
             text='Отмена',
-            bg_color=(1, 0, 0, 1),
-            color=(0, 0, 0, 1),
+            bg_color=get_color_from_hex('#00FF00'),
+            color=get_color_from_hex('#000000'),
             size_hint=(0.5, None),
             height=45,
             no_shadow=True
@@ -532,10 +532,9 @@ class MainMenu(Screen):
         center_layout.add_widget(title)
         
         buttons = [
-            ('Сменить тему', '#00FF00', self.change_theme),
             ('Перечётная ведомость', '#FFA500', self.show_add_section),
             ('РУМ (Молодняки)', '#00BFFF', self.show_add_molodniki_section),
-            ('Выбрать тему', '#FFFF00', self.show_theme_chooser),
+            ('Темы', '#FFFF00', self.show_theme_chooser),
             ('Выход', '#FF0000', self.confirm_exit)
         ]
         
@@ -584,10 +583,6 @@ class MainMenu(Screen):
     def show_add_section(self, instance):
         content = FloatLayout()
 
-        with content.canvas.before:
-            Color(rgba=(0.9, 0.9, 0.9, 1))
-            RoundedRectangle(pos=(content.x-10, content.y-10), size=(content.width+20, content.height+20), radius=[30])
-
         close_btn = ModernButton(
             text='X',
             size_hint=(None, None),
@@ -598,12 +593,22 @@ class MainMenu(Screen):
         )
         close_btn.bind(on_press=lambda x: self.section_popup.dismiss())
 
+        label = Label(
+            text='Введите номер участка:',
+            font_name='Roboto',
+            font_size='18sp',
+            color=(0.2, 0.2, 0.2, 1),
+            pos_hint={'center_x': 0.5, 'center_y': 0.7},
+            size_hint=(None, None),
+            size=(200, 50)
+        )
+
         self.section_number_input = TextInput(
             hint_text="Введите номер участка",
             multiline=False,
             size_hint=(None, None),
             size=(250, 40),
-            pos_hint={'center_x': 0.5, 'center_y': 0.6},
+            pos_hint={'center_x': 0.5, 'center_y': 0.55},
             background_color=(1, 1, 1, 0.8)
         )
 
@@ -632,6 +637,7 @@ class MainMenu(Screen):
             btn_box.add_widget(btn)
 
         content.add_widget(close_btn)
+        content.add_widget(label)
         content.add_widget(self.section_number_input)
         content.add_widget(btn_box)
 
@@ -640,7 +646,7 @@ class MainMenu(Screen):
             content=content,
             size_hint=(0.6, 0.5),
             separator_height=0,
-            background='',
+            background='atlas://data/images/defaulttheme/modalview-background',
             overlay_color=(0, 0, 0, 0.5)
         )
         self.section_popup.open()
@@ -684,10 +690,6 @@ class MainMenu(Screen):
     def show_add_molodniki_section(self, instance):
         content = FloatLayout()
 
-        with content.canvas.before:
-            Color(rgba=(0.9, 0.9, 0.9, 1))
-            RoundedRectangle(pos=(content.x-10, content.y-10), size=(content.width+20, content.height+20), radius=[30])
-
         close_btn = ModernButton(
             text='X',
             size_hint=(None, None),
@@ -698,12 +700,22 @@ class MainMenu(Screen):
         )
         close_btn.bind(on_press=lambda x: self.molodniki_popup.dismiss())
 
+        label = Label(
+            text='Введите номер участка молодняков:',
+            font_name='Roboto',
+            font_size='18sp',
+            color=(0.2, 0.2, 0.2, 1),
+            pos_hint={'center_x': 0.5, 'center_y': 0.7},
+            size_hint=(None, None),
+            size=(300, 50)
+        )
+
         self.molodniki_section_input = TextInput(
             hint_text="Введите номер участка молодняков",
             multiline=False,
             size_hint=(None, None),
             size=(300, 40),
-            pos_hint={'center_x': 0.5, 'center_y': 0.6},
+            pos_hint={'center_x': 0.5, 'center_y': 0.55},
             background_color=(1, 1, 1, 0.8)
         )
 
@@ -732,6 +744,7 @@ class MainMenu(Screen):
             btn_box.add_widget(btn)
 
         content.add_widget(close_btn)
+        content.add_widget(label)
         content.add_widget(self.molodniki_section_input)
         content.add_widget(btn_box)
 
@@ -740,7 +753,7 @@ class MainMenu(Screen):
             content=content,
             size_hint=(0.6, 0.5),
             separator_height=0,
-            background='',
+            background='atlas://data/images/defaulttheme/modalview-background',
             overlay_color=(0, 0, 0, 0.5)
         )
         self.molodniki_popup.open()
@@ -785,25 +798,37 @@ class MainMenu(Screen):
         ExitConfirmPopup().open()
 
     def show_success(self, message):
+        content = FloatLayout()
+        label = Label(
+            text=message,
+            color=(0, 0.5, 0, 1),
+            font_name='Roboto',
+            pos_hint={'center_x': 0.5, 'center_y': 0.5}
+        )
+        content.add_widget(label)
         Popup(
             title='Успешно',
-            content=Label(
-                text=message, 
-                color=(0, 0.5, 0, 1), 
-                font_name='Roboto'
-            ),
-            size_hint=(0.6, 0.3)
+            content=content,
+            size_hint=(0.6, 0.3),
+            background='atlas://data/images/defaulttheme/modalview-background',
+            overlay_color=(0, 0, 0, 0.5)
         ).open()
 
     def show_error(self, message):
+        content = FloatLayout()
+        label = Label(
+            text=message,
+            color=(1, 0, 0, 1),
+            font_name='Roboto',
+            pos_hint={'center_x': 0.5, 'center_y': 0.5}
+        )
+        content.add_widget(label)
         Popup(
             title='Ошибка',
-            content=Label(
-                text=message, 
-                color=(1, 0, 0, 1), 
-                font_name='Roboto'
-            ),
-            size_hint=(0.6, 0.3)
+            content=content,
+            size_hint=(0.6, 0.3),
+            background='atlas://data/images/defaulttheme/modalview-background',
+            overlay_color=(0, 0, 0, 0.5)
         ).open()
 
     def show_load_popup(self, instance):
@@ -816,9 +841,6 @@ class MainMenu(Screen):
             self.show_error("Нет сохраненных участков!")
             return
         content = FloatLayout()
-        with content.canvas.before:
-            Color(rgba=(0.9, 0.9, 0.9, 1))
-            RoundedRectangle(pos=(content.x-10, content.y-10), size=(content.width+20, content.height+20), radius=[30])
 
         close_btn = ModernButton(
             text='X',
@@ -897,9 +919,6 @@ class MainMenu(Screen):
             self.show_error("Нет сохраненных участков молодняков!")
             return
         content = FloatLayout()
-        with content.canvas.before:
-            Color(rgba=(0.9, 0.9, 0.9, 1))
-            RoundedRectangle(pos=(content.x-10, content.y-10), size=(content.width+20, content.height+20), radius=[30])
 
         close_btn = ModernButton(
             text='X',
@@ -1191,18 +1210,18 @@ class TableScreen(Screen):
             controls.add_widget(btn)
         
         control_panel.add_widget(controls)
-        
+
         # Джойстик - центрируем внизу
         joypad_container = BoxLayout(
-            size_hint=(1, None), 
+            size_hint=(1, None),
             height=150,
             padding=[0, 20, 0, 0]
         )
-        
+
         joypad = Joypad(self)
         joypad.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
         joypad_container.add_widget(joypad)
-        
+
         spacer = BoxLayout(size_hint_y=1)
         control_panel.add_widget(spacer)
         control_panel.add_widget(joypad_container)
@@ -1255,6 +1274,8 @@ class TableScreen(Screen):
                 self.save_suggestion(0, instance.text.strip())
                 TreeDataInputPopup(self, instance.row_index).open()
 
+
+
     def save_suggestion(self, col_index, value):
         try:
             conn = sqlite3.connect(self.db_name)
@@ -1278,10 +1299,6 @@ class TableScreen(Screen):
 
     def show_save_dialog(self, instance=None):
         content = FloatLayout()
-
-        with content.canvas.before:
-            Color(rgba=(0.9, 0.9, 0.9, 1))
-            RoundedRectangle(pos=content.pos, size=content.size, radius=[20])
 
         close_btn = ModernButton(
             text='X',
@@ -1451,17 +1468,44 @@ class TableScreen(Screen):
         App.get_running_app().root.current = 'main'
 
     def show_error(self, message):
+        content = FloatLayout()
+        with content.canvas.before:
+            Color(0.98, 0.98, 0.98, 1)
+            RoundedRectangle(
+                pos=(content.x-10, content.y-10),
+                size=(content.width+20, content.height+20),
+                radius=[50]
+            )
+        label = Label(
+            text=message,
+            color=(1, 0, 0, 1),
+            font_name='Roboto',
+            pos_hint={'center_x': 0.5, 'center_y': 0.5}
+        )
+        content.add_widget(label)
         Popup(
             title='Ошибка',
-            content=Label(text=message, color=(1, 0, 0, 1)),
-            size_hint=(0.6, 0.3)
+            content=content,
+            size_hint=(0.6, 0.3),
+            background='atlas://data/images/defaulttheme/modalview-background',
+            overlay_color=(0, 0, 0, 0.5)
         ).open()
 
     def show_success(self, message):
+        content = FloatLayout()
+        label = Label(
+            text=message,
+            color=(0, 0.5, 0, 1),
+            font_name='Roboto',
+            pos_hint={'center_x': 0.5, 'center_y': 0.5}
+        )
+        content.add_widget(label)
         Popup(
             title='Успешно',
-            content=Label(text=message, color=(0, 0.5, 0, 1)),
-            size_hint=(0.6, 0.3)
+            content=content,
+            size_hint=(0.6, 0.3),
+            background='atlas://data/images/defaulttheme/modalview-background',
+            overlay_color=(0, 0, 0, 0.5)
         ).open()
         
     def load_existing_data(self):
@@ -1469,7 +1513,7 @@ class TableScreen(Screen):
 
 class ThemeChooser(Popup):
     def __init__(self, **kwargs):
-        super().__init__(title='Выбор темы', size_hint=(0.7, 0.6))
+        super().__init__(title='Выбор темы', size_hint=(0.8, 0.5))
         content = FloatLayout()
 
         close_btn = ModernButton(
@@ -1482,33 +1526,80 @@ class ThemeChooser(Popup):
         )
         close_btn.bind(on_press=self.dismiss)
 
-        self.layout = GridLayout(cols=3, spacing=10, padding=10, size_hint=(1, 0.9), pos_hint={'center_x': 0.5, 'center_y': 0.45})
-        self.scroll = ScrollView()
+        # Стрелка влево
+        left_arrow = ModernButton(
+            text='◄',
+            size_hint=(None, None),
+            size=(50, 50),
+            pos_hint={'x': 0.05, 'center_y': 0.5},
+            bg_color=(0.5, 0.5, 0.5, 1),
+            no_shadow=True
+        )
+        left_arrow.bind(on_press=self.prev_theme)
 
+        # Стрелка вправо
+        right_arrow = ModernButton(
+            text='►',
+            size_hint=(None, None),
+            size=(50, 50),
+            pos_hint={'right': 0.95, 'center_y': 0.5},
+            bg_color=(0.5, 0.5, 0.5, 1),
+            no_shadow=True
+        )
+        right_arrow.bind(on_press=self.next_theme)
+
+        # Контейнер для иконок тем
+        self.themes_container = BoxLayout(
+            orientation='horizontal',
+            spacing=10,
+            size_hint=(0.8, 0.8),
+            pos_hint={'center_x': 0.5, 'center_y': 0.5}
+        )
+
+        self.update_theme_icons()
+
+        content.add_widget(close_btn)
+        content.add_widget(left_arrow)
+        content.add_widget(right_arrow)
+        content.add_widget(self.themes_container)
+        self.content = content
+
+    def update_theme_icons(self):
+        self.themes_container.clear_widgets()
         for theme in App.get_running_app().theme_manager.themes:
-            btn = Button(size_hint=(None, None), size=(200, 200))
+            btn = Button(size_hint=(None, None), size=(80, 80))
             if theme['type'] == 'color':
                 btn.background_color = theme['background']
             else:
                 btn.background_normal = theme['background']
             btn.bind(on_release=lambda x, t=theme: self.select_theme(t))
-            self.layout.add_widget(btn)
-
-        add_btn = Button(text='Добавить тему', size_hint=(None, None), size=(200, 200))
-        add_btn.bind(on_release=self.add_theme)
-        self.layout.add_widget(add_btn)
-
-        self.scroll.add_widget(self.layout)
-        content.add_widget(close_btn)
-        content.add_widget(self.scroll)
-        self.content = content
+            self.themes_container.add_widget(btn)
 
     def select_theme(self, theme):
         manager = App.get_running_app().theme_manager
         manager.current_theme_index = manager.themes.index(theme)
         manager.save_config()
         App.get_running_app().reload_theme()
+        self.update_theme_icons()
         self.dismiss()
+
+    def prev_theme(self, instance):
+        themes = App.get_running_app().theme_manager.themes
+        current_idx = App.get_running_app().theme_manager.current_theme_index
+        new_idx = (current_idx - 1) % len(themes)
+        App.get_running_app().theme_manager.current_theme_index = new_idx
+        App.get_running_app().theme_manager.save_config()
+        App.get_running_app().reload_theme()
+        self.update_theme_icons()
+
+    def next_theme(self, instance):
+        themes = App.get_running_app().theme_manager.themes
+        current_idx = App.get_running_app().theme_manager.current_theme_index
+        new_idx = (current_idx + 1) % len(themes)
+        App.get_running_app().theme_manager.current_theme_index = new_idx
+        App.get_running_app().theme_manager.save_config()
+        App.get_running_app().reload_theme()
+        self.update_theme_icons()
 
     def add_theme(self, instance):
         Tk().withdraw()
@@ -1517,18 +1608,7 @@ class ThemeChooser(Popup):
         )
         if file_path:
             App.get_running_app().theme_manager.add_theme(file_path)
-            self.layout.clear_widgets()
-            for theme in App.get_running_app().theme_manager.themes:
-                btn = Button(size_hint=(None, None), size=(200, 200))
-                if theme['type'] == 'color':
-                    btn.background_color = theme['background']
-                else:
-                    btn.background_normal = theme['background']
-                btn.bind(on_release=lambda x, t=theme: self.select_theme(t))
-                self.layout.add_widget(btn)
-            add_btn = Button(text='Добавить тему', size_hint=(None, None), size=(200, 200))
-            add_btn.bind(on_release=self.add_theme)
-            self.layout.add_widget(add_btn)
+            self.update_theme_icons()
 
 
 class ForestryApp(App):

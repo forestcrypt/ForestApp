@@ -215,6 +215,611 @@ class Joypad(FloatLayout):
         inp.cursor = (len(inp.text), 0)
         inp.text = inp.text
 
+class MolodnikiTreeDataInputPopup(Popup):
+    def __init__(self, table_screen, row_index, **kwargs):
+        super().__init__(
+            title='Ввод данных площадки молодняков',
+            size_hint=(0.8, 0.9),
+            separator_height=0,
+            background_color=(0.5, 0.5, 0.5, 1),  # Серый фон
+            overlay_color=(0, 0, 0, 0.5),
+            **kwargs
+        )
+        self.table_screen = table_screen
+        self.row_index = row_index
+        self.fields = [
+            ('GPS точка', 1),
+            ('Предмет ухода', 2),
+            ('Порода', 3),
+            ('Примечания', 4),
+            ('Тип Леса', 5)
+        ]
+        self.data = {}
+        self.create_ui()
+
+    def create_ui(self):
+        content = FloatLayout()
+
+        label = Label(
+            text='Введите данные площадки молодняков:',
+            font_name='Roboto',
+            font_size='18sp',
+            color=(1, 1, 1, 1),
+            pos_hint={'center_x': 0.5, 'center_y': 0.95},
+            size_hint=(None, None),
+            size=(350, 50)
+        )
+
+        scroll = ScrollView(size_hint=(0.9, 0.75), pos_hint={'center_x': 0.5, 'center_y': 0.5})
+        layout = GridLayout(cols=1, spacing=10, size_hint_y=None)
+        layout.bind(minimum_height=layout.setter('height'))
+
+        with layout.canvas.before:
+            Color(rgba=(0, 0, 0, 0))
+
+        self.input_fields = []
+        for field_name, col_index in self.fields:
+            field_layout = BoxLayout(orientation='vertical', size_hint_y=None, height=70, spacing=5)
+            field_label = Label(
+                text=field_name,
+                font_name='Roboto',
+                font_size='16sp',
+                color=(1, 1, 1, 1),
+                size_hint_y=None,
+                height=20
+            )
+            input_field = AutoCompleteTextInput(
+                multiline=False,
+                size_hint_y=None,
+                height=40,
+                background_color=(1, 1, 1, 0.8),
+                col_index=col_index,
+                font_name='Roboto'
+            )
+            if col_index == 3:  # Порода - открываем popup выбора типа
+                input_field.bind(focus=self.show_breed_popup)
+            self.input_fields.append(input_field)
+            field_layout.add_widget(field_label)
+            field_layout.add_widget(input_field)
+            layout.add_widget(field_layout)
+
+        scroll.add_widget(layout)
+
+        btn_box = BoxLayout(
+            orientation='horizontal',
+            spacing=10,
+            size_hint=(1, None),
+            height=40,
+            pos_hint={'center_x': 0.5, 'center_y': 0.1}
+        )
+        save_btn = ModernButton(
+            text='Сохранить',
+            bg_color=get_color_from_hex('#00FF00'),
+            size_hint=(0.5, None),
+            height=40,
+            no_shadow=True
+        )
+        save_btn.bind(on_press=self.save_data)
+        exit_btn = ModernButton(
+            text='Выйти',
+            bg_color=get_color_from_hex('#FF0000'),
+            size_hint=(0.5, None),
+            height=40,
+            no_shadow=True
+        )
+        exit_btn.bind(on_press=self.dismiss)
+        btn_box.add_widget(save_btn)
+        btn_box.add_widget(exit_btn)
+
+        content.add_widget(label)
+        content.add_widget(scroll)
+        content.add_widget(btn_box)
+
+        self.content = content
+        self.open()
+
+    def show_breed_popup(self, instance, value):
+        """Показать popup для выбора типа породы"""
+        if not value: return
+
+        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+
+        # Кнопки выбора типа породы
+        type_layout = BoxLayout(orientation='horizontal', spacing=10)
+        coniferous_btn = ModernButton(
+            text='Хвойные',
+            bg_color=get_color_from_hex('#228B22'),
+            size_hint=(0.5, None),
+            height=50
+        )
+        deciduous_btn = ModernButton(
+            text='Лиственные',
+            bg_color=get_color_from_hex('#32CD32'),
+            size_hint=(0.5, None),
+            height=50
+        )
+        type_layout.add_widget(coniferous_btn)
+        type_layout.add_widget(deciduous_btn)
+        content.add_widget(type_layout)
+
+        # Кнопка отмены
+        cancel_btn = ModernButton(
+            text='Отмена',
+            bg_color=get_color_from_hex('#FF6347'),
+            size_hint=(0.5, 1),
+            height=50
+        )
+        content.add_widget(cancel_btn)
+
+        popup = Popup(
+            title="Выберите тип породы",
+            content=content,
+            size_hint=(0.8, 0.5)
+        )
+
+        def select_coniferous(btn):
+            self.show_breed_selection_popup(instance, 'coniferous')
+            popup.dismiss()
+
+        def select_deciduous(btn):
+            self.show_breed_selection_popup(instance, 'deciduous')
+            popup.dismiss()
+
+        coniferous_btn.bind(on_press=select_coniferous)
+        deciduous_btn.bind(on_press=select_deciduous)
+        cancel_btn.bind(on_press=popup.dismiss)
+
+        popup.open()
+
+    def show_breed_selection_popup(self, instance, breed_type):
+        """Показать popup для выбора конкретной породы из словаря"""
+        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+
+        # Заголовок
+        title_label = Label(
+            text=f"Выберите {'хвойную' if breed_type == 'coniferous' else 'лиственную'} породу",
+            font_name='Roboto',
+            bold=True,
+            size_hint=(1, None),
+            height=30
+        )
+        content.add_widget(title_label)
+
+        # Списки пород
+        if breed_type == 'coniferous':
+            breeds = [
+                'Сосна', 'Ель', 'Пихта', 'Кедр', 'Лиственница'
+            ]
+        else:
+            breeds = [
+                'Берёза', 'Осина', 'Ольха чёрная', 'Ольха серая',
+                'Ива', 'Ива кустарниковая'
+            ]
+
+        # ScrollView для списка пород
+        scroll = ScrollView(size_hint=(1, None), height=300)
+        breeds_layout = GridLayout(cols=1, spacing=5, size_hint_y=None)
+        breeds_layout.bind(minimum_height=breeds_layout.setter('height'))
+
+        for breed in breeds:
+            btn = ModernButton(
+                text=breed,
+                bg_color=get_color_from_hex('#87CEEB'),
+                size_hint=(1, None),
+                height=50,
+                font_size='14sp'
+            )
+            btn.bind(on_press=lambda x, b=breed: self.select_breed(instance, breed_type, b))
+            breeds_layout.add_widget(btn)
+
+        scroll.add_widget(breeds_layout)
+        content.add_widget(scroll)
+
+        # Кнопка "Другая порода"
+        other_btn = ModernButton(
+            text='Другая порода',
+            bg_color=get_color_from_hex('#DDA0DD'),
+            size_hint=(1, None),
+            height=50
+        )
+        other_btn.bind(on_press=lambda x: self.select_breed(instance, breed_type, 'other'))
+        content.add_widget(other_btn)
+
+        # Кнопка отмены
+        cancel_btn = ModernButton(
+            text='Отмена',
+            bg_color=get_color_from_hex('#FF6347'),
+            size_hint=(1, None),
+            height=50
+        )
+        content.add_widget(cancel_btn)
+
+        popup = Popup(
+            title=f"Выбор {'хвойной' if breed_type == 'coniferous' else 'лиственной'} породы",
+            content=content,
+            size_hint=(0.85, 0.85)
+        )
+
+        cancel_btn.bind(on_press=popup.dismiss)
+        popup.open()
+
+    def select_breed(self, instance, breed_type, selected_breed):
+        """Обработка выбора породы"""
+        if selected_breed == 'other':
+            # Показываем popup для ввода названия другой породы
+            self.show_custom_breed_popup(instance, breed_type)
+        else:
+            # Показываем popup с параметрами породы, передавая название выбранной породы
+            self.show_breed_details_popup(instance, breed_type, selected_breed)
+
+    def show_breed_details_popup(self, instance, breed_type, selected_breed=None):
+        """Показать popup для управления множественными породами"""
+        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+
+        # Заголовок
+        title_label = Label(
+            text=f"Управление породами - {selected_breed}",
+            font_name='Roboto',
+            bold=True,
+            size_hint=(1, None),
+            height=30
+        )
+        content.add_widget(title_label)
+
+        # Список существующих пород в этой строке
+        existing_breeds = self.table_screen.parse_breeds_data(instance.text)
+        if not existing_breeds:
+            # Пытаемся получить данные из сохраненных данных страницы
+            row_idx = self.table_screen.inputs.index([inp for inp in self.table_screen.inputs if inp[3] == instance][0]) if instance in [inp for row in self.table_screen.inputs for inp in row] else -1
+            if row_idx >= 0 and self.table_screen.current_page in self.table_screen.page_data and row_idx < len(self.table_screen.page_data[self.table_screen.current_page]):
+                saved_text = self.table_screen.page_data[self.table_screen.current_page][row_idx][3]  # Столбец "Порода"
+                existing_breeds = self.table_screen.parse_breeds_data(saved_text)
+
+        # Отображаем список существующих пород
+        if existing_breeds:
+            breeds_list_label = Label(
+                text="Уже добавленные породы:",
+                font_name='Roboto',
+                bold=True,
+                size_hint=(1, None),
+                height=30,
+                color=(0.3, 0.3, 0.3, 1)
+            )
+            content.add_widget(breeds_list_label)
+
+            # ScrollView для списка пород
+            breeds_scroll = ScrollView(size_hint=(1, None), height=80)
+            breeds_list_layout = BoxLayout(orientation='vertical', spacing=5, size_hint_y=None)
+            breeds_list_layout.bind(minimum_height=breeds_list_layout.setter('height'))
+
+            for i, breed_info in enumerate(existing_breeds):
+                breed_name = breed_info.get('name', 'Неизвестная')
+                breed_type = breed_info.get('type', 'unknown')
+                params = []
+                if 'density' in breed_info and breed_info['density']:
+                    params.append(f"Густота: {breed_info['density']}")
+                if 'height' in breed_info and breed_info['height']:
+                    params.append(f"Высота: {breed_info['height']}м")
+                if 'age' in breed_info and breed_info['age']:
+                    params.append(f"Возраст: {breed_info['age']} лет")
+                if breed_type == 'coniferous':
+                    if 'do_05' in breed_info and breed_info['do_05']:
+                        params.append(f"До 0.5м: {breed_info['do_05']}")
+                    if '05_15' in breed_info and breed_info['05_15']:
+                        params.append(f"0.5-1.5м: {breed_info['05_15']}")
+                    if 'bolee_15' in breed_info and breed_info['bolee_15']:
+                        params.append(f">1.5м: {breed_info['bolee_15']}")
+
+                breed_text = f"{i+1}. {breed_name}: {'; '.join(params)}" if params else f"{i+1}. {breed_name}"
+                breed_label = Label(
+                    text=breed_text,
+                    font_name='Roboto',
+                    size_hint=(1, None),
+                    height=25,
+                    color=(0.2, 0.2, 0.2, 1),
+                    text_size=(None, None),
+                    halign='left',
+                    valign='top'
+                )
+                breed_label.bind(size=lambda *args: setattr(breed_label, 'text_size', (breed_label.width, None)))
+                breeds_list_layout.add_widget(breed_label)
+
+            breeds_scroll.add_widget(breeds_list_layout)
+            content.add_widget(breeds_scroll)
+        else:
+            breeds_list_label = Label(
+                text="Породы ещё не добавлены",
+                font_name='Roboto',
+                size_hint=(1, None),
+                height=30,
+                color=(0.5, 0.5, 0.5, 1)
+            )
+            content.add_widget(breeds_list_label)
+
+        # Поля ввода для параметров породы
+        fields_layout = GridLayout(cols=2, spacing=5, size_hint=(1, None), height=200)
+
+        if breed_type == 'coniferous':
+            fields = [
+                ('До 0.5м:', 'do_05'),
+                ('0.5-1.5м:', '05_15'),
+                ('>1.5м:', 'bolee_15'),
+                ('Высота (м):', 'height'),
+                ('Густота:', 'density'),
+                ('Возраст (лет):', 'age')
+            ]
+        else:
+            fields = [
+                ('Густота:', 'density'),
+                ('Высота (м):', 'height'),
+                ('Возраст (лет):', 'age')
+            ]
+
+        self.breed_inputs = {}
+        for label_text, field_key in fields:
+            lbl = Label(text=label_text, font_name='Roboto', size_hint=(None, None), size=(100, 30))
+            inp = TextInput(multiline=False, size_hint=(None, None), size=(100, 30))
+            if field_key in ['density', 'age']:
+                inp.input_filter = 'int'
+            elif field_key == 'height':
+                inp.input_filter = 'float'
+            elif field_key in ['do_05', '05_15', 'bolee_15']:
+                inp.input_filter = 'int'
+                if breed_type == 'coniferous':
+                    inp.bind(text=self.update_coniferous_density)
+            fields_layout.add_widget(lbl)
+            fields_layout.add_widget(inp)
+            self.breed_inputs[field_key] = inp
+
+        content.add_widget(fields_layout)
+
+        # Кнопки управления
+        btn_layout = BoxLayout(orientation='horizontal', spacing=5, size_hint=(1, None), height=50)
+        add_btn = ModernButton(
+            text='Добавить породу',
+            bg_color=get_color_from_hex('#00FF00'),
+            size_hint=(0.25, 1),
+            height=50
+        )
+        save_btn = ModernButton(
+            text='Сохранить',
+            bg_color=get_color_from_hex('#32CD32'),
+            size_hint=(0.25, 1),
+            height=50
+        )
+        view_btn = ModernButton(
+            text='Просмотр',
+            bg_color=get_color_from_hex('#87CEEB'),
+            size_hint=(0.25, 1),
+            height=50
+        )
+        cancel_btn = ModernButton(
+            text='Отмена',
+            bg_color=get_color_from_hex('#FF6347'),
+            size_hint=(0.25, 1),
+            height=50
+        )
+        btn_layout.add_widget(add_btn)
+        btn_layout.add_widget(save_btn)
+        btn_layout.add_widget(view_btn)
+        btn_layout.add_widget(cancel_btn)
+        content.add_widget(btn_layout)
+
+        popup = Popup(
+            title=f"Параметры породы: {selected_breed}",
+            content=content,
+            size_hint=(0.9, 0.95)
+        )
+
+        def add_breed(btn):
+            breed_data = {
+                'name': selected_breed,
+                'type': breed_type
+            }
+
+            for key, inp in self.breed_inputs.items():
+                if inp.text.strip():
+                    try:
+                        if key in ['density', 'age']:
+                            breed_data[key] = int(inp.text)
+                        elif key == 'height':
+                            breed_data[key] = float(inp.text)
+                        else:
+                            breed_data[key] = float(inp.text)
+                    except ValueError:
+                        breed_data[key] = inp.text
+
+            existing_breeds = self.table_screen.parse_breeds_data(instance.text)
+            existing_breeds.append(breed_data)
+            instance.text = json.dumps(existing_breeds, ensure_ascii=False, indent=2)
+
+            self.table_screen.update_plot_total(instance, instance.text)
+
+            for inp in self.breed_inputs.values():
+                inp.text = ''
+
+            # После добавления первой породы присваиваем номер 1 и предлагаем выбор
+            if len(existing_breeds) == 1:
+                self.show_breed_choice_popup(instance, selected_breed)
+            else:
+                self.show_breed_popup(instance, True)
+                self.table_screen.show_success(f"Порода '{selected_breed}' добавлена! Выберите тип следующей породы.")
+
+        def save_breeds(btn):
+            existing_breeds = self.table_screen.parse_breeds_data(instance.text)
+            if not existing_breeds:
+                existing_breeds = []
+            instance.text = json.dumps(existing_breeds, ensure_ascii=False, indent=2)
+            self.table_screen.update_plot_total(instance, instance.text)
+            self.table_screen.show_success("Все данные по площадке сохранены!")
+            popup.dismiss()
+
+        def view_breeds(btn):
+            popup.dismiss()
+            self.table_screen.show_breeds_list_popup(instance)
+
+        add_btn.bind(on_press=add_breed)
+        save_btn.bind(on_press=save_breeds)
+        view_btn.bind(on_press=view_breeds)
+        cancel_btn.bind(on_press=popup.dismiss)
+
+        popup.open()
+
+    def show_breed_choice_popup(self, instance, selected_breed):
+        """Показать popup с выбором после добавления первой породы"""
+        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+
+        title_label = Label(
+            text=f"Порода '{selected_breed}' добавлена!\nВыберите действие:",
+            font_name='Roboto',
+            bold=True,
+            size_hint=(1, None),
+            height=60,
+            color=(0, 0.5, 0, 1)
+        )
+        content.add_widget(title_label)
+
+        # Информация о номере породы
+        info_label = Label(
+            text="Автоматически присвоен номер: 1 порода",
+            font_name='Roboto',
+            size_hint=(1, None),
+            height=30,
+            color=(0.3, 0.3, 0.3, 1)
+        )
+        content.add_widget(info_label)
+
+        btn_layout = BoxLayout(orientation='vertical', spacing=10, size_hint=(1, None), height=120)
+        add_more_btn = ModernButton(
+            text='Добавить еще породу',
+            bg_color=get_color_from_hex('#00FF00'),
+            size_hint=(1, None),
+            height=50
+        )
+        save_exit_btn = ModernButton(
+            text='Сохранить и выйти',
+            bg_color=get_color_from_hex('#32CD32'),
+            size_hint=(1, None),
+            height=50
+        )
+        btn_layout.add_widget(add_more_btn)
+        btn_layout.add_widget(save_exit_btn)
+        content.add_widget(btn_layout)
+
+        popup = Popup(
+            title="Выбор действия",
+            content=content,
+            size_hint=(0.8, 0.5)
+        )
+
+        def add_more_breed(btn):
+            popup.dismiss()
+            self.show_breed_popup(instance, True)
+
+        def save_and_exit(btn):
+            popup.dismiss()
+            self.table_screen.show_success("Данные по площадке сохранены!")
+
+        add_more_btn.bind(on_press=add_more_breed)
+        save_exit_btn.bind(on_press=save_and_exit)
+
+        popup.open()
+
+    def show_custom_breed_popup(self, instance, breed_type):
+        """Показать popup для ввода названия другой породы"""
+        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+
+        title_label = Label(
+            text="Введите название другой породы",
+            font_name='Roboto',
+            bold=True,
+            size_hint=(1, None),
+            height=30
+        )
+        content.add_widget(title_label)
+
+        self.custom_breed_input = TextInput(
+            hint_text="Название породы",
+            multiline=False,
+            size_hint=(1, None),
+            height=40,
+            font_name='Roboto'
+        )
+        content.add_widget(self.custom_breed_input)
+
+        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
+        save_btn = ModernButton(
+            text='Сохранить',
+            bg_color=get_color_from_hex('#00FF00'),
+            size_hint=(0.5, 1),
+            height=50
+        )
+        cancel_btn = ModernButton(
+            text='Отмена',
+            bg_color=get_color_from_hex('#FF6347'),
+            size_hint=(0.5, 1),
+            height=50
+        )
+        btn_layout.add_widget(save_btn)
+        btn_layout.add_widget(cancel_btn)
+        content.add_widget(btn_layout)
+
+        popup = Popup(
+            title=f"Ввод {'хвойной' if breed_type == 'coniferous' else 'лиственной'} породы",
+            content=content,
+            size_hint=(0.8, 0.6)
+        )
+
+        def save_custom_breed(btn):
+            breed_name = self.custom_breed_input.text.strip()
+            if breed_name:
+                # Проверяем, не является ли порода запрещенной
+                forbidden_breeds = ['семенная', 'культуры', 'подрост']
+                if any(forbidden.lower() in breed_name.lower() for forbidden in forbidden_breeds):
+                    self.table_screen.show_error("Эта порода не разрешена для использования!")
+                    return
+                instance.text = breed_name
+                self.show_breed_details_popup(instance, breed_type, breed_name)
+                popup.dismiss()
+            else:
+                self.table_screen.show_error("Название породы не может быть пустым!")
+
+        save_btn.bind(on_press=save_custom_breed)
+        cancel_btn.bind(on_press=popup.dismiss)
+
+        popup.open()
+
+    def update_coniferous_density(self, instance, value):
+        """Автоматический расчет густоты для хвойных пород"""
+        if 'density' in self.breed_inputs:
+            density_input = self.breed_inputs['density']
+            try:
+                do_05 = int(self.breed_inputs.get('do_05', TextInput(text='0')).text or '0')
+                _05_15 = int(self.breed_inputs.get('05_15', TextInput(text='0')).text or '0')
+                bolee_15 = int(self.breed_inputs.get('bolee_15', TextInput(text='0')).text or '0')
+
+                total_density = do_05 + _05_15 + bolee_15
+                density_input.text = str(total_density) if total_density > 0 else ''
+            except (ValueError, AttributeError):
+                pass
+
+    def save_data(self, instance):
+        # Fill the row in the table
+        # First, set the NN (row_index + 1)
+        self.table_screen.inputs[self.row_index][0].text = str(self.row_index + 1)
+
+        for i, (field_name, col_index) in enumerate(self.fields):
+            value = self.input_fields[i].text.strip()
+            if value:
+                self.table_screen.inputs[self.row_index][col_index].text = value
+
+        # Save to page_data
+        self.table_screen.save_current_page()
+
+        # Show success
+        self.table_screen.show_success("Данные площадки молодняков сохранены!")
+        self.dismiss()
+
 class ExtendedMolodnikiTableScreen(Screen):
     current_page = NumericProperty(0)
     total_pages = NumericProperty(1)
@@ -475,7 +1080,7 @@ class ExtendedMolodnikiTableScreen(Screen):
                 # Настройка фильтров ввода для числовых полей
                 if col_idx == 0:  # №ППР
                     inp.input_filter = 'int'
-                    inp.bind(focus=self.auto_fill_nn)
+                    inp.bind(focus=self.show_tree_popup)
                 elif col_idx == 3:  # Порода - открываем popup выбора типа
                     inp.bind(focus=self.show_breed_popup)
 
@@ -637,6 +1242,17 @@ class ExtendedMolodnikiTableScreen(Screen):
         inp = self.inputs[row][col]
         inp.focus = True
         inp.cursor = (len(inp.text), 0)
+
+    def show_tree_popup(self, instance, value):
+        """Показать popup для ввода данных площадки молодняков"""
+        if value and instance.text.strip():
+            if not self.edit_mode:
+                # In normal mode, only show popup if other columns are empty
+                if not any(inp.text.strip() for inp in self.inputs[instance.row_index][1:]):
+                    MolodnikiTreeDataInputPopup(self, instance.row_index).open()
+            else:
+                # In edit mode, always show popup for editing existing data
+                MolodnikiTreeDataInputPopup(self, instance.row_index).open()
 
     def auto_fill_nn(self, instance, value):
         if self.edit_mode: return
@@ -1983,62 +2599,39 @@ class ExtendedMolodnikiTableScreen(Screen):
 
             current_row = 4
             for row in all_data:
-                processed_row = []
-                for i, cell_value in enumerate(row):
-                    if i == 3 and cell_value:
-                        try:
-                            breeds_data = json.loads(cell_value)
-                            if isinstance(breeds_data, list):
-                                for breed_idx, breed_info in enumerate(breeds_data):
-                                    if isinstance(breed_info, dict):
-                                        breed_row = ['', '', '', '', '', '']
-                                        if breed_idx == 0:
-                                            breed_row[0] = row[0]
-                                            breed_row[1] = row[1]
-                                            breed_row[2] = row[2]
-                                            breed_row[4] = row[4]
-                                            breed_row[5] = row[5]
+                if any(cell for cell in row if cell):  # Проверяем, что строка не пустая
+                    processed_row = []
+                    for i, cell_value in enumerate(row):
+                        if i == 3 and cell_value:  # Столбец Порода
+                            try:
+                                breeds_data = json.loads(cell_value)
+                                if isinstance(breeds_data, list) and breeds_data:
+                                    breed_summaries = []
+                                    for breed_info in breeds_data:
+                                        if isinstance(breed_info, dict):
+                                            breed_name = breed_info.get('name', 'Неизвестная')
+                                            params = []
+                                            if 'density' in breed_info and breed_info['density']:
+                                                params.append(f"Густота: {breed_info['density']}")
+                                            if 'height' in breed_info and breed_info['height']:
+                                                params.append(f"Высота: {breed_info['height']}м")
+                                            if 'age' in breed_info and breed_info['age']:
+                                                params.append(f"Возраст: {breed_info['age']} лет")
+                                            if 'do_05' in breed_info and breed_info['do_05']:
+                                                params.append(f"До 0.5м: {breed_info['do_05']}")
+                                            if '05_15' in breed_info and breed_info['05_15']:
+                                                params.append(f"0.5-1.5м: {breed_info['05_15']}")
+                                            if 'bolee_15' in breed_info and breed_info['bolee_15']:
+                                                params.append(f">1.5м: {breed_info['bolee_15']}")
+                                            breed_summaries.append(f"{breed_name}: {'; '.join(params)}")
+                                    processed_row.append(" | ".join(breed_summaries))
+                                else:
+                                    processed_row.append(cell_value or "")
+                            except (json.JSONDecodeError, TypeError):
+                                processed_row.append(cell_value or "")
+                        else:
+                            processed_row.append(cell_value or "")
 
-                                        breed_name = breed_info.get('name', 'Неизвестная')
-                                        params = []
-                                        if 'density' in breed_info and breed_info['density']:
-                                            params.append(f"Густота: {breed_info['density']}")
-                                        if 'height' in breed_info and breed_info['height']:
-                                            params.append(f"Высота: {breed_info['height']}м")
-                                        if 'age' in breed_info and breed_info['age']:
-                                            params.append(f"Возраст: {breed_info['age']} лет")
-                                        if 'do_05' in breed_info and breed_info['do_05']:
-                                            params.append(f"До 0.5м: {breed_info['do_05']}")
-                                        if '05_15' in breed_info and breed_info['05_15']:
-                                            params.append(f"0.5-1.5м: {breed_info['05_15']}")
-                                        if 'bolee_15' in breed_info and breed_info['bolee_15']:
-                                            params.append(f">1.5м: {breed_info['bolee_15']}")
-
-                                        breed_row[3] = f"{breed_name}: {'; '.join(params)}"
-                                        ws.append(breed_row)
-                                        current_row += 1
-                            else:
-                                breed_info = []
-                                for key, value in breeds_data.items():
-                                    if key == 'do_05':
-                                        breed_info.append(f"До 0.5м: {value}")
-                                    elif key == '05_15':
-                                        breed_info.append(f"0.5-1.5м: {value}")
-                                    elif key == 'bolee_15':
-                                        breed_info.append(f">1.5м: {value}")
-                                    elif key == 'height':
-                                        breed_info.append(f"Высота: {value}м")
-                                    elif key == 'density':
-                                        breed_info.append(f"Густота: {value}")
-                                    elif key == 'age':
-                                        breed_info.append(f"Возраст: {value} лет")
-                                processed_row.append("; ".join(breed_info))
-                        except (json.JSONDecodeError, TypeError):
-                            processed_row.append(cell_value)
-                    else:
-                        processed_row.append(cell_value)
-
-                if processed_row:
                     ws.append(processed_row)
                     current_row += 1
 
