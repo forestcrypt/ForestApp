@@ -1,32 +1,36 @@
+# Script to check database contents
 import sqlite3
 
-conn = sqlite3.connect('forest_data.db')
-cursor = conn.cursor()
+def check_database():
+    conn = sqlite3.connect('forest_data.db')
+    cursor = conn.cursor()
 
-# Получаем список всех таблиц
-cursor.execute('SELECT name FROM sqlite_master WHERE type="table"')
-tables = [row[0] for row in cursor.fetchall()]
-
-print('Tables in database:')
-for table in tables:
-    print(f'  - {table}')
-
-    # Получаем структуру таблицы
-    cursor.execute(f'PRAGMA table_info({table})')
-    columns = cursor.fetchall()
-    if columns:
-        print('    Columns:')
-        for col in columns:
-            print(f'      {col[1]} ({col[2]})')
-
-    # Получаем количество записей
     try:
-        cursor.execute(f'SELECT COUNT(*) FROM {table}')
-        count = cursor.fetchone()[0]
-        print(f'    Records: {count}')
-    except:
-        print('    Records: N/A')
+        # Check molodniki_data table
+        print("=== MOLODNIKI_DATA TABLE ===")
+        cursor.execute('SELECT * FROM molodniki_data LIMIT 10')
+        rows = cursor.fetchall()
+        for row in rows:
+            print(row)
 
-    print()
+        # Check molodniki_breeds table
+        print("\n=== MOLODNIKI_BREEDS TABLE ===")
+        cursor.execute('SELECT * FROM molodniki_breeds LIMIT 10')
+        rows = cursor.fetchall()
+        for row in rows:
+            print(row)
 
-conn.close()
+        # Check suggestions
+        print("\n=== MOLODNIKI_SUGGESTIONS TABLE ===")
+        cursor.execute('SELECT * FROM molodniki_suggestions LIMIT 10')
+        rows = cursor.fetchall()
+        for row in rows:
+            print(row)
+
+    except Exception as e:
+        print(f"Error: {e}")
+    finally:
+        conn.close()
+
+if __name__ == "__main__":
+    check_database()

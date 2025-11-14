@@ -1,5 +1,5 @@
 # Расширенная таблица молодняков по новой структуре
-# Структура: 6 основных столбцов + динамические подстолбцы для пород
+        # Структура: 6 основных столбцов + динамические подстолбцы для пород
 
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
@@ -835,6 +835,7 @@ class ExtendedMolodnikiTableScreen(Screen):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        print("DEBUG: ExtendedMolodnikiTableScreen __init__ started")
         self.theme_manager = App.get_running_app().theme_manager
         self.reports_dir = "reports"
         os.makedirs(self.reports_dir, exist_ok=True)
@@ -1031,15 +1032,15 @@ class ExtendedMolodnikiTableScreen(Screen):
         pagination.add_widget(next_btn)
         table_panel.add_widget(pagination)
 
-        # Основная таблица (7 столбцов: основные данные + итого)
+        # Основная таблица (6 столбцов: основные данные)
         scroll = ScrollView(do_scroll_x=True, do_scroll_y=True, bar_width=10)
-        self.table = GridLayout(cols=7, size_hint=(None, None), spacing=1)
+        self.table = GridLayout(cols=6, size_hint=(None, None), spacing=1)
         self.table.bind(minimum_height=self.table.setter('height'),
                        minimum_width=self.table.setter('width'))
 
-        # Заголовки столбцов (7 столбцов: основные данные + итого)
+        # Заголовки столбцов (6 столбцов: основные данные)
         headers = [
-            '№ППР', 'GPS точка', 'Предмет ухода', 'Порода', 'Примечания', 'Тип Леса', 'Итого по площадке'
+            '№ППР', 'GPS точка', 'Предмет ухода', 'Порода', 'Примечания', 'Тип Леса'
         ]
 
         self.header_bgs = []
@@ -1062,9 +1063,8 @@ class ExtendedMolodnikiTableScreen(Screen):
             lbl.bind(pos=lambda i,v, b=bg: setattr(b, 'pos', i.pos), size=lambda i,v, b=bg: setattr(b, 'size', i.size))
             self.table.add_widget(lbl)
 
-        # Создаем строки таблицы (7 столбцов: основные данные + итого)
+        # Создаем строки таблицы (6 столбцов: основные данные)
         self.inputs = []
-        self.row_totals = []  # Метки для итогов по каждой строке
         for row_idx in range(self.rows_per_page):
             row = []
             for col_idx in range(6):
@@ -1073,7 +1073,7 @@ class ExtendedMolodnikiTableScreen(Screen):
                 inp.col_index = col_idx
                 inp.bind(focus=self.update_focus)
                 inp.bind(text=self.update_row_total)
-                inp.font_name = 'Roboto'
+                inp.font_name='Roboto'
                 inp.size_hint_x = None
                 inp.width = 120  # Все столбцы одинаковой ширины
 
@@ -1087,38 +1087,35 @@ class ExtendedMolodnikiTableScreen(Screen):
                 row.append(inp)
                 self.table.add_widget(inp)
 
-            # Добавляем метку для итогов по строке
-            total_label = Label(
-                text="",
-                font_name='Roboto',
-                size_hint_y=None,
-                height=30,
-                size_hint_x=None,
-                width=120,
-                color=(0, 0, 0, 1),
-                halign='left',
-                valign='middle'
-            )
-            total_label.bind(size=total_label.setter('text_size'))
-            self.table.add_widget(total_label)
-            self.row_totals.append(total_label)
-
             self.inputs.append(row)
 
-        # Добавляем строку "ИТОГО" (6 столбцов)
-        self.total_labels = []
-        for col_idx in range(6):
-            if col_idx == 0:
-                lbl = Label(text="ИТОГО:", font_name='Roboto', bold=True,
-                           size_hint_y=None, height=30, color=(0, 0, 0, 1),
-                           size_hint_x=None, width=120)
-            else:
-                lbl = Label(text="0", font_name='Roboto', bold=True,
-                           size_hint_y=None, height=30, color=(0, 0, 0, 1),
-                           size_hint_x=None, width=120)
-                lbl.col_index = col_idx
-                self.total_labels.append(lbl)
-            self.table.add_widget(lbl)
+
+
+        # Добавляем кнопку "Итого" по середине после строки итогов
+        # Пустая строка для разделения
+        spacer = BoxLayout(orientation='horizontal', size_hint_y=None, height=10)
+        self.table.add_widget(spacer)
+
+        # Кнопка "Итого" по середине
+        button_container = BoxLayout(orientation='horizontal', size_hint_y=None, height=50, size_hint_x=1)
+        button_spacer = BoxLayout(size_hint_x=0.25)  # Спейсер слева
+        button_container.add_widget(button_spacer)
+
+        self.total_summary_button = ModernButton(
+            text='Итого',
+            bg_color=get_color_from_hex('#00FF00'),  # Зеленый цвет
+            size_hint=(None, None),
+            size=(200, 50),
+            font_size='18sp',
+            bold=True
+        )
+        self.total_summary_button.bind(on_press=self.show_total_summary_popup)
+        button_container.add_widget(self.total_summary_button)
+
+        button_spacer2 = BoxLayout(size_hint_x=0.25)  # Спейсер справа
+        button_container.add_widget(button_spacer2)
+
+        self.table.add_widget(button_container)
 
         scroll.add_widget(self.table)
         table_panel.add_widget(scroll)
@@ -1141,9 +1138,7 @@ class ExtendedMolodnikiTableScreen(Screen):
         )
 
         button_handlers = {
-            'Радиус': self.show_radius_popup,
-            'Сохранить Excel': self.show_save_dialog,
-            'Сохранить Word': self.save_to_word,
+            'Сохранить': self.save_all_formats,
             'Сохранить страницу': self.save_current_page,
             'Загрузить': self.load_section,
             'Открыть папку': self.open_excel_file,
@@ -1153,9 +1148,7 @@ class ExtendedMolodnikiTableScreen(Screen):
         }
 
         button_colors = {
-            'Радиус': '#FF8C00',
-            'Сохранить Excel': '#00FF00',
-            'Сохранить Word': '#4169E1',
+            'Сохранить': '#FFD700',  # Gold color for the main save button
             'Сохранить страницу': '#00FFFF',
             'Загрузить': '#006400',
             'Открыть папку': '#0000FF',
@@ -1755,8 +1748,236 @@ class ExtendedMolodnikiTableScreen(Screen):
             breed_name = breeds_data[breed_index].get('name', 'Неизвестная порода')
             breeds_data.pop(breed_index)
             instance.text = json.dumps(breeds_data, ensure_ascii=False, indent=2) if breeds_data else ''
-            self.update_totals()
-            self.show_success(f"Порода '{breed_name}' удалена!")
+        self.update_totals()
+
+    def save_to_json(self, instance=None):
+        """Сохранение данных в JSON формате"""
+        data = {
+            'page_data': self.page_data,
+            'section': self.current_section,
+            'quarter': self.current_quarter,
+            'plot': self.current_plot,
+            'forestry': self.current_forestry,
+            'radius': self.current_radius,
+            'export_date': datetime.datetime.now().isoformat()
+        }
+
+        filename = f"Молодняки_приложение_{self.current_section}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M')}.json"
+        full_path = os.path.join(self.reports_dir, filename)
+
+        try:
+            with open(full_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            return f"JSON: {filename}", None
+        except Exception as e:
+            return None, f"Ошибка сохранения JSON: {str(e)}"
+
+    def save_to_excel_without_dialog(self):
+        """Сохранение в Excel без диалога"""
+        filename = f"Молодняки_расширенный_{self.current_section}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M')}.xlsx"
+        full_path = os.path.join(self.reports_dir, filename)
+
+        try:
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Молодняки"
+
+            address_parts = []
+            if self.current_quarter:
+                address_parts.append(f"Квартал: {self.current_quarter}")
+            if self.current_plot:
+                address_parts.append(f"Выдел: {self.current_plot}")
+            if self.current_forestry:
+                address_parts.append(f"Лесничество: {self.current_forestry}")
+            if self.current_radius:
+                address_parts.append(f"Радиус: {self.current_radius} м")
+
+            address_text = " | ".join(address_parts) if address_parts else "Адрес не указан"
+            ws['A1'] = f"Адрес: {address_text}"
+            ws['A1'].font = openpyxl.styles.Font(bold=True, size=12)
+
+            ws.append([])
+
+            headers = [
+                '№ППР', 'GPS точка', 'Предмет ухода', 'Порода', 'Густота', 'Высота', 'Возраст', 'Примечания', 'Тип Леса'
+            ]
+            for col_num, header in enumerate(headers, 1):
+                cell = ws.cell(row=3, column=col_num, value=header)
+                cell.font = openpyxl.styles.Font(bold=True)
+                cell.fill = openpyxl.styles.PatternFill(start_color="00FF00", end_color="00FF00", fill_type="solid")
+
+            all_data = []
+            for page in sorted(self.page_data.keys()):
+                all_data.extend(self.page_data[page])
+
+            current_row = 4
+            for row in all_data:
+                if any(cell for cell in row[:3] if cell):  # Проверяем, что основные столбцы не пустые
+                    try:
+                        breeds_data = json.loads(row[3]) if row[3] else []
+                    except (json.JSONDecodeError, TypeError):
+                        breeds_data = []
+
+                    if isinstance(breeds_data, list) and breeds_data:
+                        for breed_info in breeds_data:
+                            if isinstance(breed_info, dict):
+                                breed_name = breed_info.get('name', 'Неизвестная')
+                                density = breed_info.get('density', '')
+                                height = breed_info.get('height', '')
+                                age = breed_info.get('age', '')
+
+                                # Для хвойных рассчитываем густоту по градациям
+                                if breed_info.get('type') == 'coniferous':
+                                    coniferous_density = (breed_info.get('do_05', 0) +
+                                                        breed_info.get('05_15', 0) +
+                                                        breed_info.get('bolee_15', 0))
+                                    if coniferous_density > 0:
+                                        density = str(coniferous_density)
+
+                                processed_row = [
+                                    row[0],  # №ППР
+                                    row[1],  # GPS точка
+                                    row[2],  # Предмет ухода
+                                    breed_name,  # Порода
+                                    str(density) if density else '',  # Густота
+                                    str(height) if height else '',  # Высота
+                                    str(age) if age else '',  # Возраст
+                                    row[4],  # Примечания
+                                    row[5],  # Тип Леса
+                                ]
+                                ws.append(processed_row)
+                                current_row += 1
+                    else:
+                        # Если нет пород, добавить строку без данных
+                        processed_row = [row[0], row[1], row[2], '', '', '', '', row[4], row[5]]
+                        ws.append(processed_row)
+                        current_row += 1
+
+            for column in ws.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+                for cell in column:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 50)
+                ws.column_dimensions[column_letter].width = adjusted_width
+
+            wb.save(full_path)
+            return f"Excel: {filename}", None
+        except Exception as e:
+            return None, f"Ошибка сохранения Excel: {str(e)}"
+
+    def save_to_word_without_dialog(self):
+        """Сохранение в Word без диалога"""
+        try:
+            from docx import Document
+
+            filename = f"Молодняки_расширенный_{self.current_section}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M')}.docx"
+            full_path = os.path.join(self.reports_dir, filename)
+
+            doc = Document()
+            doc.add_heading(f'Расширенный отчет по молоднякам - Участок {self.current_section}', 0)
+
+            all_data = []
+            for page in sorted(self.page_data.keys()):
+                all_data.extend(self.page_data[page])
+
+            table = doc.add_table(rows=1, cols=9)
+            table.style = 'Table Grid'
+
+            headers = [
+                '№ППР', 'GPS точка', 'Предмет ухода', 'Порода', 'Густота', 'Высота', 'Возраст', 'Примечания', 'Тип Леса'
+            ]
+            hdr_cells = table.rows[0].cells
+            for i, header in enumerate(headers):
+                hdr_cells[i].text = header
+
+            for row in all_data:
+                if any(cell for cell in row[:3] if cell):  # Проверяем, что основные столбцы не пустые
+                    try:
+                        breeds_data = json.loads(row[3]) if row[3] else []
+                    except (json.JSONDecodeError, TypeError):
+                        breeds_data = []
+
+                    if isinstance(breeds_data, list) and breeds_data:
+                        for breed_info in breeds_data:
+                            if isinstance(breed_info, dict):
+                                breed_name = breed_info.get('name', 'Неизвестная')
+                                density = breed_info.get('density', '')
+                                height = breed_info.get('height', '')
+                                age = breed_info.get('age', '')
+
+                                # Для хвойных рассчитываем густоту по градациям
+                                if breed_info.get('type') == 'coniferous':
+                                    coniferous_density = (breed_info.get('do_05', 0) +
+                                                        breed_info.get('05_15', 0) +
+                                                        breed_info.get('bolee_15', 0))
+                                    if coniferous_density > 0:
+                                        density = str(coniferous_density)
+
+                                row_cells = table.add_row().cells
+                                row_cells[0].text = str(row[0]) if row[0] else ""  # №ППР
+                                row_cells[1].text = str(row[1]) if row[1] else ""  # GPS точка
+                                row_cells[2].text = str(row[2]) if row[2] else ""  # Предмет ухода
+                                row_cells[3].text = breed_name  # Порода
+                                row_cells[4].text = str(density) if density else ""  # Густота
+                                row_cells[5].text = str(height) if height else ""  # Высота
+                                row_cells[6].text = str(age) if age else ""  # Возраст
+                                row_cells[7].text = str(row[4]) if row[4] else ""  # Примечания
+                                row_cells[8].text = str(row[5]) if row[5] else ""  # Тип Леса
+                    else:
+                        # Если нет пород, добавить строку без данных
+                        row_cells = table.add_row().cells
+                        row_cells[0].text = str(row[0]) if row[0] else ""
+                        row_cells[1].text = str(row[1]) if row[1] else ""
+                        row_cells[2].text = str(row[2]) if row[2] else ""
+                        row_cells[3].text = ""
+                        row_cells[4].text = ""
+                        row_cells[5].text = ""
+                        row_cells[6].text = ""
+                        row_cells[7].text = str(row[4]) if row[4] else ""
+                        row_cells[8].text = str(row[5]) if row[5] else ""
+
+            doc.save(full_path)
+            return f"Word: {filename}", None
+        except ImportError:
+            return None, "Для сохранения в Word установите библиотеку python-docx: pip install python-docx"
+        except Exception as e:
+            return None, f"Ошибка сохранения Word: {str(e)}"
+
+    def save_all_formats(self, instance=None):
+        """Сохранить данные во всех форматах сразу"""
+        success_messages = []
+        error_messages = []
+
+        # Сохранение в JSON
+        result, error = self.save_to_json()
+        if result:
+            success_messages.append(result)
+        else:
+            error_messages.append(error)
+
+        # Сохранение в Excel
+        result, error = self.save_to_excel_without_dialog()
+        if result:
+            success_messages.append(result)
+        else:
+            error_messages.append(error)
+
+        # Сохранение в Word
+        result, error = self.save_to_word_without_dialog()
+        if result:
+            success_messages.append(result)
+        else:
+            error_messages.append(error)
+
+        if success_messages:
+            self.show_success("Файлы сохранены:\n" + "\n".join(success_messages))
+        if error_messages:
+            self.show_error("\n".join(error_messages))
 
     def show_edit_breed_popup(self, instance, breed_index, breed_info):
         """Показать popup для редактирования породы"""
@@ -2255,37 +2476,526 @@ class ExtendedMolodnikiTableScreen(Screen):
 
         popup.open()
 
-    def update_totals(self):
-        """Обновление строки итогов с поддержкой множественных пород"""
+    def calculate_section_totals(self):
+        """Расчет итогов по всему разделу (все страницы)"""
         breed_composition = {}
         total_stats = {'density': [], 'height': [], 'age': []}
+        coniferous_stats = {'do_05': [], '05_15': [], 'bolee_15': [], 'height': [], 'age': []}
 
-        for row in self.inputs:
-            predmet_text = row[2].text
-            if predmet_text:
-                composition = self.parse_composition(predmet_text)
-                for breed, count in composition.items():
-                    if breed not in breed_composition:
-                        breed_composition[breed] = []
-                    breed_composition[breed].append(count)
+        for page_num, page_data in self.page_data.items():
+            for row_data in page_data:
+                # row_data имеет 6 элементов: nn, gps_point, predmet_uhoda, poroda, primechanie, tip_lesa
+                if row_data[2]:  # predmet_uhoda
+                    composition = self.parse_composition(row_data[2])
+                    for breed, count in composition.items():
+                        if breed not in breed_composition:
+                            breed_composition[breed] = []
+                        breed_composition[breed].append(count)
 
-            breeds_text = row[3].text
+                breeds_text = row_data[3]  # poroda
+                if breeds_text:
+                    breeds_data = self.parse_breeds_data(breeds_text)
+                    for breed_info in breeds_data:
+                        if breed_info.get('type') == 'coniferous':
+                            # Густота хвойных = сумма градаций
+                            coniferous_density = (breed_info.get('do_05', 0) +
+                                                breed_info.get('05_15', 0) +
+                                                breed_info.get('bolee_15', 0))
+                            if coniferous_density > 0:
+                                total_stats['density'].append(coniferous_density)
+                            else:
+                                if 'density' in breed_info and breed_info['density']:
+                                    total_stats['density'].append(breed_info['density'])
+
+                        elif 'density' in breed_info and breed_info['density']:
+                            total_stats['density'].append(breed_info['density'])
+
+                        if 'height' in breed_info and breed_info['height']:
+                            total_stats['height'].append(breed_info['height'])
+                        if 'age' in breed_info and breed_info['age']:
+                            total_stats['age'].append(breed_info['age'])
+
+        # Рассчитываем остальные итоги
+
+        current_radius = float(self.current_radius) if self.current_radius else 5.64
+        plot_area_m2 = 3.14159 * (current_radius ** 2)  # Площадь пробной площади в м²
+
+        # Расчет средних по градациям для хвойных по формулам лесного хозяйства на гектар
+        coniferous_stats_ha = []
+        for row_data in [row for page in self.page_data.values() for row in page]:
+            breeds_text = row_data[3]
+            if breeds_text:
+                breeds_data = self.parse_breeds_data(breeds_text)
+                if breeds_data and any(b.get('type') == 'coniferous' for b in breeds_data):
+                    coniferous_density_ha = 0
+                    height_sum = 0
+                    age_sum = 0
+                    count = 0
+                    for breed_info in breeds_data:
+                        if breed_info.get('type') == 'coniferous':
+                            do_05 = breed_info.get('do_05', 0)
+                            _05_15 = breed_info.get('05_15', 0)
+                            bolee_15 = breed_info.get('bolee_15', 0)
+                            coniferous_density_ha += (do_05 * 10000 / plot_area_m2) + (_05_15 * 10000 / plot_area_m2) + (bolee_15 * 10000 / plot_area_m2)
+                            if breed_info.get('height'):
+                                height_sum += breed_info['height']
+                                count += 1
+                            if breed_info.get('age'):
+                                age_sum += breed_info['age']
+
+                    coniferous_stats_ha.append({
+                        'density_ha': coniferous_density_ha if coniferous_density_ha > 0 else 0,
+                        'height': height_sum / count if count > 0 else 0,
+                        'age': age_sum / count if count > 0 else 0
+                    })
+
+        # Итоги по лиственным
+        deciduous_stats = []
+        for row_data in [row for page in self.page_data.values() for row in page]:
+            breeds_text = row_data[3]
+            if breeds_text:
+                breeds_data = self.parse_breeds_data(breeds_text)
+                for breed_info in breeds_data:
+                    if breed_info.get('type') == 'deciduous':
+                        deciduous_density = breed_info.get('density', 0) * 10000 / plot_area_m2 if plot_area_m2 > 0 else 0
+                        height = breed_info.get('height', 0)
+                        age = breed_info.get('age', 0)
+                        if deciduous_density > 0 or height > 0 or age > 0:
+                            deciduous_stats.append({'density': deciduous_density, 'height': height, 'age': age})
+
+        # Сводные итоги
+        avg_composition = {}
+        for breed, counts in breed_composition.items():
+            if counts:
+                avg_composition[breed] = sum(counts) / len(counts)
+
+        composition_text = ""
+        for breed in sorted(avg_composition.keys()):
+            count = avg_composition[breed]
+            if count > 0:
+                composition_text += f"{int(count)}{breed}"
+
+        forestry_formulas_text = ""
+
+        # Расчет градаций для хвойных пород
+        coniferous_gradiations_stats = {'do_05_ha': [], '05_15_ha': [], 'bolee_15_ha': [], 'height': [], 'age': []}
+
+        current_radius = float(self.current_radius) if self.current_radius else 5.64
+        plot_area_m2 = 3.14159 * (current_radius ** 2)
+
+        for row_data in [row for page in self.page_data.values() for row in page]:
+            breeds_text = row_data[3]
             if breeds_text:
                 breeds_data = self.parse_breeds_data(breeds_text)
                 for breed_info in breeds_data:
                     if breed_info.get('type') == 'coniferous':
-                        coniferous_density = (breed_info.get('do_05', 0) +
-                                            breed_info.get('05_15', 0) +
-                                            breed_info.get('bolee_15', 0))
-                        if coniferous_density > 0:
-                            total_stats['density'].append(coniferous_density)
-                    elif 'density' in breed_info and breed_info['density']:
-                        total_stats['density'].append(breed_info['density'])
+                        do_05_ha = breed_info.get('do_05', 0) * 10000 / plot_area_m2 if plot_area_m2 > 0 else 0
+                        _05_15_ha = breed_info.get('05_15', 0) * 10000 / plot_area_m2 if plot_area_m2 > 0 else 0
+                        bolee_15_ha = breed_info.get('bolee_15', 0) * 10000 / plot_area_m2 if plot_area_m2 > 0 else 0
+                        height = breed_info.get('height', 0)
+                        age = breed_info.get('age', 0)
 
-                    if 'height' in breed_info and breed_info['height']:
-                        total_stats['height'].append(breed_info['height'])
-                    if 'age' in breed_info and breed_info['age']:
-                        total_stats['age'].append(breed_info['age'])
+                        coniferous_gradiations_stats['do_05_ha'].append(do_05_ha)
+                        coniferous_gradiations_stats['05_15_ha'].append(_05_15_ha)
+                        coniferous_gradiations_stats['bolee_15_ha'].append(bolee_15_ha)
+                        if height > 0:
+                            coniferous_gradiations_stats['height'].append(height)
+                        if age > 0:
+                            coniferous_gradiations_stats['age'].append(age)
+
+        if coniferous_gradiations_stats['do_05_ha'] or coniferous_gradiations_stats['05_15_ha'] or coniferous_gradiations_stats['bolee_15_ha']:
+            forestry_formulas_text += "Хвойные: "
+            gradiations = []
+            avg_do_05 = sum(coniferous_gradiations_stats['do_05_ha']) / len(coniferous_gradiations_stats['do_05_ha']) if coniferous_gradiations_stats['do_05_ha'] else 0
+            gradiations.append(f"до 0.5м: {avg_do_05:.1f} шт/га")
+
+            avg_05_15 = sum(coniferous_gradiations_stats['05_15_ha']) / len(coniferous_gradiations_stats['05_15_ha']) if coniferous_gradiations_stats['05_15_ha'] else 0
+            gradiations.append(f"0.5-1.5м: {avg_05_15:.1f} шт/га")
+
+            avg_bolee_15 = sum(coniferous_gradiations_stats['bolee_15_ha']) / len(coniferous_gradiations_stats['bolee_15_ha']) if coniferous_gradiations_stats['bolee_15_ha'] else 0
+            gradiations.append(f">1.5м: {avg_bolee_15:.1f} шт/га")
+
+            forestry_formulas_text += ", ".join(gradiations)
+
+            if coniferous_gradiations_stats['height']:
+                avg_height = sum(coniferous_gradiations_stats['height']) / len(coniferous_gradiations_stats['height'])
+                forestry_formulas_text += f", высота: {avg_height:.1f}м"
+            if coniferous_gradiations_stats['age']:
+                avg_age = sum(coniferous_gradiations_stats['age']) / len(coniferous_gradiations_stats['age'])
+                forestry_formulas_text += f", возраст: {avg_age:.1f} лет"
+
+        # Лиственные итоги
+        if deciduous_stats:
+            if forestry_formulas_text:
+                forestry_formulas_text += "; "
+            forestry_formulas_text += "Лиственные: "
+            avg_deciduous_density = sum(d['density'] for d in deciduous_stats) / len(deciduous_stats) if deciduous_stats else 0
+            avg_deciduous_height = sum(d['height'] for d in deciduous_stats) / len(deciduous_stats) if deciduous_stats else 0
+            avg_deciduous_age = sum(d['age'] for d in deciduous_stats) / len(deciduous_stats) if deciduous_stats else 0
+
+            if avg_deciduous_density > 0:
+                forestry_formulas_text += f"густота: {avg_deciduous_density:.1f} шт/га "
+            if avg_deciduous_height > 0:
+                forestry_formulas_text += f"высота: {avg_deciduous_height:.1f}м "
+            if avg_deciduous_age > 0:
+                forestry_formulas_text += f"возраст: {avg_deciduous_age:.1f} лет"
+
+        return {
+            'composition_text': composition_text,
+            'forestry_formulas_text': forestry_formulas_text,
+            'total_plots': sum(len(page) for page in self.page_data.values() if page)
+        }
+
+    def show_total_summary_popup(self, *args, **kwargs):
+        """Показать popup со сводными итогами по данным на каждой площадке по породам"""
+        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+
+        title_label = Label(
+            text="Итоговые расчёты по густоте\n(лиственные и хвойные, разбитые по градации)",
+            font_name='Roboto',
+            bold=True,
+            size_hint=(1, None),
+            height=60,
+            halign='center',
+            valign='middle'
+        )
+        content.add_widget(title_label)
+
+        # Рассчитываем итоги по всем страницам
+        current_radius = float(self.current_radius) if self.current_radius else 5.64
+        plot_area_m2 = 3.14159 * (current_radius ** 2)
+
+        # Словарь для хранения итогов по каждой породе
+        breed_summary = {}
+
+        # Проходим по всем страницам и строкам
+        for page_num in self.page_data:
+            page = self.page_data[page_num]
+            for row_data in page:
+                breeds_text = row_data[3]  # Порода
+                if breeds_text:
+                    breeds_data = self.parse_breeds_data(breeds_text)
+                    for breed_info in breeds_data:
+                        breed_name = breed_info.get('name', 'Неизвестная')
+                        breed_type = breed_info.get('type', 'unknown')
+
+                        if breed_name not in breed_summary:
+                            breed_summary[breed_name] = {
+                                'type': breed_type,
+                                'plots': [],
+                                'count': 0,
+                                'total_density': 0,
+                                'total_height': 0,
+                                'total_age': 0,
+                                'coniferous_zones': {'do_05': 0, '05_15': 0, 'bolee_15': 0}
+                            }
+
+                        breed_summary[breed_name]['count'] += 1
+
+                        if breed_type == 'coniferous':
+                            # Суммируем градации для хвойных
+                            do_05 = breed_info.get('do_05', 0)
+                            _05_15 = breed_info.get('05_15', 0)
+                            bolee_15 = breed_info.get('bolee_15', 0)
+
+                            breed_summary[breed_name]['coniferous_zones']['do_05'] += do_05
+                            breed_summary[breed_name]['coniferous_zones']['05_15'] += _05_15
+                            breed_summary[breed_name]['coniferous_zones']['bolee_15'] += bolee_15
+
+                            # Общая густота для хвойных
+                            total_density = do_05 + _05_15 + bolee_15
+                            breed_summary[breed_name]['total_density'] += total_density
+                        else:
+                            density = breed_info.get('density', 0)
+                            # Переводим густоту в шт/га
+                            density_ha = density * 10000 / plot_area_m2 if plot_area_m2 > 0 else density
+                            breed_summary[breed_name]['total_density'] += density_ha
+
+                        height = breed_info.get('height', 0)
+                        age = breed_info.get('age', 0)
+                        breed_summary[breed_name]['total_height'] += height
+                        breed_summary[breed_name]['total_age'] += age
+
+        # Создаем отображаемые данные
+        scroll = ScrollView(size_hint=(1, None), height=400)
+        summary_layout = GridLayout(cols=1, spacing=10, size_hint_y=None)
+        summary_layout.bind(minimum_height=summary_layout.setter('height'))
+
+        # Заголовки
+        headers_layout = GridLayout(cols=4, spacing=5, size_hint_y=None, height=40)
+        headers = ['Порода', 'Густота', 'Высота (м)', 'Возраст (лет)']
+        for header in headers:
+            header_label = Label(
+                text=header,
+                font_name='Roboto',
+                bold=True,
+                size_hint_y=None,
+                height=40,
+                halign='center',
+                color=(0, 0, 0, 1)
+            )
+            headers_layout.add_widget(header_label)
+        summary_layout.add_widget(headers_layout)
+
+        # Данные по каждой породе
+        for breed_name, data in breed_summary.items():
+            breed_layout = GridLayout(cols=4, spacing=5, size_hint_y=None, height=100, padding=[10, 0, 10, 0])
+            breed_layout.canvas.before.clear()
+            with breed_layout.canvas.before:
+                Color(rgba=get_color_from_hex('#F0F8FF'))
+                Rectangle(pos=breed_layout.pos, size=breed_layout.size)
+
+            # Название породы
+            name_label = Label(
+                text=breed_name,
+                font_name='Roboto',
+                bold=True,
+                size_hint_y=None,
+                height=100,
+                halign='center',
+                valign='middle',
+                color=(0, 0, 0, 1)
+            )
+            breed_layout.add_widget(name_label)
+
+            # Густота и градации
+            if data['type'] == 'coniferous':
+                zones_density = []
+                total_zones_density = 0
+                if data['coniferous_zones']['do_05'] > 0:
+                    avg_do_05_ha = data['coniferous_zones']['do_05'] * 10000 / plot_area_m2 if plot_area_m2 > 0 else data['coniferous_zones']['do_05']
+                    zones_density.append(f"до 0.5м: {avg_do_05_ha:.1f}")
+                    total_zones_density += avg_do_05_ha
+                if data['coniferous_zones']['05_15'] > 0:
+                    avg_05_15_ha = data['coniferous_zones']['05_15'] * 10000 / plot_area_m2 if plot_area_m2 > 0 else data['coniferous_zones']['05_15']
+                    zones_density.append(f"0.5-1.5м: {avg_05_15_ha:.1f}")
+                    total_zones_density += avg_05_15_ha
+                if data['coniferous_zones']['bolee_15'] > 0:
+                    avg_bolee_15_ha = data['coniferous_zones']['bolee_15'] * 10000 / plot_area_m2 if plot_area_m2 > 0 else data['coniferous_zones']['bolee_15']
+                    zones_density.append(f">1.5м: {avg_bolee_15_ha:.1f}")
+                    total_zones_density += avg_bolee_15_ha
+
+                density_text = "\n".join(zones_density) if zones_density else "0"
+                density_text += f"\nИтого: {total_zones_density:.1f} шт/га"
+            else:
+                avg_density = data['total_density'] / data['count'] if data['count'] > 0 else 0
+                density_text = f"{avg_density:.1f} шт/га"
+
+            density_label = Label(
+                text=density_text,
+                font_name='Roboto',
+                size_hint_y=None,
+                height=100,
+                halign='left',
+                valign='middle',
+                color=(0, 0, 0, 1)
+            )
+            breed_layout.add_widget(density_label)
+
+            # Средняя высота
+            avg_height = data['total_height'] / data['count'] if data['count'] > 0 else 0
+            height_label = Label(
+                text=f"{avg_height:.1f}",
+                font_name='Roboto',
+                size_hint_y=None,
+                height=100,
+                halign='center',
+                valign='middle',
+                color=(0, 0, 0, 1)
+            )
+            breed_layout.add_widget(height_label)
+
+            # Средний возраст
+            avg_age = data['total_age'] / data['count'] if data['count'] > 0 else 0
+            age_label = Label(
+                text=f"{avg_age:.1f}",
+                font_name='Roboto',
+                size_hint_y=None,
+                height=100,
+                halign='center',
+                valign='middle',
+                color=(0, 0, 0, 1)
+            )
+            breed_layout.add_widget(age_label)
+
+            summary_layout.add_widget(breed_layout)
+
+        scroll.add_widget(summary_layout)
+        content.add_widget(scroll)
+
+        close_btn = ModernButton(
+            text='Закрыть',
+            bg_color=get_color_from_hex('#808080'),
+            size_hint=(1, None),
+            height=50
+        )
+        content.add_widget(close_btn)
+
+        popup = Popup(
+            title="Сводные итоги по породам",
+            content=content,
+            size_hint=(0.95, 0.95)
+        )
+
+        close_btn.bind(on_press=popup.dismiss)
+        popup.open()
+
+    def update_totals(self, update_global=True):
+        """Обновление строки итогов с поддержкой множественных пород"""
+        breed_composition = {}  # Initialize at top
+        total_stats = {'density': [], 'height': [], 'age': []}  # Initialize at top
+
+        # Calculate radius and area once
+        current_radius = float(self.current_radius) if self.current_radius else 5.64
+        plot_area_m2 = 3.14159 * (current_radius ** 2)
+        if update_global:
+            section_data = self.calculate_section_totals()
+            composition_text = section_data['composition_text']
+            forestry_formulas_text = section_data['forestry_formulas_text']
+            total_plots = section_data['total_plots']
+        else:
+            # Старая логика по странице
+            breed_composition = {}
+            total_stats = {'density': [], 'height': [], 'age': []}
+            coniferous_stats = {'do_05': [], '05_15': [], 'bolee_15': [], 'height': [], 'age': []}
+
+            for row in self.inputs:
+                predmet_text = row[2].text
+                if predmet_text:
+                    composition = self.parse_composition(predmet_text)
+                    for breed, count in composition.items():
+                        if breed not in breed_composition:
+                            breed_composition[breed] = []
+                        breed_composition[breed].append(count)
+
+                breeds_text = row[3].text
+                if breeds_text:
+                    breeds_data = self.parse_breeds_data(breeds_text)
+                    for breed_info in breeds_data:
+                        if breed_info.get('type') == 'coniferous':
+                            # Густота хвойных = сумма градаций
+                            coniferous_density = (breed_info.get('do_05', 0) +
+                                                breed_info.get('05_15', 0) +
+                                                breed_info.get('bolee_15', 0))
+                            if coniferous_density > 0:
+                                total_stats['density'].append(coniferous_density)
+                            else:
+                                if 'density' in breed_info and breed_info['density']:
+                                    total_stats['density'].append(breed_info['density'])
+
+                            # Сбор данных по градациям для хвойных
+                            if breed_info.get('do_05', 0) > 0:
+                                coniferous_stats['do_05'].append(breed_info['do_05'])
+                            if breed_info.get('05_15', 0) > 0:
+                                coniferous_stats['05_15'].append(breed_info['05_15'])
+                            if breed_info.get('bolee_15', 0) > 0:
+                                coniferous_stats['bolee_15'].append(breed_info['bolee_15'])
+                            if breed_info.get('height', 0) > 0:
+                                coniferous_stats['height'].append(breed_info['height'])
+                            if breed_info.get('age', 0) > 0:
+                                coniferous_stats['age'].append(breed_info['age'])
+                        elif 'density' in breed_info and breed_info['density']:
+                            total_stats['density'].append(breed_info['density'])
+
+                        if 'height' in breed_info and breed_info['height']:
+                            total_stats['height'].append(breed_info['height'])
+                        if 'age' in breed_info and breed_info['age']:
+                            total_stats['age'].append(breed_info['age'])
+
+            # Рассчитываем итоги по странице
+
+            current_radius = float(self.current_radius) if self.current_radius else 5.64
+            plot_area_m2 = 3.14159 * (current_radius ** 2)  # Площадь пробной площади в м²
+
+            # Расчет средних по градациям для хвойных по формулам лесного хозяйства на гектар
+            coniferous_stats_ha = []
+            for row in range(len(self.inputs)):
+                row_do_05 = coniferous_stats['do_05'][row] if row < len(coniferous_stats['do_05']) and row < len(coniferous_stats['do_05']) else 0
+                row_05_15 = coniferous_stats['05_15'][row] if row < len(coniferous_stats['05_15']) else 0
+                row_bolee_15 = coniferous_stats['bolee_15'][row] if row < len(coniferous_stats['bolee_15']) else 0
+                row_height = coniferous_stats['height'][row] if row < len(coniferous_stats['height']) else 0
+                row_age = coniferous_stats['age'][row] if row < len(coniferous_stats['age']) else 0
+
+                # Рассчитываем густоту на гектар для градаций
+                do_05_ha = (row_do_05 * 10000) / plot_area_m2 if plot_area_m2 > 0 else 0
+                _05_15_ha = (row_05_15 * 10000) / plot_area_m2 if plot_area_m2 > 0 else 0
+                bolee_15_ha = (row_bolee_15 * 10000) / plot_area_m2 if plot_area_m2 > 0 else 0
+
+                coniferous_stats_ha.append({
+                    'do_05_ha': do_05_ha,
+                    '05_15_ha': _05_15_ha,
+                    'bolee_15_ha': bolee_15_ha,
+                    'height': row_height,
+                    'age': row_age
+                })
+
+            avg_coniferous_do_05_ha = sum(d['do_05_ha'] for d in coniferous_stats_ha) / len(coniferous_stats_ha) if coniferous_stats_ha else 0
+            avg_coniferous_05_15_ha = sum(d['05_15_ha'] for d in coniferous_stats_ha) / len(coniferous_stats_ha) if coniferous_stats_ha else 0
+            avg_coniferous_bolee_15_ha = sum(d['bolee_15_ha'] for d in coniferous_stats_ha) / len(coniferous_stats_ha) if coniferous_stats_ha else 0
+            avg_coniferous_height_ha = sum(d['height'] for d in coniferous_stats_ha) / len(coniferous_stats_ha) if coniferous_stats_ha else 0
+            avg_coniferous_age_ha = sum(d['age'] for d in coniferous_stats_ha) / len(coniferous_stats_ha) if coniferous_stats_ha else 0
+
+            # Формирование текста для столбца Порода в строке итогов с формулами лесного хозяйства
+            forestry_formulas_text = ""
+
+            # Хвойные породы - средние значения по градациям на га
+            if coniferous_stats_ha:
+                forestry_formulas_text += "Хвойные: "
+                gradiations = []
+                if avg_coniferous_do_05_ha > 0:
+                    gradiations.append(f"до 0.5м: {avg_coniferous_do_05_ha:.1f} шт/га")
+                if avg_coniferous_05_15_ha > 0:
+                    gradiations.append(f"0.5-1.5м: {avg_coniferous_05_15_ha:.1f} шт/га")
+                if avg_coniferous_bolee_15_ha > 0:
+                    gradiations.append(f">1.5м: {avg_coniferous_bolee_15_ha:.1f} шт/га")
+                if gradiations:
+                    forestry_formulas_text += ", ".join(gradiations)
+                if avg_coniferous_height_ha > 0:
+                    forestry_formulas_text += f", высота: {avg_coniferous_height_ha:.1f}м"
+                if avg_coniferous_age_ha > 0:
+                    forestry_formulas_text += f", возраст: {avg_coniferous_age_ha:.1f} лет"
+
+            # Лиственные породы - средние значения без градаций
+            deciduous_stats = []
+            for breeds in total_stats.get('density', []):
+                if 'breed_type' in breed_info and breed_info.get('breed_type') == 'deciduous':  # Изменить логику
+                    deciduous_stats.append(breeding)
+
+            # Собираем данные по лиственным породам
+            deciduous_density = []
+            deciduous_height = []
+            deciduous_age = []
+
+            for row in self.inputs:
+                breeds_text = row[3].text
+                if breeds_text:
+                    breeds_data = self.parse_breeds_data(breeds_text)
+                    for breed_info in breeds_data:
+                        if breed_info.get('type') == 'deciduous':
+                            if breed_info.get('density'):
+                                deciduous_density.append(breed_info['density'])
+                            if breed_info.get('height'):
+                                deciduous_height.append(breed_info['height'])
+                            if breed_info.get('age'):
+                                deciduous_age.append(breed_info['age'])
+
+            # Рассчитываем средние по лиственным на га
+            if deciduous_density:
+                avg_deciduous_density = sum(deciduous_density) / len(deciduous_density) * (10000 / plot_area_m2) if plot_area_m2 > 0 else 0
+                avg_deciduous_height = sum(deciduous_height) / len(deciduous_height) if deciduous_height else 0
+                avg_deciduous_age = sum(deciduous_age) / len(deciduous_age) if deciduous_age else 0
+
+                if forestry_formulas_text:
+                    forestry_formulas_text += "; "
+                forestry_formulas_text += "Лиственные: "
+                parts = []
+                if avg_deciduous_density > 0:
+                    parts.append(f"густота: {avg_deciduous_density:.1f} шт/га")
+                if avg_deciduous_height > 0:
+                    parts.append(f"высота: {avg_deciduous_height:.1f}м")
+                if avg_deciduous_age > 0:
+                    parts.append(f"возраст: {avg_deciduous_age:.1f} лет")
+                forestry_formulas_text += ", ".join(parts)
 
         avg_composition = {}
         for breed, counts in breed_composition.items():
@@ -2298,44 +3008,28 @@ class ExtendedMolodnikiTableScreen(Screen):
             if count > 0:
                 composition_text += f"{int(count)}{breed}"
 
-        avg_density = sum(total_stats['density']) / len(total_stats['density']) if total_stats['density'] else 0
-        avg_height = sum(total_stats['height']) / len(total_stats['height']) if total_stats['height'] else 0
-        avg_age = sum(total_stats['age']) / len(total_stats['age']) if total_stats['age'] else 0
-
-        for lbl in self.total_labels:
-            if hasattr(lbl, 'col_index'):
-                col_idx = lbl.col_index
-                if col_idx == 1:
-                    lbl.text = ""
-                elif col_idx == 2:
-                    lbl.text = composition_text if composition_text else ""
-                elif col_idx == 3:
-                    lbl.text = f"{avg_age:.1f}" if avg_age > 0 else "0"
-                elif col_idx == 4:
-                    lbl.text = f"{avg_density:.1f}" if avg_density > 0 else "0"
-                elif col_idx == 5:
-                    lbl.text = f"{avg_height:.1f}" if avg_height > 0 else "0"
 
     def parse_composition(self, text):
         """Парсит текстовое представление состава пород"""
         composition = {}
-        matches = re.findall(r'(\d+)([А-ЯA-Z])', text.upper())
-        for count, breed in matches:
-            try:
-                composition[breed] = int(count)
-            except ValueError:
-                pass
+        if isinstance(text, str):
+            matches = re.findall(r'(\d+)([А-ЯA-Z])', text.upper())
+            for count, breed in matches:
+                try:
+                    composition[breed] = int(count)
+                except ValueError:
+                    pass
         return composition
 
     def parse_breeds_data(self, breeds_text):
         """Парсит данные пород из текстового поля"""
-        if not breeds_text:
+        if not breeds_text or not isinstance(breeds_text, str):
             return []
 
         try:
-            if breeds_text.startswith('['):
+            if isinstance(breeds_text, str) and breeds_text.startswith('['):
                 return json.loads(breeds_text)
-            elif breeds_text.startswith('{'):
+            elif isinstance(breeds_text, str) and breeds_text.startswith('{'):
                 return [json.loads(breeds_text)]
         except (json.JSONDecodeError, TypeError):
             pass
@@ -2586,7 +3280,7 @@ class ExtendedMolodnikiTableScreen(Screen):
             ws.append([])
 
             headers = [
-                '№ППР', 'GPS точка', 'Предмет ухода', 'Порода', 'Примечания', 'Тип Леса', 'Итого по площадке'
+                '№ППР', 'GPS точка', 'Предмет ухода', 'Порода', 'Густота', 'Высота', 'Возраст', 'Примечания', 'Тип Леса'
             ]
             for col_num, header in enumerate(headers, 1):
                 cell = ws.cell(row=3, column=col_num, value=header)
@@ -2599,41 +3293,46 @@ class ExtendedMolodnikiTableScreen(Screen):
 
             current_row = 4
             for row in all_data:
-                if any(cell for cell in row if cell):  # Проверяем, что строка не пустая
-                    processed_row = []
-                    for i, cell_value in enumerate(row):
-                        if i == 3 and cell_value:  # Столбец Порода
-                            try:
-                                breeds_data = json.loads(cell_value)
-                                if isinstance(breeds_data, list) and breeds_data:
-                                    breed_summaries = []
-                                    for breed_info in breeds_data:
-                                        if isinstance(breed_info, dict):
-                                            breed_name = breed_info.get('name', 'Неизвестная')
-                                            params = []
-                                            if 'density' in breed_info and breed_info['density']:
-                                                params.append(f"Густота: {breed_info['density']}")
-                                            if 'height' in breed_info and breed_info['height']:
-                                                params.append(f"Высота: {breed_info['height']}м")
-                                            if 'age' in breed_info and breed_info['age']:
-                                                params.append(f"Возраст: {breed_info['age']} лет")
-                                            if 'do_05' in breed_info and breed_info['do_05']:
-                                                params.append(f"До 0.5м: {breed_info['do_05']}")
-                                            if '05_15' in breed_info and breed_info['05_15']:
-                                                params.append(f"0.5-1.5м: {breed_info['05_15']}")
-                                            if 'bolee_15' in breed_info and breed_info['bolee_15']:
-                                                params.append(f">1.5м: {breed_info['bolee_15']}")
-                                            breed_summaries.append(f"{breed_name}: {'; '.join(params)}")
-                                    processed_row.append(" | ".join(breed_summaries))
-                                else:
-                                    processed_row.append(cell_value or "")
-                            except (json.JSONDecodeError, TypeError):
-                                processed_row.append(cell_value or "")
-                        else:
-                            processed_row.append(cell_value or "")
+                if any(cell for cell in row[:3] if cell):  # Проверяем, что основные столбцы не пустые
+                    try:
+                        breeds_data = json.loads(row[3]) if row[3] else []
+                    except (json.JSONDecodeError, TypeError):
+                        breeds_data = []
 
-                    ws.append(processed_row)
-                    current_row += 1
+                    if isinstance(breeds_data, list) and breeds_data:
+                        for breed_info in breeds_data:
+                            if isinstance(breed_info, dict):
+                                breed_name = breed_info.get('name', 'Неизвестная')
+                                density = breed_info.get('density', '')
+                                height = breed_info.get('height', '')
+                                age = breed_info.get('age', '')
+
+                                # Для хвойных рассчитываем густоту по градациям
+                                if breed_info.get('type') == 'coniferous':
+                                    coniferous_density = (breed_info.get('do_05', 0) +
+                                                        breed_info.get('05_15', 0) +
+                                                        breed_info.get('bolee_15', 0))
+                                    if coniferous_density > 0:
+                                        density = str(coniferous_density)
+
+                                processed_row = [
+                                    row[0],  # №ППР
+                                    row[1],  # GPS точка
+                                    row[2],  # Предмет ухода
+                                    breed_name,  # Порода
+                                    str(density) if density else '',  # Густота
+                                    str(height) if height else '',  # Высота
+                                    str(age) if age else '',  # Возраст
+                                    row[4],  # Примечания
+                                    row[5],  # Тип Леса
+                                ]
+                                ws.append(processed_row)
+                                current_row += 1
+                    else:
+                        # Если нет пород, добавить строку без данных
+                        processed_row = [row[0], row[1], row[2], '', '', '', '', row[4], row[5]]
+                        ws.append(processed_row)
+                        current_row += 1
 
             for column in ws.columns:
                 max_length = 0
@@ -2667,64 +3366,61 @@ class ExtendedMolodnikiTableScreen(Screen):
             for page in sorted(self.page_data.keys()):
                 all_data.extend(self.page_data[page])
 
-            table = doc.add_table(rows=1, cols=6)
+            table = doc.add_table(rows=1, cols=9)
             table.style = 'Table Grid'
 
             headers = [
-                '№ППР', 'GPS точка', 'Предмет ухода', 'Порода', 'Примечания', 'Тип Леса', 'Итого по площадке'
+                '№ППР', 'GPS точка', 'Предмет ухода', 'Порода', 'Густота', 'Высота', 'Возраст', 'Примечания', 'Тип Леса'
             ]
             hdr_cells = table.rows[0].cells
             for i, header in enumerate(headers):
                 hdr_cells[i].text = header
 
-            for row_data in all_data:
-                if any(row_data):
-                    row_cells = table.add_row().cells
-                    for i, cell_value in enumerate(row_data):
-                        if i < 6:
-                            if i == 3 and cell_value:
-                                try:
-                                    breeds_data = json.loads(cell_value)
-                                    if isinstance(breeds_data, list):
-                                        breed_summaries = []
-                                        for breed_info in breeds_data:
-                                            if isinstance(breed_info, dict):
-                                                breed_name = breed_info.get('name', 'Неизвестная')
-                                                params = []
-                                                if 'density' in breed_info and breed_info['density']:
-                                                    params.append(f"Густота: {breed_info['density']}")
-                                                if 'height' in breed_info and breed_info['height']:
-                                                    params.append(f"Высота: {breed_info['height']}м")
-                                                if 'age' in breed_info and breed_info['age']:
-                                                    params.append(f"Возраст: {breed_info['age']} лет")
-                                                if 'do_05' in breed_info and breed_info['do_05']:
-                                                    params.append(f"До 0.5м: {breed_info['do_05']}")
-                                                if '05_15' in breed_info and breed_info['05_15']:
-                                                    params.append(f"0.5-1.5м: {breed_info['05_15']}")
-                                                if 'bolee_15' in breed_info and breed_info['bolee_15']:
-                                                    params.append(f">1.5м: {breed_info['bolee_15']}")
-                                                breed_summaries.append(f"{breed_name}: {'; '.join(params)}")
-                                        row_cells[i].text = " | ".join(breed_summaries)
-                                    else:
-                                        breed_info = []
-                                        for key, value in breeds_data.items():
-                                            if key == 'do_05':
-                                                breed_info.append(f"До 0.5м: {value}")
-                                            elif key == '05_15':
-                                                breed_info.append(f"0.5-1.5м: {value}")
-                                            elif key == 'bolee_15':
-                                                breed_info.append(f">1.5м: {value}")
-                                            elif key == 'height':
-                                                breed_info.append(f"Высота: {value}м")
-                                            elif key == 'density':
-                                                breed_info.append(f"Густота: {value}")
-                                            elif key == 'age':
-                                                breed_info.append(f"Возраст: {value} лет")
-                                        row_cells[i].text = "; ".join(breed_info)
-                                except (json.JSONDecodeError, TypeError):
-                                    row_cells[i].text = str(cell_value) if cell_value else ""
-                            else:
-                                row_cells[i].text = str(cell_value) if cell_value else ""
+            for row in all_data:
+                if any(cell for cell in row[:3] if cell):  # Проверяем, что основные столбцы не пустые
+                    try:
+                        breeds_data = json.loads(row[3]) if row[3] else []
+                    except (json.JSONDecodeError, TypeError):
+                        breeds_data = []
+
+                    if isinstance(breeds_data, list) and breeds_data:
+                        for breed_info in breeds_data:
+                            if isinstance(breed_info, dict):
+                                breed_name = breed_info.get('name', 'Неизвестная')
+                                density = breed_info.get('density', '')
+                                height = breed_info.get('height', '')
+                                age = breed_info.get('age', '')
+
+                                # Для хвойных рассчитываем густоту по градациям
+                                if breed_info.get('type') == 'coniferous':
+                                    coniferous_density = (breed_info.get('do_05', 0) +
+                                                        breed_info.get('05_15', 0) +
+                                                        breed_info.get('bolee_15', 0))
+                                    if coniferous_density > 0:
+                                        density = str(coniferous_density)
+
+                                row_cells = table.add_row().cells
+                                row_cells[0].text = str(row[0]) if row[0] else ""  # №ППР
+                                row_cells[1].text = str(row[1]) if row[1] else ""  # GPS точка
+                                row_cells[2].text = str(row[2]) if row[2] else ""  # Предмет ухода
+                                row_cells[3].text = breed_name  # Порода
+                                row_cells[4].text = str(density) if density else ""  # Густота
+                                row_cells[5].text = str(height) if height else ""  # Высота
+                                row_cells[6].text = str(age) if age else ""  # Возраст
+                                row_cells[7].text = str(row[4]) if row[4] else ""  # Примечания
+                                row_cells[8].text = str(row[5]) if row[5] else ""  # Тип Леса
+                    else:
+                        # Если нет пород, добавить строку без данных
+                        row_cells = table.add_row().cells
+                        row_cells[0].text = str(row[0]) if row[0] else ""
+                        row_cells[1].text = str(row[1]) if row[1] else ""
+                        row_cells[2].text = str(row[2]) if row[2] else ""
+                        row_cells[3].text = ""
+                        row_cells[4].text = ""
+                        row_cells[5].text = ""
+                        row_cells[6].text = ""
+                        row_cells[7].text = str(row[4]) if row[4] else ""
+                        row_cells[8].text = str(row[5]) if row[5] else ""
 
             doc.save(full_path)
             self.show_success(f"Word документ сохранен: {filename}")
@@ -2733,35 +3429,335 @@ class ExtendedMolodnikiTableScreen(Screen):
         except Exception as e:
             self.show_error(f"Ошибка сохранения Word: {str(e)}")
 
+    def aggregate_breeds_data(self, df):
+        """Агрегирует данные пород по площадкам из Excel файла без учета заголовков"""
+        # Группировка по данным площадки (GPS, Предмет ухода, Примечания, Тип Леса)
+        grouped = {}
+
+        print(f"DEBUG: aggregate_breeds_data starting, df shape: {df.shape}")
+
+        for index, row in df.iterrows():
+            print(f"DEBUG: Processing row {index}: breed_name at iloc[3] = {row.iloc[3] if len(row) > 3 else 'NO COL'}")
+            # Предполагаемый порядок столбцов: 0=№ППР, 1=GPS, 2=Предмет ухода, 3=Порода, 4=Густота, 5=Высота, 6=Возраст, 7=Примечания, 8=Тип Леса
+            gps = str(row.iloc[1]) if len(row) > 1 else ''
+            predmet = str(row.iloc[2]) if len(row) > 2 else ''
+            breed_name = str(row.iloc[3]) if len(row) > 3 else ''
+            density = str(row.iloc[4]) if len(row) > 4 else ''
+            height = str(row.iloc[5]) if len(row) > 5 else ''
+            age = str(row.iloc[6]) if len(row) > 6 else ''
+            primechanie = str(row.iloc[7]) if len(row) > 7 else ''
+            tip_lesa = str(row.iloc[8]) if len(row) > 8 else ''
+
+            # Ключ группы по уникальной комбинации данных площадки
+            key = (str(gps), str(predmet), str(primechanie), str(tip_lesa))
+
+            if key not in grouped:
+                grouped[key] = {
+                    'gps': gps,
+                    'predmet': predmet,
+                    'primechanie': primechanie,
+                    'tip_lesa': tip_lesa,
+                    'breeds': []
+                }
+
+            # Пропускаем строки без породы
+            if not breed_name.strip() or breed_name in ['nan', 'NaN']:
+                continue
+
+            # Определяем тип породы
+            breed_type = self.determine_breed_type(breed_name)
+
+            # Создаем объект породы
+            breed_data = {
+                'name': breed_name,
+                'type': breed_type
+            }
+
+            # Добавляем параметры
+            if density and density not in ['nan', 'NaN']:
+                try:
+                    breed_data['density'] = int(float(density))
+                except (ValueError, TypeError):
+                    pass
+
+            if height and height not in ['nan', 'NaN']:
+                try:
+                    breed_data['height'] = float(height)
+                except (ValueError, TypeError):
+                    pass
+
+            if age and age not in ['nan', 'NaN']:
+                try:
+                    breed_data['age'] = int(float(age))
+                except (ValueError, TypeError):
+                    pass
+
+            # Для хвойных пород распределяем густоту по градациям, если градации не заданы
+            if breed_type == 'coniferous' and 'density' in breed_data and breed_data['density'] > 0:
+                if not any(breed_data.get(k) for k in ['do_05', '05_15', 'bolee_15']):
+                    breed_data['do_05'] = 0
+                    breed_data['05_15'] = 0
+                    breed_data['bolee_15'] = breed_data['density']
+                    del breed_data['density']  # Удаляем, поскольку для хвойных густота рассчитывается из градаций
+
+            # Если порода уже есть в списке, добавляем/обновляем параметры
+            existing_breed = None
+            for b in grouped[key]['breeds']:
+                if b['name'] == breed_name:
+                    existing_breed = b
+                    break
+
+            if existing_breed:
+                # Обновляем существующую породу
+                for k, v in breed_data.items():
+                    if k not in existing_breed or existing_breed[k] == '':
+                        existing_breed[k] = v
+            else:
+                grouped[key]['breeds'].append(breed_data)
+
+        # Формируем финальный список данных с автоматической нумерацией площадок
+        result = []
+        nn_counter = 1
+        for group_key, group_data in grouped.items():
+            # Создаем JSON строку для пород
+            breeds_json = json.dumps(group_data['breeds'], ensure_ascii=False, indent=2) if group_data['breeds'] else ''
+
+            result.append([
+                str(nn_counter),  # Автоматическая нумерация от 1
+                group_data['gps'],
+                group_data['predmet'],
+                breeds_json,  # Данные пород в JSON формате
+                group_data['primechanie'],
+                group_data['tip_lesa']
+            ])
+            nn_counter += 1
+
+        return result
+
+    def determine_breed_type(self, breed_name):
+        """Определяет тип породы по названию"""
+        coniferous_breeds = ['Сосна', 'Ель', 'Пихта', 'Кедр', 'Лиственница']
+        deciduous_breeds = ['Берёза', 'Осина', 'Ольха чёрная', 'Ольха серая', 'Ива', 'Ива кустарниковая']
+
+        if any(coniferous.lower() in breed_name.lower() for coniferous in coniferous_breeds):
+            return 'coniferous'
+        elif any(deciduous.lower() in breed_name.lower() for deciduous in deciduous_breeds):
+            return 'deciduous'
+        else:
+            # По умолчанию считаем лиственными
+            return 'deciduous'
+
     def load_section(self, instance):
-        Tk().withdraw()
-        file_path = filedialog.askopenfilename(
-            initialdir=self.reports_dir,
-            title="Выберите файл участка молодняков",
-            filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")]
+        """Показать popup для выбора JSON файла"""
+        if not os.path.exists(self.reports_dir):
+            self.show_error("Папка reports не найдена!")
+            return
+
+        content = FloatLayout()
+
+        title_label = Label(
+            text='Выберите файл JSON данных приложения:',
+            font_name='Roboto',
+            font_size='18sp',
+            color=(1, 1, 1, 1),
+            pos_hint={'center_x': 0.5, 'center_y': 0.95},
+            size_hint=(None, None),
+            size=(400, 50)
         )
-        if file_path:
-            try:
-                df = pd.read_excel(file_path)
 
-                self.current_section = os.path.splitext(os.path.basename(file_path))[0]
-                self.update_section_label()
-                self.page_data.clear()
+        scroll = ScrollView(size_hint=(0.9, 0.75), pos_hint={'center_x': 0.5, 'center_y': 0.5})
+        files_layout = GridLayout(cols=1, spacing=5, size_hint_y=None)
+        files_layout.bind(minimum_height=files_layout.setter('height'))
 
-                for page_num in range(0, len(df), self.rows_per_page):
-                    page = page_num // self.rows_per_page
-                    page_data = df.iloc[page_num:page_num+self.rows_per_page].values.tolist()
-                    for row in page_data:
-                        while len(row) < 7:
-                            row.append('')
-                    self.page_data[page] = page_data
+        # Добавляем кнопку для ручного ввода пути
+        manual_input_layout = BoxLayout(orientation='vertical', size_hint_y=None, height=80, spacing=5)
+        manual_label = Label(
+            text="Или введите полный путь к файлу:",
+            font_name='Roboto',
+            size_hint=(1, None),
+            height=30,
+            color=(1, 1, 1, 1)
+        )
+        self.manual_file_input = TextInput(
+            hint_text="Полный путь к JSON файлу",
+            multiline=False,
+            size_hint=(1, None),
+            height=40,
+            background_color=(1, 1, 1, 0.8),
+            font_name='Roboto'
+        )
+        manual_input_layout.add_widget(manual_label)
+        manual_input_layout.add_widget(self.manual_file_input)
+        files_layout.add_widget(manual_input_layout)
 
+        uploader_label = Label(
+            text="Доступные JSON файлы:",
+            font_name='Roboto',
+            bold=True,
+            size_hint=(1, None),
+            height=30,
+            color=(1, 1, 1, 1)
+        )
+        files_layout.add_widget(uploader_label)
+
+        # Получаем список JSON файлов
+        json_files = [f for f in os.listdir(self.reports_dir) if f.endswith('.json')]
+        if not json_files:
+            no_files_label = Label(
+                text="JSON файлы не найдены в папке reports\nИспользуйте ручной ввод пути выше",
+                font_name='Roboto',
+                size_hint=(1, None),
+                height=50,
+                color=(0.8, 0.8, 0.8, 1),
+                valign='top'
+            )
+            no_files_label.bind(size=lambda *args: setattr(no_files_label, 'text_size', (no_files_label.width, None)))
+            files_layout.add_widget(no_files_label)
+        else:
+            for filename in sorted(json_files):
+                btn = ModernButton(
+                    text=filename,
+                    bg_color=get_color_from_hex('#87CEEB'),
+                    size_hint=(1, None),
+                    height=50,
+                    font_size='14sp'
+                )
+                btn.bind(on_press=lambda x, f=filename: self.select_json_file(os.path.join(self.reports_dir, f)))
+                files_layout.add_widget(btn)
+
+        scroll.add_widget(files_layout)
+
+        btn_layout = BoxLayout(
+            orientation='horizontal',
+            spacing=10,
+            size_hint=(1, None),
+            height=60,
+            pos_hint={'center_x': 0.5, 'center_y': 0.08}
+        )
+        load_manual_btn = ModernButton(
+            text='Загрузить указанный файл',
+            bg_color=get_color_from_hex('#00FF00'),
+            size_hint=(0.35, 1),
+            height=60
+        )
+        load_manual_btn.bind(on_press=self.load_manual_json)
+        cancel_btn = ModernButton(
+            text='Отмена',
+            bg_color=get_color_from_hex('#FF6347'),
+            size_hint=(0.35, 1),
+            height=60
+        )
+        cancel_btn.bind(on_press=self.dismiss_json_popup)
+        btn_layout.add_widget(load_manual_btn)
+        btn_layout.add_widget(cancel_btn)
+
+        content.add_widget(title_label)
+        content.add_widget(scroll)
+        content.add_widget(btn_layout)
+
+        self.json_popup = Popup(
+            title='Загрузка данных приложения',
+            content=content,
+            size_hint=(0.9, 0.9),
+            separator_height=0,
+            background_color=(0.5, 0.5, 0.5, 1),
+            overlay_color=(0, 0, 0, 0.5)
+        )
+        self.json_popup.open()
+
+    def select_json_file(self, file_path):
+        """Обработка выбора JSON файла из списка"""
+        try:
+            self.load_json_data(file_path)
+            self.json_popup.dismiss()
+        except Exception as e:
+            self.show_error(f"Ошибка загрузки: {str(e)}")
+
+    def load_manual_json(self, instance):
+        """Загрузка JSON файла по указанному пути"""
+        file_path = self.manual_file_input.text.strip()
+        if not file_path:
+            self.show_error("Укажите путь к файлу!")
+            return
+
+        if not os.path.exists(file_path):
+            self.show_error("Файл не найден!")
+            return
+
+        try:
+            self.load_json_data(file_path)
+            self.json_popup.dismiss()
+        except Exception as e:
+            self.show_error(f"Ошибка загрузки: {str(e)}")
+
+    def dismiss_json_popup(self, instance=None):
+        """Закрыть popup выбора файла"""
+        if hasattr(self, 'json_popup'):
+            self.json_popup.dismiss()
+
+    def load_json_data(self, file_path):
+        """Загрузка данных из JSON файла"""
+        print(f"DEBUG: Loading JSON file: {file_path}")
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            self.current_section = os.path.splitext(os.path.basename(file_path))[0].replace('.json', '').replace('_приложение', '')
+            self.update_section_label()
+            self.page_data.clear()
+
+            # Ожидаем, что JSON содержит page_data как словарь
+            if isinstance(data, dict) and 'page_data' in data:
+                self.page_data = data['page_data']
+                print(f"DEBUG: Loaded page_data: {len(self.page_data)} pages")
+            else:
+                # Старый формат или простая структура
+                self.page_data = data if isinstance(data, dict) else {}
+                print(f"DEBUG: Loaded data as dict: {len(self.page_data) if isinstance(self.page_data, dict) else 'not dict'}")
+
+            # Проверяем и исправляем формат страницы
+            corrected_page_data = {}
+            for page_key, page_rows in self.page_data.items():
+                if isinstance(page_key, str):
+                    try:
+                        page_num = int(page_key)
+                    except ValueError:
+                        continue
+                else:
+                    page_num = page_key
+
+                if isinstance(page_rows, list):
+                    # Убеждаемся, что каждая строка - список из 6 элементов
+                    corrected_rows = []
+                    for row in page_rows:
+                        if isinstance(row, list) and len(row) == 6:
+                            corrected_rows.append(row)
+                        elif isinstance(row, list):
+                            # Дополняем до 6 элементов пустыми строками
+                            corrected_row = row + [''] * (6 - len(row))
+                            corrected_rows.append(corrected_row[:6])
+                        else:
+                            continue
+                    corrected_page_data[page_num] = corrected_rows
+                else:
+                    continue
+
+            self.page_data = corrected_page_data
+
+            if self.page_data:
+                self.current_page = min(self.page_data.keys())
+            else:
                 self.current_page = 0
-                self.load_page_data()
-                self.update_pagination()
-                self.show_success("Данные успешно загружены!")
-            except Exception as e:
-                self.show_error(f"Ошибка загрузки: {str(e)}")
+
+            self.load_page_data()
+            self.update_pagination()
+
+            total_plots = sum(len(rows) for rows in self.page_data.values())
+            self.show_success(f"Данные приложения успешно загружены! Найдено {total_plots} площадок в {len(self.page_data)} страницах.")
+        except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            self.show_error(f"Ошибка загрузки JSON файла: {str(e)}\n{error_details}")
 
     def show_radius_popup(self, instance):
         """Показать popup для установки радиуса"""
@@ -2903,73 +3899,8 @@ class ExtendedMolodnikiTableScreen(Screen):
         popup.open()
 
     def update_row_total(self, instance, value):
-        """Обновляем итог по площадке при изменении данных в строке"""
-        row_idx = instance.row_index
-
-        # Получаем данные пород из столбца "Порода"
-        breeds_text = self.inputs[row_idx][3].text
-        breeds_data = self.parse_breeds_data(breeds_text)
-
-        if not breeds_data:
-            self.row_totals[row_idx].text = ""
-            return
-
-        # Расчет коэффициента состава
-        radius = 5.64
-        try:
-            if self.inputs[row_idx][5].text:  # Столбец "Тип Леса" содержит радиус
-                radius = float(self.inputs[row_idx][5].text)
-        except (ValueError, IndexError):
-            pass
-
-        total_composition_coeff = 0.0
-        total_density = 0
-        total_height = 0.0
-        total_age = 0
-        breed_count = 0
-        breed_names = []
-
-        for breed_info in breeds_data:
-            breed_count += 1
-            breed_name = breed_info.get('name', 'Неизвестная')
-            breed_names.append(breed_name)
-
-            if breed_info.get('type') == 'coniferous':
-                coniferous_density = (breed_info.get('do_05', 0) +
-                                    breed_info.get('05_15', 0) +
-                                    breed_info.get('bolee_15', 0))
-                if coniferous_density > 0:
-                    total_density += coniferous_density
-                    area = 3.14159 * (radius ** 2)
-                    total_composition_coeff += (coniferous_density * area) / 10000
-            elif 'density' in breed_info and breed_info['density']:
-                total_density += breed_info['density']
-                area = 3.14159 * (radius ** 2)
-                total_composition_coeff += (breed_info['density'] * area) / 10000
-
-            if 'height' in breed_info and breed_info['height']:
-                total_height += breed_info['height']
-            if 'age' in breed_info and breed_info['age']:
-                total_age += breed_info['age']
-
-        # Формируем итоговую строку
-        summary_parts = []
-        if breed_names:
-            summary_parts.append(f"Породы: {', '.join(breed_names)}")
-        if total_composition_coeff > 0:
-            summary_parts.append(f"Коэф. состава: {total_composition_coeff:.2f}")
-        if total_density > 0:
-            summary_parts.append(f"Общая густота: {total_density}")
-        if total_height > 0:
-            avg_height = total_height / breed_count if breed_count > 0 else 0
-            summary_parts.append(f"Средняя высота: {avg_height:.1f}м")
-        if total_age > 0:
-            avg_age = total_age / breed_count if breed_count > 0 else 0
-            summary_parts.append(f"Средний возраст: {avg_age:.1f} лет")
-
-        self.row_totals[row_idx].text = " | ".join(summary_parts)
-
-        # Обновляем общие итоги страницы
+        """Обновляем итоги по строке"""
+        # Обновляем общие итоги страницы при изменении данных
         self.update_totals()
 
     def update_plot_total(self, instance, value):
