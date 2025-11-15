@@ -727,7 +727,7 @@ class MainMenu(Screen):
             pos_hint={'center_x': 0.5, 'center_y': 0.3}
         )
         buttons = [
-            ('Загрузить', '#00FF00', self.show_load_molodniki_popup),
+            ('Загрузить', '#00FF00', self.load_molodniki_json),
             ('Сохранить', '#0000FF', self.save_molodniki_section),
             ('Отмена', '#FF0000', lambda x: self.molodniki_popup.dismiss())
         ]
@@ -757,6 +757,15 @@ class MainMenu(Screen):
             overlay_color=(0, 0, 0, 0.5)
         )
         self.molodniki_popup.open()
+
+    def load_molodniki_json(self, instance):
+        self.molodniki_popup.dismiss()
+        App.get_running_app().root.current = 'molodniki'
+        Clock.schedule_once(lambda dt: self.show_molodniki_json_popup(), 0.1)
+
+    def show_molodniki_json_popup(self):
+        molodniki_screen = App.get_running_app().root.get_screen('molodniki')
+        molodniki_screen.load_section_popup()
 
     def add_molodniki_section(self, instance):
         try:
@@ -1183,7 +1192,6 @@ class TableScreen(Screen):
             'Сохранить страницу': self.save_current_page,
             'Загрузить участок': self.load_section,
             'Открыть папку': self.open_excel_file,
-            'Редакт. режим': self.toggle_edit_mode,
             'Очистить данные': self.clear_table_data,
             'В главное меню': self.go_back
         }
@@ -1193,7 +1201,6 @@ class TableScreen(Screen):
             'Сохранить страницу': '#00FFFF',
             'Загрузить участок': '#006400',
             'Открыть папку': '#0000FF',
-            'Редакт. режим': '#FFA500',
             'Очистить данные': '#800000',
             'В главное меню': '#FF0000'
         }

@@ -3,4 +3,7 @@ __pycache__/
 .DS_Store
 *.log
 .vscode/
-er.namegit add .
+*.db
+reports/
+*.xlsx
+*.docx

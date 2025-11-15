@@ -283,6 +283,13 @@ class MolodnikiTreeDataInputPopup(Popup):
             field_layout.add_widget(input_field)
             layout.add_widget(field_layout)
 
+        # Заполняем данными из текущей строки
+        if self.table_screen.current_page in self.table_screen.page_data and self.row_index < len(self.table_screen.page_data[self.table_screen.current_page]):
+            row_data = self.table_screen.page_data[self.table_screen.current_page][self.row_index]
+            for i, (field_name, col_index) in enumerate(self.fields):
+                if col_index < len(row_data) and row_data[col_index]:
+                    self.input_fields[i].text = str(row_data[col_index])
+
         scroll.add_widget(layout)
 
         btn_box = BoxLayout(
@@ -1141,8 +1148,8 @@ class ExtendedMolodnikiTableScreen(Screen):
             'Сохранить': self.save_all_formats,
             'Сохранить страницу': self.save_current_page,
             'Загрузить': self.load_section,
+            'Редактировать': self.show_edit_plots_popup,
             'Открыть папку': self.open_excel_file,
-            'Редакт. режим': self.toggle_edit_mode,
             'Очистить': self.clear_table_data,
             'В меню': self.go_back
         }
@@ -1151,8 +1158,8 @@ class ExtendedMolodnikiTableScreen(Screen):
             'Сохранить': '#FFD700',  # Gold color for the main save button
             'Сохранить страницу': '#00FFFF',
             'Загрузить': '#006400',
+            'Редактировать': '#FF6347',
             'Открыть папку': '#0000FF',
-            'Редакт. режим': '#00BFFF',
             'Очистить': '#800000',
             'В меню': '#FF0000'
         }
@@ -1749,6 +1756,70 @@ class ExtendedMolodnikiTableScreen(Screen):
             breeds_data.pop(breed_index)
             instance.text = json.dumps(breeds_data, ensure_ascii=False, indent=2) if breeds_data else ''
         self.update_totals()
+
+    def show_edit_plots_popup(self, instance):
+        """Показать popup с списком номеров площадок для редактирования"""
+        # Собираем список номеров площадок, где есть данные
+        plot_numbers = []
+        for row_idx in range(self.rows_per_page):
+            # Проверяем, есть ли данные в основных столбцах (кроме №ППР)
+            if any(self.inputs[row_idx][col].text.strip() for col in range(1, 6)):
+                nn = row_idx + 1  # Номер от 1
+                plot_numbers.append(nn)
+
+        if not plot_numbers:
+            self.show_error("Нет площадок для редактирования!")
+            return
+
+        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+
+        title_label = Label(
+            text='Выберите площадку для редактирования:',
+            font_name='Roboto',
+            bold=True,
+            size_hint=(1, None),
+            height=30
+        )
+        content.add_widget(title_label)
+
+        scroll = ScrollView(size_hint=(1, None), height=400)
+        plots_layout = GridLayout(cols=1, spacing=5, size_hint_y=None)
+        plots_layout.bind(minimum_height=plots_layout.setter('height'))
+
+        for plot_num in plot_numbers:
+            btn = ModernButton(
+                text=f'Площадка {plot_num}',
+                bg_color=get_color_from_hex('#87CEEB'),
+                size_hint=(1, None),
+                height=50,
+                font_size='16sp'
+            )
+            btn.bind(on_press=lambda x, num=plot_num: self.edit_plot_popup(num - 1))  # row_index = num - 1
+            plots_layout.add_widget(btn)
+
+        scroll.add_widget(plots_layout)
+        content.add_widget(scroll)
+
+        cancel_btn = ModernButton(
+            text='Отмена',
+            bg_color=get_color_from_hex('#FF6347'),
+            size_hint=(1, None),
+            height=50
+        )
+        content.add_widget(cancel_btn)
+
+        popup = Popup(
+            title="Выбор площадки для редактирования",
+            content=content,
+            size_hint=(0.8, 0.8)
+        )
+
+        cancel_btn.bind(on_press=popup.dismiss)
+        popup.open()
+
+    def edit_plot_popup(self, row_index):
+        """Открыть popup редактирования для выбранной площадки"""
+        MolodnikiTreeDataInputPopup(self, row_index).open()
 
     def save_to_json(self, instance=None):
         """Сохранение данных в JSON формате"""
@@ -3129,15 +3200,14 @@ class ExtendedMolodnikiTableScreen(Screen):
 
                     cursor.execute('''
                         INSERT INTO molodniki_data
-                        (page_number, row_index, nn, gps_point, predmet_uhoda, radius, primechanie, section_name)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        (page_number, row_index, nn, gps_point, predmet_uhoda, primechanie, section_name)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
                     ''', (
                         self.current_page,
                         row_idx,
                         row_data[0] or None,
                         row_data[1] or None,
                         row_data[2] or None,
-                        radius,
                         row_data[4] or None,
                         self.current_section
                     ))
@@ -3147,39 +3217,50 @@ class ExtendedMolodnikiTableScreen(Screen):
                     if row_data[3]:
                         breeds_data = self.parse_breeds_data(row_data[3])
                         for breed_info in breeds_data:
-                            composition_coeff = 0.0
-                            if breed_info.get('density') and radius:
-                                area = 3.14159 * (radius ** 2)
-                                composition_coeff = (breed_info['density'] * area) / 10000
+                            try:
+                                # Validate and convert data types
+                                density = int(breed_info.get('density', 0) or 0)
+                                height = float(breed_info.get('height', 0.0) or 0.0)
+                                age = int(breed_info.get('age', 0) or 0)
+                                do_05 = int(breed_info.get('do_05', 0) or 0)
+                                _05_15 = int(breed_info.get('05_15', 0) or 0)
+                                bolee_15 = int(breed_info.get('bolee_15', 0) or 0)
 
-                            cursor.execute('''
-                                INSERT INTO molodniki_breeds
-                                (molodniki_data_id, breed_name, breed_type, do_05, _05_15, bolee_15,
-                                 density, height, age, composition_coefficient)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                            ''', (
-                                molodniki_data_id,
-                                breed_info.get('name', ''),
-                                breed_info.get('type', 'deciduous'),
-                                breed_info.get('do_05', 0),
-                                breed_info.get('05_15', 0),
-                                breed_info.get('bolee_15', 0),
-                                breed_info.get('density', 0),
-                                breed_info.get('height', 0.0),
-                                breed_info.get('age', 0),
-                                composition_coeff
-                            ))
+                                composition_coeff = 0.0
+                                if density and radius:
+                                    area = 3.14159 * (radius ** 2)
+                                    composition_coeff = (density * area) / 10000
+
+                                cursor.execute('''
+                                    INSERT INTO molodniki_breeds
+                                    (molodniki_data_id, breed_name, breed_type, do_05, _05_15, bolee_15,
+                                     density, height, age, composition_coefficient)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                ''', (
+                                    molodniki_data_id,
+                                    breed_info.get('name', ''),
+                                    breed_info.get('type', 'deciduous'),
+                                    do_05,
+                                    _05_15,
+                                    bolee_15,
+                                    density,
+                                    height,
+                                    age,
+                                    composition_coeff
+                                ))
+                            except Exception as e:
+                                print(f"Error inserting breed: {e}, skipping this breed")
+                                continue
 
             totals = self.calculate_page_totals()
             cursor.execute('''
                 INSERT OR REPLACE INTO molodniki_totals
-                (page_number, section_name, total_composition, total_area, avg_age, avg_density, avg_height)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                (page_number, section_name, total_composition, avg_age, avg_density, avg_height)
+                VALUES (?, ?, ?, ?, ?, ?)
             ''', (
                 self.current_page,
                 self.current_section,
                 totals['composition'],
-                totals['total_area'],
                 totals['avg_age'],
                 totals['avg_density'],
                 totals['avg_height']
@@ -3198,7 +3279,6 @@ class ExtendedMolodnikiTableScreen(Screen):
         for row in self.inputs:
             page_data.append([inp.text for inp in row])
         self.page_data[self.current_page] = page_data
-        self.update_totals()
 
     def show_save_dialog(self, instance=None):
         content = BoxLayout(orientation='vertical', spacing=10, padding=10)
@@ -3664,6 +3744,10 @@ class ExtendedMolodnikiTableScreen(Screen):
             overlay_color=(0, 0, 0, 0.5)
         )
         self.json_popup.open()
+
+    def load_section_popup(self):
+        """Показать popup для выбора JSON файла (вызывается из главного меню)"""
+        return self.load_section(None)
 
     def select_json_file(self, file_path):
         """Обработка выбора JSON файла из списка"""
