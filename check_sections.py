@@ -1,0 +1,10 @@
+import sqlite3
+conn = sqlite3.connect('forest_data.db')
+cursor = conn.cursor()
+cursor.execute('SELECT section_number FROM sections WHERE section_number IS NOT NULL AND section_number != ""')
+rows = cursor.fetchall()
+print('Sections:', rows)
+cursor.execute('SELECT section_number FROM molodniki_sections WHERE section_number IS NOT NULL AND section_number != ""')
+rows2 = cursor.fetchall()
+print('Molodniki sections:', rows2)
+conn.close()

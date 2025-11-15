@@ -884,7 +884,7 @@ class MainMenu(Screen):
             content=content,
             size_hint=(0.5, 0.6),
             separator_height=0,
-            background='',
+            background_color=(0.5, 0.5, 0.5, 1),
             overlay_color=(0, 0, 0, 0.5)
         )
         self.load_popup.open()
@@ -962,7 +962,7 @@ class MainMenu(Screen):
             content=content,
             size_hint=(0.5, 0.6),
             separator_height=0,
-            background='',
+            background_color=(0.5, 0.5, 0.5, 1),
             overlay_color=(0, 0, 0, 0.5)
         )
         self.load_molodniki_popup.open()
@@ -1016,10 +1016,32 @@ class TableScreen(Screen):
         self.db_name = 'forest_data.db'
         self.rows_per_page = 50
         self.page_data = {}
+        self.default_column_names = ['№ дерева*', 'Порода*', 'ж/ф', 'шт/либо лет',
+                                   'D, см*', 'H, м', 'Сост-е', 'Модель', 'Примечания']
+        self.column_names = None
+        self.header_buttons = []
+        self.load_column_config()
+        if not self.column_names:
+            self.column_names = self.default_column_names.copy()
         self.setup_database()
         self.create_ui()
         self.load_existing_data()
         Window.bind(on_key_down=self.key_action)
+
+    def load_column_config(self):
+        try:
+            with open('table_config.json', 'r', encoding='utf-8') as f:
+                config = json.load(f)
+                self.column_names = config.get('column_names')
+        except (FileNotFoundError, json.JSONDecodeError, KeyError):
+            self.column_names = None
+
+    def save_column_config(self):
+        config = {
+            'column_names': self.column_names
+        }
+        with open('table_config.json', 'w', encoding='utf-8') as f:
+            json.dump(config, f, ensure_ascii=False, indent=4)
 
     def key_action(self, window, key, scancode, codepoint, modifier):
         if key == 115 and 'ctrl' in modifier:
@@ -1116,27 +1138,24 @@ class TableScreen(Screen):
                        minimum_width=self.table.setter('width'))
         
         # Заголовки столбцов
-        headers = ['№ дерева*', 'Порода*', 'ж/ф', 'шт/либо лет',
-                 'D, см*', 'H, м', 'Сост-е', 'Модель', 'Примечания']
-        self.header_bgs = []
-        for header in headers:
-            lbl = Label(
-                text=header,
+        self.header_buttons = []
+        for i, column_name in enumerate(self.column_names):
+            btn = ModernButton(
+                text=column_name,
+                bg_color=get_color_from_hex('#00FF00'),
                 size_hint_y=None,
                 height=30,
+                size_hint_x=None,
+                width=100,
+                color=get_color_from_hex('#000000'),
                 font_name='Roboto',
                 bold=True,
                 halign='center',
-                size_hint_x=None,
-                width=100,
-                color=get_color_from_hex('#000000')
+                no_shadow=True
             )
-            with lbl.canvas.before:
-                Color(rgba=get_color_from_hex('#00FF00'))
-                bg = Rectangle(pos=lbl.pos, size=lbl.size)
-                self.header_bgs.append(bg)
-            lbl.bind(pos=lambda i,v, b=bg: setattr(b, 'pos', i.pos), size=lambda i,v, b=bg: setattr(b, 'size', i.size))
-            self.table.add_widget(lbl)
+            btn.bind(on_press=lambda x, idx=i: self.edit_column_name(idx))
+            self.header_buttons.append(btn)
+            self.table.add_widget(btn)
         
         # Создаем строки таблицы
         self.inputs = []
@@ -1394,7 +1413,7 @@ class TableScreen(Screen):
                 all_data.extend(self.page_data[page])
             df = pd.DataFrame(
                 all_data,
-                columns=['№ дерева','Порода','ж/ф','шт/либо лет','D, см','H, м','Сост-е','Модель','Примечания']
+                columns=self.column_names
             )
             df.to_excel(full_path, index=False)
             self.save_popup.dismiss()
@@ -1403,32 +1422,80 @@ class TableScreen(Screen):
             self.show_error(f"Ошибка: {str(e)}")
 
     def load_section(self, instance):
-        Tk().withdraw()
-        file_path = filedialog.askopenfilename(
-            initialdir=self.reports_dir,
-            title="Выберите файл участка",
-            filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")]
+        conn = sqlite3.connect(self.db_name)
+        cursor = conn.cursor()
+        cursor.execute('SELECT section_number FROM sections WHERE section_number IS NOT NULL AND section_number != "" ORDER BY id DESC')
+        sections = cursor.fetchall()
+        conn.close()
+        if not sections:
+            self.show_error("Нет сохраненных участков!")
+            return
+        content = FloatLayout()
+
+        close_btn = ModernButton(
+            text='X',
+            size_hint=(None, None),
+            size=(40, 40),
+            pos_hint={'right': 0.95, 'top': 0.95},
+            bg_color=(1, 0, 0, 1),
+            no_shadow=True
         )
-        if file_path:
+        close_btn.bind(on_press=lambda x: self.load_popup.dismiss())
+
+        scroll = ScrollView(size_hint=(1, 0.9), pos_hint={'center_x': 0.5, 'center_y': 0.45})
+        layout = GridLayout(cols=1, spacing=5, size_hint_y=None)
+        layout.bind(minimum_height=layout.setter('height'))
+        for section in sections:
+            btn = ModernButton(
+                text=section[0],
+                size_hint_y=None,
+                height=40,
+                bg_color=(0, 1, 0, 1),
+                color=(0, 0, 0, 1),
+                no_shadow=True
+            )
+            btn.bind(on_release=lambda b, s=section[0]: self.load_saved_section_from_popup(s))
+            layout.add_widget(btn)
+        scroll.add_widget(layout)
+
+        content.add_widget(close_btn)
+        content.add_widget(scroll)
+        self.load_popup = Popup(
+            title="Выберите участок",
+            content=content,
+            size_hint=(0.5, 0.6),
+            separator_height=0,
+            background_color=(0.5, 0.5, 0.5, 1),
+            overlay_color=(0, 0, 0, 0.5)
+        )
+        self.load_popup.open()
+
+    def load_saved_section_from_popup(self, section_number):
+        files = glob.glob(os.path.join(self.reports_dir, f"{section_number}_*.xlsx"))
+        if files:
+            latest_file = max(files, key=os.path.getctime)
             try:
-                df = pd.read_excel(file_path)
+                df = pd.read_excel(latest_file)
                 data = df.values.tolist()
-                
-                self.current_section = os.path.splitext(os.path.basename(file_path))[0]
+
+                self.current_section = section_number
                 self.update_section_label()
                 self.page_data.clear()
-                
+
                 for page_num in range(0, len(df), self.rows_per_page):
                     page = page_num // self.rows_per_page
                     page_data = df.iloc[page_num:page_num+self.rows_per_page].values.tolist()
                     self.page_data[page] = page_data
-                
+
                 self.current_page = 0
                 self.load_page_data()
                 self.update_pagination()
-                self.show_success("Данные успешно загружены!")
+                self.load_popup.dismiss()
+                self.show_success("Данные участка загружены!")
             except Exception as e:
                 self.show_error(f"Ошибка загрузки: {str(e)}")
+        else:
+            self.show_error("Файл участка не найден!")
 
     def load_page_data(self):
         for row in self.inputs:
@@ -1517,6 +1584,85 @@ class TableScreen(Screen):
         
     def load_existing_data(self):
         pass
+
+    def edit_column_name(self, col_idx):
+        current_name = self.column_names[col_idx]
+        content = FloatLayout()
+
+        label = Label(
+            text='Введите новое название столбца:',
+            font_name='Roboto',
+            font_size='18sp',
+            color=(0.2, 0.2, 0.2, 1),
+            pos_hint={'center_x': 0.5, 'center_y': 0.75},
+            size_hint=(None, None),
+            size=(300, 30)
+        )
+
+        input_field = TextInput(
+            text=current_name,
+            multiline=False,
+            size_hint=(None, None),
+            size=(300, 40),
+            pos_hint={'center_x': 0.5, 'center_y': 0.5},
+            font_name='Roboto'
+        )
+
+        btn_box = BoxLayout(
+            orientation='horizontal',
+            size_hint=(None, None),
+            size=(300, 40),
+            spacing=10,
+            pos_hint={'center_x': 0.5, 'center_y': 0.3}
+        )
+
+        save_btn = ModernButton(
+            text='Сохранить',
+            bg_color=get_color_from_hex('#00FF00'),
+            size_hint=(0.5, None),
+            height=40,
+            no_shadow=True
+        )
+        exit_btn = ModernButton(
+            text='Выйти',
+            bg_color=get_color_from_hex('#FF0000'),
+            size_hint=(0.5, None),
+            height=40,
+            no_shadow=True
+        )
+
+        save_btn.bind(on_press=lambda x: self.save_column_name(col_idx, input_field.text))
+        exit_btn.bind(on_press=lambda x: self.dismiss_column_edit_popup())
+
+        btn_box.add_widget(save_btn)
+        btn_box.add_widget(exit_btn)
+
+        content.add_widget(label)
+        content.add_widget(input_field)
+        content.add_widget(btn_box)
+
+        self.column_edit_popup = Popup(
+            title='Изменить название столбца',
+            content=content,
+            size_hint=(0.6, 0.5),
+            background='atlas://data/images/defaulttheme/modalview-background',
+            overlay_color=(0, 0, 0, 0.5)
+        )
+        self.column_edit_popup.open()
+
+    def dismiss_column_edit_popup(self):
+        if hasattr(self, 'column_edit_popup'):
+            self.column_edit_popup.dismiss()
+            del self.column_edit_popup
+
+    def save_column_name(self, col_idx, new_name):
+        if new_name.strip():
+            self.column_names[col_idx] = new_name.strip()
+            self.header_buttons[col_idx].text = new_name.strip()
+            self.save_column_config()
+            self.column_edit_popup.dismiss()
+        else:
+            self.show_error("Название не может быть пустым!")
 
 class ThemeChooser(Popup):
     def __init__(self, **kwargs):
