@@ -395,7 +395,9 @@ class MolodnikiTreeDataInputPopup(Popup):
         # Списки пород
         if breed_type == 'coniferous':
             breeds = [
-                'Сосна', 'Ель', 'Пихта', 'Кедр', 'Лиственница'
+                'Сосна ЛК', 'Сосна ЕВ', 'Ель ЛК', 'Ель ЕВ',
+                'Пихта ЛК', 'Пихта ЕВ', 'Кедр ЛК', 'Кедр ЕВ',
+                'Лиственница ЛК', 'Лиственница ЕВ'
             ]
         else:
             breeds = [
@@ -501,21 +503,30 @@ class MolodnikiTreeDataInputPopup(Popup):
 
             for i, breed_info in enumerate(existing_breeds):
                 breed_name = breed_info.get('name', 'Неизвестная')
-                breed_type = breed_info.get('type', 'unknown')
+                existing_breed_type = breed_info.get('type', 'deciduous')
                 params = []
-                if 'density' in breed_info and breed_info['density']:
-                    params.append(f"Густота: {breed_info['density']}")
-                if 'height' in breed_info and breed_info['height']:
-                    params.append(f"Высота: {breed_info['height']}м")
-                if 'age' in breed_info and breed_info['age']:
-                    params.append(f"Возраст: {breed_info['age']} лет")
-                if breed_type == 'coniferous':
+
+                # В зависимости от типа породы показываем разные параметры
+                if existing_breed_type == 'coniferous':
+                    # Для хвойных показываем градации
                     if 'do_05' in breed_info and breed_info['do_05']:
                         params.append(f"До 0.5м: {breed_info['do_05']}")
                     if '05_15' in breed_info and breed_info['05_15']:
                         params.append(f"0.5-1.5м: {breed_info['05_15']}")
                     if 'bolee_15' in breed_info and breed_info['bolee_15']:
                         params.append(f">1.5м: {breed_info['bolee_15']}")
+                    if 'height' in breed_info and breed_info['height']:
+                        params.append(f"Высота: {breed_info['height']}м")
+                    if 'age' in breed_info and breed_info['age']:
+                        params.append(f"Возраст: {breed_info['age']} лет")
+                else:
+                    # Для лиственных показываем только основную информацию (без градаций)
+                    if 'density' in breed_info and breed_info['density']:
+                        params.append(f"Густота: {breed_info['density']}")
+                    if 'height' in breed_info and breed_info['height']:
+                        params.append(f"Высота: {breed_info['height']}м")
+                    if 'age' in breed_info and breed_info['age']:
+                        params.append(f"Возраст: {breed_info['age']} лет")
 
                 breed_text = f"{i+1}. {breed_name}: {'; '.join(params)}" if params else f"{i+1}. {breed_name}"
                 breed_label = Label(
@@ -640,6 +651,12 @@ class MolodnikiTreeDataInputPopup(Popup):
             existing_breeds.append(breed_data)
             instance.text = json.dumps(existing_breeds, ensure_ascii=False, indent=2)
 
+            # Update page_data so that taxational calculations include the new breed
+            if self.table_screen.current_page not in self.table_screen.page_data:
+                self.table_screen.page_data[self.table_screen.current_page] = [['', '', '', '', '', ''] for _ in range(self.table_screen.rows_per_page)]
+            if instance.row_index < len(self.table_screen.page_data[self.table_screen.current_page]):
+                self.table_screen.page_data[self.table_screen.current_page][instance.row_index][3] = instance.text
+
             self.table_screen.update_plot_total(instance, instance.text)
 
             for inp in self.breed_inputs.values():
@@ -654,9 +671,18 @@ class MolodnikiTreeDataInputPopup(Popup):
 
         def save_breeds(btn):
             existing_breeds = self.table_screen.parse_breeds_data(instance.text)
-            if not existing_breeds:
-                existing_breeds = []
+            existing_breeds.append(breed_data)
             instance.text = json.dumps(existing_breeds, ensure_ascii=False, indent=2)
+
+            # Update the main table input to reflect the changes immediately
+            self.table_screen.inputs[self.row_index][3].text = instance.text
+
+            # Update page_data
+            if self.table_screen.current_page not in self.table_screen.page_data:
+                self.table_screen.page_data[self.table_screen.current_page] = [['', '', '', '', '', ''] for _ in range(self.table_screen.rows_per_page)]
+            if self.row_index < len(self.table_screen.page_data[self.table_screen.current_page]):
+                self.table_screen.page_data[self.table_screen.current_page][self.row_index][3] = instance.text
+
             self.table_screen.update_plot_total(instance, instance.text)
             self.table_screen.show_success("Все данные по площадке сохранены!")
             popup.dismiss()
@@ -1670,18 +1696,31 @@ class ExtendedMolodnikiTableScreen(Screen):
                 breed_card.add_widget(name_label)
 
                 params_text = []
-                if 'density' in breed_info and breed_info['density']:
-                    params_text.append(f"Густота: {breed_info['density']}")
-                if 'height' in breed_info and breed_info['height']:
-                    params_text.append(f"Высота: {breed_info['height']}м")
-                if 'age' in breed_info and breed_info['age']:
-                    params_text.append(f"Возраст: {breed_info['age']} лет")
-                if 'do_05' in breed_info and breed_info['do_05']:
-                    params_text.append(f"До 0.5м: {breed_info['do_05']}")
-                if '05_15' in breed_info and breed_info['05_15']:
-                    params_text.append(f"0.5-1.5м: {breed_info['05_15']}")
-                if 'bolee_15' in breed_info and breed_info['bolee_15']:
-                    params_text.append(f">1.5м: {breed_info['bolee_15']}")
+                breed_type = breed_info.get('type', 'deciduous')
+
+                # В зависимости от типа породы показываем разные параметры
+                if breed_type == 'coniferous':
+                    # Для хвойных показываем градации + общую густоту и другие параметры
+                    if 'do_05' in breed_info and breed_info['do_05']:
+                        params_text.append(f"До 0.5м: {breed_info['do_05']}")
+                    if '05_15' in breed_info and breed_info['05_15']:
+                        params_text.append(f"0.5-1.5м: {breed_info['05_15']}")
+                    if 'bolee_15' in breed_info and breed_info['bolee_15']:
+                        params_text.append(f">1.5м: {breed_info['bolee_15']}")
+                    if 'density' in breed_info and breed_info['density']:
+                        params_text.append(f"Общая густота: {breed_info['density']}")
+                    if 'height' in breed_info and breed_info['height']:
+                        params_text.append(f"Высота: {breed_info['height']}м")
+                    if 'age' in breed_info and breed_info['age']:
+                        params_text.append(f"Возраст: {breed_info['age']} лет")
+                else:
+                    # Для лиственных показываем только основную информацию (без градаций)
+                    if 'density' in breed_info and breed_info['density']:
+                        params_text.append(f"Густота: {breed_info['density']}")
+                    if 'height' in breed_info and breed_info['height']:
+                        params_text.append(f"Высота: {breed_info['height']}м")
+                    if 'age' in breed_info and breed_info['age']:
+                        params_text.append(f"Возраст: {breed_info['age']} лет")
 
                 params_label = Label(
                     text="; ".join(params_text) if params_text else "Нет параметров",
@@ -2721,12 +2760,20 @@ class ExtendedMolodnikiTableScreen(Screen):
         """Показать popup со сводными итогами по данным на каждой площадке по породам"""
         content = BoxLayout(orientation='vertical', spacing=10, padding=10)
 
+        # Отображение радиуса и расчета густоты
+        current_radius = float(self.current_radius) if self.current_radius else 5.64
+        area_m2 = 3.14159 * (current_radius ** 2)
+        trees_per_ha = 10000 / area_m2 if area_m2 > 0 else 0
+
         title_label = Label(
-            text="Итоговые расчёты по густоте\n(лиственные и хвойные, разбитые по градации)",
+            text="Итоговые расчёты по густоте\n" +
+                 f"(лиственные и хвойные, разбитые по градации)\n" +
+                 f"Радиус участка: {current_radius:.2f} м\n" +
+                 f"1 дерево = {trees_per_ha:.0f} тыс.шт./га",
             font_name='Roboto',
             bold=True,
             size_hint=(1, None),
-            height=60,
+            height=100,
             halign='center',
             valign='middle'
         )
@@ -3027,12 +3074,6 @@ class ExtendedMolodnikiTableScreen(Screen):
                     forestry_formulas_text += f", возраст: {avg_coniferous_age_ha:.1f} лет"
 
             # Лиственные породы - средние значения без градаций
-            deciduous_stats = []
-            for breeds in total_stats.get('density', []):
-                if 'breed_type' in breed_info and breed_info.get('breed_type') == 'deciduous':  # Изменить логику
-                    deciduous_stats.append(breeding)
-
-            # Собираем данные по лиственным породам
             deciduous_density = []
             deciduous_height = []
             deciduous_age = []
@@ -3044,15 +3085,15 @@ class ExtendedMolodnikiTableScreen(Screen):
                     for breed_info in breeds_data:
                         if breed_info.get('type') == 'deciduous':
                             if breed_info.get('density'):
-                                deciduous_density.append(breed_info['density'])
+                                deciduous_density.append(breed_info['density'] * (10000 / plot_area_m2) if plot_area_m2 > 0 else breed_info['density'])
                             if breed_info.get('height'):
                                 deciduous_height.append(breed_info['height'])
                             if breed_info.get('age'):
                                 deciduous_age.append(breed_info['age'])
 
             # Рассчитываем средние по лиственным на га
-            if deciduous_density:
-                avg_deciduous_density = sum(deciduous_density) / len(deciduous_density) * (10000 / plot_area_m2) if plot_area_m2 > 0 else 0
+            if deciduous_density or deciduous_height or deciduous_age:
+                avg_deciduous_density = sum(deciduous_density) / len(deciduous_density) if deciduous_density else 0
                 avg_deciduous_height = sum(deciduous_height) / len(deciduous_height) if deciduous_height else 0
                 avg_deciduous_age = sum(deciduous_age) / len(deciduous_age) if deciduous_age else 0
 

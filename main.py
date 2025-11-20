@@ -30,6 +30,7 @@ import glob
 from openpyxl import load_workbook, Workbook
 from tkinter import Tk, filedialog
 from molodniki_extended import ExtendedMolodnikiTableScreen
+from new_taxation_menu import TaxationPopup
 
 LabelBase.register(name='Roboto', 
                  fn_regular='fonts/Roboto-Medium.ttf',
@@ -534,6 +535,7 @@ class MainMenu(Screen):
         buttons = [
             ('Перечётная ведомость', '#FFA500', self.show_add_section),
             ('РУМ (Молодняки)', '#00BFFF', self.show_add_molodniki_section),
+            ('Таксационные показатели', '#90EE90', self.show_taxation_menu),
             ('Темы', '#FFFF00', self.show_theme_chooser),
             ('Выход', '#FF0000', self.confirm_exit)
         ]
@@ -998,6 +1000,9 @@ class MainMenu(Screen):
                 self.show_error(f"Ошибка загрузки: {str(e)}")
         else:
             self.show_error("Файл участка молодняков не найден!")
+
+    def show_taxation_menu(self, instance):
+        TaxationPopup().open()
 
 class TableScreen(Screen):
     current_page = NumericProperty(0)
