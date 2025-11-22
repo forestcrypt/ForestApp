@@ -357,69 +357,6 @@ class TreeDataInputPopup(Popup):
         self.table_screen.show_success("Данные дерева сохранены!")
         self.dismiss()
 
-class Joypad(FloatLayout):
-    def __init__(self, table_screen, **kwargs):
-        super().__init__(**kwargs)
-        self.table_screen = table_screen
-        self.size_hint = (None, None)
-        self.size = (140, 140)
-        self.pos_hint = {'right': 0.95, 'y': 0.02}
-        
-        with self.canvas.before:
-            Color(0.2, 0.2, 0.2, 1)
-            self.bg_rect = RoundedRectangle(
-                pos=self.pos,
-                size=self.size,
-                radius=[70]
-            )
-        
-        arrows = [
-            ('▲', (0.5, 0.7), 'up', (60, 40)),
-            ('▼', (0.5, 0.3), 'down', (60, 40)),
-            ('◄', (0.3, 0.5), 'left', (40, 60)),
-            ('►', (0.7, 0.5), 'right', (40, 60))
-        ]
-        
-        for symbol, pos, direction, size in arrows:
-            btn = ModernButton(
-                text=symbol,
-                size_hint=(None, None),
-                size=size,
-                pos_hint={'center_x': pos[0], 'center_y': pos[1]},
-                bg_color=(0.1, 0.1, 0.1, 1),
-                color=(1, 1, 1, 1),
-                font_size='20sp',
-                bold=True
-            )
-            btn.bind(on_press=lambda x, d=direction: self.move_focus(d))
-            self.add_widget(btn)
-
-        self.bind(pos=self.update_bg, size=self.update_bg)
-
-    def update_bg(self, *args):
-        self.bg_rect.pos = self.pos
-        self.bg_rect.size = self.size
-
-    def move_focus(self, direction):
-        current = self.table_screen.focused_cell
-        if not current: return
-        row, col = current
-        
-        if direction == 'up': row = max(0, row-1)
-        elif direction == 'down': row = min(len(self.table_screen.inputs)-1, row+1)
-        elif direction == 'left': col = max(0, col-1)
-        elif direction == 'right': col = min(8, col+1)
-        
-        self.table_screen.focused_cell = [row, col]
-        inp = self.table_screen.inputs[row][col]
-        inp.focus = True
-        inp.cursor = (len(inp.text), 0)
-        Clock.schedule_once(lambda dt: self._update_cursor(inp), 0.01)
-
-    def _update_cursor(self, inp):
-        inp.focus = True
-        inp.cursor = (len(inp.text), 0)
-        inp.text = inp.text
 
 class ExitConfirmPopup(Popup):
     def __init__(self, **kwargs):
@@ -535,7 +472,6 @@ class MainMenu(Screen):
         buttons = [
             ('Перечётная ведомость', '#FFA500', self.show_add_section),
             ('РУМ (Молодняки)', '#00BFFF', self.show_add_molodniki_section),
-            ('Таксационные показатели', '#90EE90', self.show_taxation_menu),
             ('Темы', '#FFFF00', self.show_theme_chooser),
             ('Выход', '#FF0000', self.confirm_exit)
         ]
@@ -808,6 +744,10 @@ class MainMenu(Screen):
     def confirm_exit(self, instance):
         ExitConfirmPopup().open()
 
+    def show_taxation_popup(self, instance):
+        """Открыть popup таксационных показателей"""
+        TaxationPopup().open()
+
     def show_success(self, message):
         content = FloatLayout()
         label = Label(
@@ -1001,8 +941,7 @@ class MainMenu(Screen):
         else:
             self.show_error("Файл участка молодняков не найден!")
 
-    def show_taxation_menu(self, instance):
-        TaxationPopup().open()
+
 
 class TableScreen(Screen):
     current_page = NumericProperty(0)
@@ -1203,10 +1142,10 @@ class TableScreen(Screen):
         )
         
         # Основные кнопки управления
-        controls = GridLayout(
-            cols=1,
+        controls = BoxLayout(
+            orientation='vertical',
             size_hint_y=None,
-            height=350,
+            height=420,
             spacing=10,
             pos_hint={'top': 1}
         )
@@ -1219,7 +1158,7 @@ class TableScreen(Screen):
             'Очистить данные': self.clear_table_data,
             'В главное меню': self.go_back
         }
-        
+
         button_colors = {
             'Сохранить отчет': '#00FF00',
             'Сохранить страницу': '#00FFFF',
@@ -1242,20 +1181,7 @@ class TableScreen(Screen):
         
         control_panel.add_widget(controls)
 
-        # Джойстик - центрируем внизу
-        joypad_container = BoxLayout(
-            size_hint=(1, None),
-            height=150,
-            padding=[0, 20, 0, 0]
-        )
 
-        joypad = Joypad(self)
-        joypad.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
-        joypad_container.add_widget(joypad)
-
-        spacer = BoxLayout(size_hint_y=1)
-        control_panel.add_widget(spacer)
-        control_panel.add_widget(joypad_container)
         
         main_layout.add_widget(control_panel)
         self.add_widget(main_layout)

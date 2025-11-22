@@ -1162,11 +1162,11 @@ class ExtendedMolodnikiTableScreen(Screen):
             padding=[0, 10, 0, 0]
         )
 
-        controls = GridLayout(
-            cols=1,
+        controls = BoxLayout(
+            orientation='vertical',
             size_hint_y=None,
-            height=400,
-            spacing=8,
+            height=450,
+            spacing=10,
             pos_hint={'top': 1}
         )
 
@@ -1181,7 +1181,7 @@ class ExtendedMolodnikiTableScreen(Screen):
         }
 
         button_colors = {
-            'Сохранить': '#FFD700',  # Gold color for the main save button
+            'Сохранить': '#FFD700',
             'Сохранить страницу': '#00FFFF',
             'Загрузить': '#006400',
             'Редактировать': '#FF6347',
@@ -1195,28 +1195,13 @@ class ExtendedMolodnikiTableScreen(Screen):
                 text=text,
                 bg_color=get_color_from_hex(color),
                 size_hint=(None, None),
-                size=(280, 50),
+                size=(220, 45),
                 pos_hint={'center_x': 0.5}
             )
             btn.bind(on_press=button_handlers[text])
             controls.add_widget(btn)
 
         control_panel.add_widget(controls)
-
-        # Джойстик - центрируем внизу
-        joypad_container = BoxLayout(
-            size_hint=(1, None),
-            height=150,
-            padding=[0, 20, 0, 0]
-        )
-
-        self.joypad = Joypad(self)
-        self.joypad.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
-        joypad_container.add_widget(self.joypad)
-
-        spacer = BoxLayout(size_hint_y=1)
-        control_panel.add_widget(spacer)
-        control_panel.add_widget(joypad_container)
 
         main_layout.add_widget(control_panel)
         self.add_widget(main_layout)
@@ -1795,6 +1780,29 @@ class ExtendedMolodnikiTableScreen(Screen):
             breeds_data.pop(breed_index)
             instance.text = json.dumps(breeds_data, ensure_ascii=False, indent=2) if breeds_data else ''
         self.update_totals()
+
+    def get_breed_letter(self, breed_name):
+        """Получение первой буквы для коэффициента состава породы"""
+        breed_letters = {
+            'Сосна': 'С',
+            'Ель': 'Е',
+            'Пихта': 'П',
+            'Кедр': 'К',
+            'Лиственница': 'Л',
+            'Берёза': 'Б',
+            'Осина': 'Ос',
+            'Ольха чёрная': 'ОЧ',
+            'Ольха серая': 'ОС',
+            'Ива': 'И',
+            'Ива кустарниковая': 'ИК'
+        }
+
+        for full_name, letter in breed_letters.items():
+            if full_name.lower() in breed_name.lower():
+                return letter
+
+        # Возвращаем первую букву имени породы, если не найдено
+        return breed_name[0].upper() if breed_name else 'Н'
 
     def show_edit_plots_popup(self, instance):
         """Показать popup с списком номеров площадок для редактирования"""
@@ -2757,206 +2765,366 @@ class ExtendedMolodnikiTableScreen(Screen):
         }
 
     def show_total_summary_popup(self, *args, **kwargs):
-        """Показать popup со сводными итогами по данным на каждой площадке по породам"""
-        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        """Показать popup со сводными итогами и таксационными расчетами (как в меню таксационные показатели)"""
+        try:
+            current_radius = float(self.current_radius) if self.current_radius else 5.64
+            plot_area_m2 = 3.14159 * (current_radius ** 2)
+            plot_area_ha = plot_area_m2 / 10000  # Гектары
 
-        # Отображение радиуса и расчета густоты
-        current_radius = float(self.current_radius) if self.current_radius else 5.64
-        area_m2 = 3.14159 * (current_radius ** 2)
-        trees_per_ha = 10000 / area_m2 if area_m2 > 0 else 0
+            # Словарь для сбора данных по породам
+            breeds_data = {}
 
-        title_label = Label(
-            text="Итоговые расчёты по густоте\n" +
-                 f"(лиственные и хвойные, разбитые по градации)\n" +
-                 f"Радиус участка: {current_radius:.2f} м\n" +
-                 f"1 дерево = {trees_per_ha:.0f} тыс.шт./га",
-            font_name='Roboto',
-            bold=True,
-            size_hint=(1, None),
-            height=100,
-            halign='center',
-            valign='middle'
-        )
-        content.add_widget(title_label)
+            # Обрабатываем все страницы
+            for page_num, page_rows in self.page_data.items():
+                for row in page_rows:
+                    if len(row) < 4:
+                        continue
 
-        # Рассчитываем итоги по всем страницам
-        current_radius = float(self.current_radius) if self.current_radius else 5.64
-        plot_area_m2 = 3.14159 * (current_radius ** 2)
+                    # Столбец "Порода" в row[3]
+                    breeds_text = row[3]
+                    if not breeds_text:
+                        continue
 
-        # Словарь для хранения итогов по каждой породе
-        breed_summary = {}
+                    try:
+                        breeds_list = json.loads(breeds_text) if isinstance(breeds_text, str) else []
+                    except json.JSONDecodeError:
+                        continue
 
-        # Проходим по всем страницам и строкам
-        for page_num in self.page_data:
-            page = self.page_data[page_num]
-            for row_data in page:
-                breeds_text = row_data[3]  # Порода
-                if breeds_text:
-                    breeds_data = self.parse_breeds_data(breeds_text)
-                    for breed_info in breeds_data:
-                        breed_name = breed_info.get('name', 'Неизвестная')
-                        breed_type = breed_info.get('type', 'unknown')
+                    for breed_info in breeds_list:
+                        if not isinstance(breed_info, dict):
+                            continue
 
-                        if breed_name not in breed_summary:
-                            breed_summary[breed_name] = {
-                                'type': breed_type,
-                                'plots': [],
-                                'count': 0,
-                                'total_density': 0,
-                                'total_height': 0,
-                                'total_age': 0,
-                                'coniferous_zones': {'do_05': 0, '05_15': 0, 'bolee_15': 0}
-                            }
+                        breed_name = breed_info.get('name', '').strip()
+                        if not breed_name:
+                            continue
 
-                        breed_summary[breed_name]['count'] += 1
+                        breed_type = breed_info.get('type', 'deciduous')
+                        density = 0
+                        height = None
+                        age = None
 
+                        # Расчет густоты и высоты в зависимости от типа породы
                         if breed_type == 'coniferous':
-                            # Суммируем градации для хвойных
                             do_05 = breed_info.get('do_05', 0)
                             _05_15 = breed_info.get('05_15', 0)
                             bolee_15 = breed_info.get('bolee_15', 0)
+                            density = (do_05 + _05_15 + bolee_15) / plot_area_ha if plot_area_ha > 0 else 0
 
-                            breed_summary[breed_name]['coniferous_zones']['do_05'] += do_05
-                            breed_summary[breed_name]['coniferous_zones']['05_15'] += _05_15
-                            breed_summary[breed_name]['coniferous_zones']['bolee_15'] += bolee_15
-
-                            # Общая густота для хвойных
-                            total_density = do_05 + _05_15 + bolee_15
-                            breed_summary[breed_name]['total_density'] += total_density
+                            # Для хвойных пород определяем высоту по градациям или среднюю
+                            if any([do_05, _05_15, bolee_15]):
+                                # Высота определяется по градациям
+                                if bolee_15 > 0:
+                                    height = 2.0  # >1.5m
+                                elif _05_15 > 0:
+                                    height = 1.0  # 0.5-1.5m
+                                elif do_05 > 0:
+                                    height = 0.3  # до 0.5m
+                                else:
+                                    height = 0.0
+                            else:
+                                height = breed_info.get('height', 0) or 0
                         else:
-                            density = breed_info.get('density', 0)
-                            # Переводим густоту в шт/га
-                            density_ha = density * 10000 / plot_area_m2 if plot_area_m2 > 0 else density
-                            breed_summary[breed_name]['total_density'] += density_ha
+                            # Для лиственных пород - обычная плотность и средняя высота
+                            density_value = breed_info.get('density', 0)
+                            density = density_value / plot_area_ha if plot_area_ha > 0 else density_value
+                            height = breed_info.get('height', 0) or 0
 
-                        height = breed_info.get('height', 0)
-                        age = breed_info.get('age', 0)
-                        breed_summary[breed_name]['total_height'] += height
-                        breed_summary[breed_name]['total_age'] += age
+                        age = breed_info.get('age', 0) or 0
 
-        # Создаем отображаемые данные
-        scroll = ScrollView(size_hint=(1, None), height=400)
-        summary_layout = GridLayout(cols=1, spacing=10, size_hint_y=None)
-        summary_layout.bind(minimum_height=summary_layout.setter('height'))
+                        # Сбор данных по породе
+                        if breed_name not in breeds_data:
+                            breeds_data[breed_name] = {
+                                'type': breed_type,
+                                'plots': [],
+                                'coniferous_zones': {'do_05': 0, '05_15': 0, 'bolee_15': 0} if breed_type == 'coniferous' else None
+                            }
 
-        # Заголовки
-        headers_layout = GridLayout(cols=4, spacing=5, size_hint_y=None, height=40)
-        headers = ['Порода', 'Густота', 'Высота (м)', 'Возраст (лет)']
-        for header in headers:
+                        # Добавляем данные
+                        plot_data = {
+                            'density': density,
+                            'height': height,
+                            'age': age
+                        }
+
+                        if breed_type == 'coniferous':
+                            plot_data.update({
+                                'do_05_density': do_05 / plot_area_ha if plot_area_ha > 0 else 0,
+                                '05_15_density': _05_15 / plot_area_ha if plot_area_ha > 0 else 0,
+                                'bolee_15_density': bolee_15 / plot_area_ha if plot_area_ha > 0 else 0
+                            })
+
+                        breeds_data[breed_name]['plots'].append(plot_data)
+
+                        if breed_type == 'coniferous':
+                            breeds_data[breed_name]['coniferous_zones']['do_05'] += plot_data['do_05_density']
+                            breeds_data[breed_name]['coniferous_zones']['05_15'] += plot_data['05_15_density']
+                            breeds_data[breed_name]['coniferous_zones']['bolee_15'] += plot_data['bolee_15_density']
+
+            # Создаем popup с результатами
+            content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+
+            # Заголовок результатов с радиусом
+            trees_per_ha = 10000 / plot_area_m2 if plot_area_m2 > 0 else 0
             header_label = Label(
-                text=header,
+                text=f'ИТОГИ ПО УЧАСТКУ МОЛОДНЯКОВ\n' +
+                     f'Радиус участка: {current_radius:.2f} м\n' +
+                     f'1 дерево = {trees_per_ha:.0f} тыс.шт./га',
                 font_name='Roboto',
+                font_size='18sp',
                 bold=True,
-                size_hint_y=None,
-                height=40,
+                color=(0, 0.5, 0, 1),
+                size_hint=(1, None),
+                height=80,
                 halign='center',
-                color=(0, 0, 0, 1)
+                valign='top'
             )
-            headers_layout.add_widget(header_label)
-        summary_layout.add_widget(headers_layout)
+            content.add_widget(header_label)
 
-        # Данные по каждой породе
-        for breed_name, data in breed_summary.items():
-            breed_layout = GridLayout(cols=4, spacing=5, size_hint_y=None, height=100, padding=[10, 0, 10, 0])
-            breed_layout.canvas.before.clear()
-            with breed_layout.canvas.before:
-                Color(rgba=get_color_from_hex('#F0F8FF'))
-                Rectangle(pos=breed_layout.pos, size=breed_layout.size)
+            scroll = ScrollView(size_hint=(1, None), height=600)
+            results_layout = GridLayout(cols=1, spacing=10, size_hint_y=None)
+            results_layout.bind(minimum_height=results_layout.setter('height'))
 
-            # Название породы
-            name_label = Label(
-                text=breed_name,
+            # Коэффициент состава насаждения
+            composition_label = Label(
+                text='КОЭФФИЦИЕНТ СОСТАВА НАСАЖДЕНИЯ',
                 font_name='Roboto',
+                font_size='16sp',
                 bold=True,
-                size_hint_y=None,
-                height=100,
-                halign='center',
-                valign='middle',
-                color=(0, 0, 0, 1)
+                color=(0, 0, 0, 1),
+                size_hint=(1, None),
+                height=30,
+                halign='center'
             )
-            breed_layout.add_widget(name_label)
+            results_layout.add_widget(composition_label)
 
-            # Густота и градации
-            if data['type'] == 'coniferous':
-                zones_density = []
-                total_zones_density = 0
-                if data['coniferous_zones']['do_05'] > 0:
-                    avg_do_05_ha = data['coniferous_zones']['do_05'] * 10000 / plot_area_m2 if plot_area_m2 > 0 else data['coniferous_zones']['do_05']
-                    zones_density.append(f"до 0.5м: {avg_do_05_ha:.1f}")
-                    total_zones_density += avg_do_05_ha
-                if data['coniferous_zones']['05_15'] > 0:
-                    avg_05_15_ha = data['coniferous_zones']['05_15'] * 10000 / plot_area_m2 if plot_area_m2 > 0 else data['coniferous_zones']['05_15']
-                    zones_density.append(f"0.5-1.5м: {avg_05_15_ha:.1f}")
-                    total_zones_density += avg_05_15_ha
-                if data['coniferous_zones']['bolee_15'] > 0:
-                    avg_bolee_15_ha = data['coniferous_zones']['bolee_15'] * 10000 / plot_area_m2 if plot_area_m2 > 0 else data['coniferous_zones']['bolee_15']
-                    zones_density.append(f">1.5м: {avg_bolee_15_ha:.1f}")
-                    total_zones_density += avg_bolee_15_ha
+            # Расчет коэффициента состава на основе суммарной густоты пород
+            total_densities = {}
+            for breed_name, data in breeds_data.items():
+                if data['plots']:
+                    if data['plots'][0].get('type') == 'coniferous':
+                        # Для хвойных суммируем густоту по градациям
+                        total_density = 0
+                        for p in data['plots']:
+                            conif_density = (p.get('do_05_density', 0) + p.get('05_15_density', 0) + p.get('bolee_15_density', 0))
+                            total_density += conif_density
+                    else:
+                        # Для лиственных обычная густота
+                        total_density = sum(p.get('density', 0) for p in data['plots'])
+                    if total_density > 0:
+                        total_densities[breed_name] = total_density
 
-                density_text = "\n".join(zones_density) if zones_density else "0"
-                density_text += f"\nИтого: {total_zones_density:.1f} шт/га"
+            if total_densities:
+                # Расчет коэффициентов состава так, чтобы их сумма равнялась 10
+                total_all_density = sum(total_densities.values())
+                composition_parts = []
+
+                # Сортируем по убыванию плотности
+                for breed_name, density in sorted(total_densities.items(), key=lambda x: x[1], reverse=True):
+                    if total_all_density > 0:
+                        # Коэффициент пропорционален плотности, сумма всех коэффициентов = 10
+                        coeff = max(1, round(density / total_all_density * 10))
+                    else:
+                        coeff = 1
+                    breed_letter = self.get_breed_letter(breed_name)
+                    composition_parts.append(f"{coeff}{breed_letter}")
+
+                # Корректировка чтобы сумма равнялась 10
+                coeffs_only = [int(''.join(filter(str.isdigit, part))) for part in composition_parts]
+                total_coeffs = sum(coeffs_only)
+                iterations = 0
+                while total_coeffs != 10 and iterations < 100:
+                    if total_coeffs > 10:
+                        # Уменьшаем самый большой коэффициент
+                        max_idx = coeffs_only.index(max(coeffs_only))
+                        coeffs_only[max_idx] -= 1
+                    elif total_coeffs < 10:
+                        # Увеличиваем самый большой коэффициент
+                        max_idx = coeffs_only.index(max(coeffs_only))
+                        coeffs_only[max_idx] += 1
+
+                    total_coeffs = sum(coeffs_only)
+                    iterations += 1
+
+                # Обновляем composition_parts
+                sorted_breeds = sorted(total_densities.items(), key=lambda x: x[1], reverse=True)
+                composition_parts = []
+                for i, (breed_name, _) in enumerate(sorted_breeds):
+                    if i < len(coeffs_only):
+                        breed_letter = self.get_breed_letter(breed_name)
+                        composition_parts.append(f"{coeffs_only[i]}{breed_letter}")
+
+                composition_text = ''.join(composition_parts) + "Др"
+                composition_result = Label(
+                    text=f"Формула состава: {composition_text}",
+                    font_name='Roboto',
+                    font_size='14sp',
+                    color=(0, 0, 0, 1),
+                    size_hint=(1, None),
+                    height=30,
+                    halign='center'
+                )
+                results_layout.add_widget(composition_result)
             else:
-                avg_density = data['total_density'] / data['count'] if data['count'] > 0 else 0
-                density_text = f"{avg_density:.1f} шт/га"
+                no_composition = Label(
+                    text="Коэффициент состава не определен (недостаточно данных)",
+                    font_name='Roboto',
+                    font_size='14sp',
+                    color=(1, 0, 0, 1),
+                    size_hint=(1, None),
+                    height=30,
+                    halign='center'
+                )
+                results_layout.add_widget(no_composition)
 
-            density_label = Label(
-                text=density_text,
+            # Хвойные породы с градациями высот
+            coniferous_label = Label(
+                text='\nХВОЙНЫЕ ПОРОДЫ - ВЫСОТА ПО ГРАДАЦИЯМ',
                 font_name='Roboto',
-                size_hint_y=None,
-                height=100,
-                halign='left',
-                valign='middle',
-                color=(0, 0, 0, 1)
+                font_size='16sp',
+                bold=True,
+                color=(0, 0, 0, 1),
+                size_hint=(1, None),
+                height=50,
+                halign='center'
             )
-            breed_layout.add_widget(density_label)
+            results_layout.add_widget(coniferous_label)
 
-            # Средняя высота
-            avg_height = data['total_height'] / data['count'] if data['count'] > 0 else 0
-            height_label = Label(
-                text=f"{avg_height:.1f}",
+            has_coniferous = False
+            for breed_name, data in sorted(breeds_data.items()):
+                if data['type'] == 'coniferous' and data['plots']:
+                    has_coniferous = True
+
+                    # Средняя густота в градациях
+                    zones = data.get('coniferous_zones', {})
+                    avg_do_05 = zones.get('do_05', 0) / len(data['plots']) if data['plots'] else 0
+                    avg_05_15 = zones.get('05_15', 0) / len(data['plots']) if data['plots'] else 0
+                    avg_bolee_15 = zones.get('bolee_15', 0) / len(data['plots']) if data['plots'] else 0
+
+                    # Средняя общая высота
+                    avg_heights = [p['height'] for p in data['plots'] if p['height'] > 0]
+                    avg_height_total = sum(avg_heights) / len(avg_heights) if avg_heights else 0
+
+                    coniferous_result = Label(
+                        text=f"{breed_name}:\n"
+                             f"• до 0.5м: {avg_do_05:.1f} шт/га\n"
+                             f"• 0.5-1.5м: {avg_05_15:.1f} шт/га\n"
+                             f"• >1.5м: {avg_bolee_15:.1f} шт/га\n"
+                             f"• средняя высота породы: {avg_height_total:.1f}м",
+                        font_name='Roboto',
+                        font_size='14sp',
+                        color=(0, 0.5, 0, 1),
+                        size_hint=(1, None),
+                        height=100,
+                        halign='left',
+                        valign='top'
+                    )
+                    coniferous_result.bind(size=lambda *args: setattr(coniferous_result, 'text_size', (coniferous_result.width, None)))
+                    results_layout.add_widget(coniferous_result)
+
+            if not has_coniferous:
+                no_coniferous = Label(
+                    text="Хвойные породы не найдены",
+                    font_name='Roboto',
+                    font_size='14sp',
+                    color=(0.5, 0.5, 0.5, 1),
+                    size_hint=(1, None),
+                    height=30,
+                    halign='center'
+                )
+                results_layout.add_widget(no_coniferous)
+
+            # Лиственные породы - средние высоты и возраст
+            deciduous_label = Label(
+                text='\nЛИСТВЕННЫЕ ПОРОДЫ - СРЕДНИЕ ПОКАЗАТЕЛИ',
                 font_name='Roboto',
-                size_hint_y=None,
-                height=100,
-                halign='center',
-                valign='middle',
-                color=(0, 0, 0, 1)
+                font_size='16sp',
+                bold=True,
+                color=(0, 0, 0, 1),
+                size_hint=(1, None),
+                height=50,
+                halign='center'
             )
-            breed_layout.add_widget(height_label)
+            results_layout.add_widget(deciduous_label)
 
-            # Средний возраст
-            avg_age = data['total_age'] / data['count'] if data['count'] > 0 else 0
-            age_label = Label(
-                text=f"{avg_age:.1f}",
+            has_deciduous = False
+            for breed_name, data in sorted(breeds_data.items()):
+                if data['type'] == 'deciduous' and data['plots']:
+                    has_deciduous = True
+
+                    # Средняя густота
+                    avg_density = sum(p['density'] for p in data['plots']) / len(data['plots'])
+
+                    # Средняя высота
+                    avg_heights = [p['height'] for p in data['plots'] if p['height'] > 0]
+                    avg_height = sum(avg_heights) / len(avg_heights) if avg_heights else 0
+
+                    # Средний возраст
+                    avg_ages = [p['age'] for p in data['plots'] if p['age'] > 0]
+                    avg_age = sum(avg_ages) / len(avg_ages) if avg_ages else 0
+
+                    deciduous_result = Label(
+                        text=f"{breed_name}:\n"
+                             f"• Средняя густота: {avg_density:.1f} шт/га\n"
+                             f"• Средняя высота: {avg_height:.1f}м\n"
+                             f"• Средний возраст: {avg_age:.1f} лет",
+                        font_name='Roboto',
+                        font_size='14sp',
+                        color=(0, 0.3, 0.5, 1),
+                        size_hint=(1, None),
+                        height=80,
+                        halign='left',
+                        valign='top'
+                    )
+                    deciduous_result.bind(size=lambda *args: setattr(deciduous_result, 'text_size', (deciduous_result.width, None)))
+                    results_layout.add_widget(deciduous_result)
+
+            if not has_deciduous:
+                no_deciduous = Label(
+                    text="Лиственные породы не найдены",
+                    font_name='Roboto',
+                    font_size='14sp',
+                    color=(0.5, 0.5, 0.5, 1),
+                    size_hint=(1, None),
+                    height=30,
+                    halign='center'
+                )
+                results_layout.add_widget(no_deciduous)
+
+            # Информация о площади участка
+            plot_area_label = Label(
+                text=f"Площадь участка: {plot_area_ha:.4f} га (радиус пробной площади: {current_radius:.2f}м)",
                 font_name='Roboto',
-                size_hint_y=None,
-                height=100,
-                halign='center',
-                valign='middle',
-                color=(0, 0, 0, 1)
+                font_size='12sp',
+                color=(0.5, 0.5, 0.5, 1),
+                size_hint=(1, None),
+                height=30,
+                halign='center'
             )
-            breed_layout.add_widget(age_label)
+            results_layout.add_widget(plot_area_label)
 
-            summary_layout.add_widget(breed_layout)
+            scroll.add_widget(results_layout)
+            content.add_widget(scroll)
 
-        scroll.add_widget(summary_layout)
-        content.add_widget(scroll)
+            close_btn = ModernButton(
+                text='Закрыть',
+                bg_color=get_color_from_hex('#808080'),
+                size_hint=(1, None),
+                height=50
+            )
+            content.add_widget(close_btn)
 
-        close_btn = ModernButton(
-            text='Закрыть',
-            bg_color=get_color_from_hex('#808080'),
-            size_hint=(1, None),
-            height=50
-        )
-        content.add_widget(close_btn)
+            popup = Popup(
+                title="Таксационные показатели молодняков",
+                content=content,
+                size_hint=(0.95, 0.95)
+            )
 
-        popup = Popup(
-            title="Сводные итоги по породам",
-            content=content,
-            size_hint=(0.95, 0.95)
-        )
+            close_btn.bind(on_press=popup.dismiss)
+            popup.open()
 
-        close_btn.bind(on_press=popup.dismiss)
-        popup.open()
+        except Exception as e:
+            import traceback
+            self.show_error(f"Ошибка расчета таксационных показателей: {str(e)}\n{traceback.format_exc()}")
 
     def update_totals(self, update_global=True):
         """Обновление строки итогов с поддержкой множественных пород"""
