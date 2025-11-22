@@ -1917,7 +1917,7 @@ class ExtendedMolodnikiTableScreen(Screen):
             ws.append([])
 
             headers = [
-                '№ППР', 'GPS точка', 'Предмет ухода', 'Порода', 'Густота', 'Высота', 'Возраст', 'Примечания', 'Тип Леса'
+                '№ППР', 'GPS точка', 'Предмет ухода', 'Порода', 'Густота', 'До 0.5м', '0.5-1.5м', '>1.5м', 'Высота', 'Возраст', 'Примечания', 'Тип Леса'
             ]
             for col_num, header in enumerate(headers, 1):
                 cell = ws.cell(row=3, column=col_num, value=header)
@@ -1944,13 +1944,21 @@ class ExtendedMolodnikiTableScreen(Screen):
                                 height = breed_info.get('height', '')
                                 age = breed_info.get('age', '')
 
-                                # Для хвойных рассчитываем густоту по градациям
+                                # Инициализируем градации
+                                do_05 = ''
+                                _05_15 = ''
+                                bolee_15 = ''
+
                                 if breed_info.get('type') == 'coniferous':
-                                    coniferous_density = (breed_info.get('do_05', 0) +
-                                                        breed_info.get('05_15', 0) +
-                                                        breed_info.get('bolee_15', 0))
-                                    if coniferous_density > 0:
-                                        density = str(coniferous_density)
+                                    # Для хвойных заполняем градации
+                                    do_05 = str(breed_info.get('do_05', ''))
+                                    _05_15 = str(breed_info.get('05_15', ''))
+                                    bolee_15 = str(breed_info.get('bolee_15', ''))
+                                    # Густота оставляем пустой для хвойных
+                                    density = ''
+                                else:
+                                    # Для лиственных оставляем густоту, градации пустые
+                                    pass
 
                                 processed_row = [
                                     row[0],  # №ППР
@@ -1958,6 +1966,9 @@ class ExtendedMolodnikiTableScreen(Screen):
                                     row[2],  # Предмет ухода
                                     breed_name,  # Порода
                                     str(density) if density else '',  # Густота
+                                    do_05,  # До 0.5м
+                                    _05_15,  # 0.5-1.5м
+                                    bolee_15,  # >1.5м
                                     str(height) if height else '',  # Высота
                                     str(age) if age else '',  # Возраст
                                     row[4],  # Примечания
@@ -2003,11 +2014,11 @@ class ExtendedMolodnikiTableScreen(Screen):
             for page in sorted(self.page_data.keys()):
                 all_data.extend(self.page_data[page])
 
-            table = doc.add_table(rows=1, cols=9)
+            table = doc.add_table(rows=1, cols=12)
             table.style = 'Table Grid'
 
             headers = [
-                '№ППР', 'GPS точка', 'Предмет ухода', 'Порода', 'Густота', 'Высота', 'Возраст', 'Примечания', 'Тип Леса'
+                '№ППР', 'GPS точка', 'Предмет ухода', 'Порода', 'Густота', 'До 0.5м', '0.5-1.5м', '>1.5м', 'Высота', 'Возраст', 'Примечания', 'Тип Леса'
             ]
             hdr_cells = table.rows[0].cells
             for i, header in enumerate(headers):
@@ -2028,13 +2039,21 @@ class ExtendedMolodnikiTableScreen(Screen):
                                 height = breed_info.get('height', '')
                                 age = breed_info.get('age', '')
 
-                                # Для хвойных рассчитываем густоту по градациям
+                                # Инициализируем градации
+                                do_05 = ''
+                                _05_15 = ''
+                                bolee_15 = ''
+
                                 if breed_info.get('type') == 'coniferous':
-                                    coniferous_density = (breed_info.get('do_05', 0) +
-                                                        breed_info.get('05_15', 0) +
-                                                        breed_info.get('bolee_15', 0))
-                                    if coniferous_density > 0:
-                                        density = str(coniferous_density)
+                                    # Для хвойных заполняем градации
+                                    do_05 = str(breed_info.get('do_05', ''))
+                                    _05_15 = str(breed_info.get('05_15', ''))
+                                    bolee_15 = str(breed_info.get('bolee_15', ''))
+                                    # Густота оставляем пустой для хвойных
+                                    density = ''
+                                else:
+                                    # Для лиственных оставляем густоту, градации пустые
+                                    pass
 
                                 row_cells = table.add_row().cells
                                 row_cells[0].text = str(row[0]) if row[0] else ""  # №ППР
@@ -2042,10 +2061,13 @@ class ExtendedMolodnikiTableScreen(Screen):
                                 row_cells[2].text = str(row[2]) if row[2] else ""  # Предмет ухода
                                 row_cells[3].text = breed_name  # Порода
                                 row_cells[4].text = str(density) if density else ""  # Густота
-                                row_cells[5].text = str(height) if height else ""  # Высота
-                                row_cells[6].text = str(age) if age else ""  # Возраст
-                                row_cells[7].text = str(row[4]) if row[4] else ""  # Примечания
-                                row_cells[8].text = str(row[5]) if row[5] else ""  # Тип Леса
+                                row_cells[5].text = do_05  # До 0.5м
+                                row_cells[6].text = _05_15  # 0.5-1.5м
+                                row_cells[7].text = bolee_15  # >1.5м
+                                row_cells[8].text = str(height) if height else ""  # Высота
+                                row_cells[9].text = str(age) if age else ""  # Возраст
+                                row_cells[10].text = str(row[4]) if row[4] else ""  # Примечания
+                                row_cells[11].text = str(row[5]) if row[5] else ""  # Тип Леса
                     else:
                         # Если нет пород, добавить строку без данных
                         row_cells = table.add_row().cells
@@ -2056,8 +2078,11 @@ class ExtendedMolodnikiTableScreen(Screen):
                         row_cells[4].text = ""
                         row_cells[5].text = ""
                         row_cells[6].text = ""
-                        row_cells[7].text = str(row[4]) if row[4] else ""
-                        row_cells[8].text = str(row[5]) if row[5] else ""
+                        row_cells[7].text = ""
+                        row_cells[8].text = ""
+                        row_cells[9].text = ""
+                        row_cells[10].text = str(row[4]) if row[4] else ""
+                        row_cells[11].text = str(row[5]) if row[5] else ""
 
             doc.save(full_path)
             return f"Word: {filename}", None
