@@ -1111,7 +1111,7 @@ class TableScreen(Screen):
                 inp.col_index = col_idx
                 inp.bind(focus=self.update_focus)
                 inp.font_name = 'Roboto'
-                
+
                 if col_idx > 0:
                     inp.prev_widget = row[col_idx-1] if row else None
                     if row:
@@ -1120,7 +1120,7 @@ class TableScreen(Screen):
                     inp.prev_widget = self.inputs[row_idx-1][col_idx] if self.inputs else None
                     if self.inputs:
                         self.inputs[row_idx-1][col_idx].next_widget = inp
-                
+
                 if col_idx in [0,4,5]:
                     inp.input_filter = 'float' if col_idx in [4,5] else 'int'
                 if col_idx == 0:
@@ -1128,7 +1128,33 @@ class TableScreen(Screen):
                 row.append(inp)
                 self.table.add_widget(inp)
             self.inputs.append(row)
-        
+
+        # Добавляем кнопку "Итого" по середине после строки итогов
+        # Пустая строка для разделения
+        spacer = BoxLayout(orientation='horizontal', size_hint_y=None, height=10)
+        self.table.add_widget(spacer)
+
+        # Кнопка "Итого" по середине
+        button_container = BoxLayout(orientation='horizontal', size_hint_y=None, height=50, size_hint_x=1)
+        button_spacer = BoxLayout(size_hint_x=0.25)  # Спейсер слева
+        button_container.add_widget(button_spacer)
+
+        self.total_summary_button = ModernButton(
+            text='Итого',
+            bg_color=get_color_from_hex('#00FF00'),  # Зеленый цвет
+            size_hint=(None, None),
+            size=(200, 50),
+            font_size='18sp',
+            bold=True
+        )
+        self.total_summary_button.bind(on_press=self.show_total_summary_popup)
+        button_container.add_widget(self.total_summary_button)
+
+        button_spacer2 = BoxLayout(size_hint_x=0.25)  # Спейсер справа
+        button_container.add_widget(button_spacer2)
+
+        self.table.add_widget(button_container)
+
         scroll.add_widget(self.table)
         table_panel.add_widget(scroll)
         main_layout.add_widget(table_panel)
@@ -1254,6 +1280,44 @@ class TableScreen(Screen):
             page_data.append([inp.text for inp in row])
         self.page_data[self.current_page] = page_data
 
+        # Валидация данных после сохранения
+        self.validate_page_data()
+
+    def validate_page_data(self):
+        """Валидация данных на странице"""
+        warnings = []
+        for row_idx, row in enumerate(self.page_data.get(self.current_page, [])):
+            if len(row) >= 6:
+                tree_num = row[0].strip()
+                species = row[1].strip()
+                diameter_str = row[4].strip()
+                height_str = row[5].strip()
+
+                if tree_num and not species:
+                    warnings.append(f"Строка {row_idx+1}: Нет породы для дерева №{tree_num}")
+                if species and not tree_num:
+                    warnings.append(f"Строка {row_idx+1}: Нет номера дерева для породы {species}")
+
+                # Проверка числовых значений
+                if diameter_str:
+                    try:
+                        d = float(diameter_str)
+                        if d <= 0 or d > 500:
+                            warnings.append(f"Строка {row_idx+1}: Подозрительный диаметр {d} см")
+                    except ValueError:
+                        warnings.append(f"Строка {row_idx+1}: Некорректный диаметр '{diameter_str}'")
+
+                if height_str:
+                    try:
+                        h = float(height_str)
+                        if h <= 0 or h > 100:
+                            warnings.append(f"Строка {row_idx+1}: Подозрительная высота {h} м")
+                    except ValueError:
+                        warnings.append(f"Строка {row_idx+1}: Некорректная высота '{height_str}'")
+
+        if warnings:
+            self.show_error("Предупреждения в данных:\n" + "\n".join(warnings[:5]))  # Показываем первые 5
+
     def show_save_dialog(self, instance=None):
         content = FloatLayout()
 
@@ -1325,9 +1389,279 @@ class TableScreen(Screen):
             background='',
             overlay_color=(0, 0, 0, 0.5)
         )
-        ok_btn.bind(on_press=self.save_to_excel)
+        ok_btn.bind(on_press=self.save_all_formats)
         cancel_btn.bind(on_press=self.save_popup.dismiss)
         self.save_popup.open()
+
+    def save_all_formats(self, instance):
+        """Сохранить данные во всех форматах сразу"""
+        success_messages = []
+        error_messages = []
+
+        # Проверка наличия данных
+        if not self.page_data:
+            error_messages.append("Нет данных для сохранения!")
+            self.show_error("Ошибки сохранения:\n" + "\n".join(error_messages))
+            return
+
+        # Проверка наличия участка
+        if not self.current_section:
+            error_messages.append("Не указан номер участка!")
+            self.show_error("Ошибки сохранения:\n" + "\n".join(error_messages))
+            return
+
+        # Проверка существования папки reports
+        if not os.path.exists(self.reports_dir):
+            try:
+                os.makedirs(self.reports_dir, exist_ok=True)
+            except Exception as e:
+                error_messages.append(f"Не удалось создать папку reports: {str(e)}")
+                self.show_error("Ошибки сохранения:\n" + "\n".join(error_messages))
+                return
+
+        try:
+            # Расчет итогов
+            totals_data = self.calculate_totals()
+            print(f"Totals calculated: {totals_data}")  # Debug
+
+            # Сохранение в JSON
+            result, error = self.save_to_json(totals_data)
+            if result:
+                success_messages.append(result)
+            else:
+                error_messages.append(f"JSON: {error}")
+
+            # Сохранение в Excel
+            result, error = self.save_to_excel_without_dialog(totals_data)
+            if result:
+                success_messages.append(result)
+            else:
+                error_messages.append(f"Excel: {error}")
+
+            # Сохранение в Word
+            result, error = self.save_to_word_without_dialog(totals_data)
+            if result:
+                success_messages.append(result)
+            else:
+                error_messages.append(f"Word: {error}")
+
+        except Exception as e:
+            import traceback
+            error_messages.append(f"Общая ошибка: {str(e)}\n{traceback.format_exc()}")
+
+        if success_messages:
+            self.save_popup.dismiss()
+            self.show_success("Файлы сохранены:\n" + "\n".join(success_messages))
+        if error_messages:
+            self.show_error("Ошибки сохранения:\n" + "\n".join(error_messages))
+            # Не закрываем popup, чтобы пользователь видел ошибки
+
+    def save_to_json(self, totals_data=None):
+        """Сохранение данных в JSON формате"""
+        data = {
+            'page_data': self.page_data,
+            'section': self.current_section,
+            'column_names': self.column_names,
+            'export_date': datetime.datetime.now().isoformat()
+        }
+
+        if totals_data:
+            data['totals'] = totals_data
+
+        filename = f"Перечетная_ведомость_{self.current_section}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M')}.json"
+        full_path = os.path.join(self.reports_dir, filename)
+
+        try:
+            with open(full_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            return f"JSON: {filename}", None
+        except Exception as e:
+            return None, f"Ошибка сохранения JSON: {str(e)}"
+
+    def save_to_excel_without_dialog(self, totals_data=None):
+        """Сохранение в Excel без диалога"""
+        filename = f"Перечетная_ведомость_{self.current_section}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M')}.xlsx"
+        full_path = os.path.join(self.reports_dir, filename)
+
+        try:
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Перечетная ведомость"
+
+            # Заголовок
+            ws['A1'] = f'ПЕРЕЧЕТНАЯ ВЕДОМОСТЬ - УЧАСТОК {self.current_section}'
+            ws['A1'].font = openpyxl.styles.Font(bold=True, size=14)
+            ws.merge_cells('A1:I1')
+
+            # Данные
+            all_data = []
+            for page in sorted(self.page_data.keys()):
+                all_data.extend(self.page_data[page])
+
+            # Заголовки столбцов
+            for col_num, header in enumerate(self.column_names, 1):
+                cell = ws.cell(row=3, column=col_num, value=header)
+                cell.font = openpyxl.styles.Font(bold=True)
+                cell.fill = openpyxl.styles.PatternFill(start_color="00FF00", end_color="00FF00", fill_type="solid")
+
+            # Данные
+            for row_num, row_data in enumerate(all_data, 4):
+                for col_num, cell_value in enumerate(row_data, 1):
+                    ws.cell(row=row_num, column=col_num, value=cell_value)
+
+            # Автоподбор ширины столбцов
+            for column in ws.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+                for cell in column:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 50)
+                ws.column_dimensions[column_letter].width = adjusted_width
+
+            # Добавляем лист с итогами, если есть данные
+            if totals_data:
+                ws_totals = wb.create_sheet("Итоги")
+                ws_totals['A1'] = f'ИТОГИ ПО ПЕРЕЧЕТНОЙ ВЕДОМОСТИ - УЧАСТОК {self.current_section}'
+                ws_totals['A1'].font = openpyxl.styles.Font(bold=True, size=14)
+                ws_totals.merge_cells('A1:D1')
+
+                # Общие итоги
+                ws_totals['A3'] = 'Общие показатели:'
+                ws_totals['A3'].font = openpyxl.styles.Font(bold=True)
+                ws_totals['A4'] = 'Всего деревьев:'
+                ws_totals['B4'] = totals_data.get('total_trees', 0)
+                ws_totals['A5'] = 'Средний диаметр (см):'
+                ws_totals['B5'] = round(totals_data.get('avg_diameter', 0), 1)
+                ws_totals['A6'] = 'Средняя высота (м):'
+                ws_totals['B6'] = round(totals_data.get('avg_height', 0), 1)
+
+                # Распределение по породам
+                species_summary = totals_data.get('species_summary', {})
+                if species_summary:
+                    ws_totals['A8'] = 'Распределение по породам:'
+                    ws_totals['A8'].font = openpyxl.styles.Font(bold=True)
+
+                    row_num = 9
+                    for species, data in sorted(species_summary.items()):
+                        ws_totals[f'A{row_num}'] = f'Порода: {species}'
+                        ws_totals[f'A{row_num}'].font = openpyxl.styles.Font(bold=True)
+                        ws_totals[f'B{row_num}'] = f'Количество: {data["count"]}'
+
+                        diameters = data['diameters']
+                        heights = data['heights']
+                        if diameters:
+                            avg_d = sum(diameters) / len(diameters)
+                            ws_totals[f'C{row_num}'] = f'Ср. диаметр: {avg_d:.1f} см'
+                        if heights:
+                            avg_h = sum(heights) / len(heights)
+                            ws_totals[f'D{row_num}'] = f'Ср. высота: {avg_h:.1f} м'
+
+                        row_num += 1
+
+                    # Автоподбор ширины для листа итогов
+                    for column in ws_totals.columns:
+                        max_length = 0
+                        column_letter = column[0].column_letter
+                        for cell in column:
+                            try:
+                                if len(str(cell.value)) > max_length:
+                                    max_length = len(str(cell.value))
+                            except:
+                                pass
+                        adjusted_width = min(max_length + 2, 50)
+                        ws_totals.column_dimensions[column_letter].width = adjusted_width
+
+            wb.save(full_path)
+            return f"Excel: {filename}", None
+        except Exception as e:
+            return None, f"Ошибка сохранения Excel: {str(e)}"
+
+    def save_to_word_without_dialog(self, totals_data=None):
+        """Сохранение в Word без диалога"""
+        try:
+            from docx import Document
+
+            filename = f"Перечетная_ведомость_{self.current_section}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M')}.docx"
+            full_path = os.path.join(self.reports_dir, filename)
+
+            doc = Document()
+            doc.add_heading(f'Перечетная ведомость - Участок {self.current_section}', 0)
+
+            all_data = []
+            for page in sorted(self.page_data.keys()):
+                all_data.extend(self.page_data[page])
+
+            table = doc.add_table(rows=1, cols=len(self.column_names))
+            table.style = 'Table Grid'
+
+            # Заголовки
+            hdr_cells = table.rows[0].cells
+            for i, header in enumerate(self.column_names):
+                hdr_cells[i].text = header
+
+            # Данные
+            for row_data in all_data:
+                row_cells = table.add_row().cells
+                for i, cell_value in enumerate(row_data):
+                    row_cells[i].text = str(cell_value) if cell_value else ""
+
+            # Добавляем итоги, если есть данные
+            if totals_data:
+                doc.add_page_break()
+                doc.add_heading('Итоги по перечетной ведомости', 1)
+
+                # Общие итоги
+                doc.add_paragraph(f'Всего деревьев: {totals_data.get("total_trees", 0)}')
+                doc.add_paragraph(f'Средний диаметр: {totals_data.get("avg_diameter", 0):.1f} см (измерено: {totals_data.get("diameter_count", 0)})')
+                doc.add_paragraph(f'Средняя высота: {totals_data.get("avg_height", 0):.1f} м (измерено: {totals_data.get("height_count", 0)})')
+
+                # Распределение по породам
+                species_summary = totals_data.get('species_summary', {})
+                if species_summary:
+                    doc.add_heading('Распределение по породам', 2)
+
+                    # Создаем таблицу для пород
+                    species_table = doc.add_table(rows=1, cols=4)
+                    species_table.style = 'Table Grid'
+
+                    # Заголовки таблицы пород
+                    hdr_cells = species_table.rows[0].cells
+                    hdr_cells[0].text = 'Порода'
+                    hdr_cells[1].text = 'Количество'
+                    hdr_cells[2].text = 'Средний диаметр'
+                    hdr_cells[3].text = 'Средняя высота'
+
+                    # Данные по породам
+                    for species, data in sorted(species_summary.items()):
+                        row_cells = species_table.add_row().cells
+                        row_cells[0].text = species
+                        row_cells[1].text = str(data['count'])
+
+                        diameters = data['diameters']
+                        heights = data['heights']
+
+                        if diameters:
+                            avg_d = sum(diameters) / len(diameters)
+                            row_cells[2].text = f'{avg_d:.1f} см'
+                        else:
+                            row_cells[2].text = '-'
+
+                        if heights:
+                            avg_h = sum(heights) / len(heights)
+                            row_cells[3].text = f'{avg_h:.1f} м'
+                        else:
+                            row_cells[3].text = '-'
+
+            doc.save(full_path)
+            return f"Word: {filename}", None
+        except ImportError:
+            return None, "Для сохранения в Word установите библиотеку python-docx: pip install python-docx"
+        except Exception as e:
+            return None, f"Ошибка сохранения Word: {str(e)}"
 
     def save_to_excel(self, instance):
         filename = self.filename_input.text.strip()
@@ -1337,16 +1671,102 @@ class TableScreen(Screen):
         filename = re.sub(r'[\\/*?:"<>|]', "", filename)
         filename = f"{filename}.xlsx" if not filename.endswith(".xlsx") else filename
         full_path = os.path.join(self.reports_dir, filename)
-        
+
         try:
+            # Расчет итогов
+            totals_data = self.calculate_totals()
+
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Перечетная ведомость"
+
+            # Заголовок
+            ws['A1'] = f'ПЕРЕЧЕТНАЯ ВЕДОМОСТЬ - УЧАСТОК {self.current_section}'
+            ws['A1'].font = openpyxl.styles.Font(bold=True, size=14)
+            ws.merge_cells('A1:I1')
+
+            # Данные
             all_data = []
             for page in sorted(self.page_data.keys()):
                 all_data.extend(self.page_data[page])
-            df = pd.DataFrame(
-                all_data,
-                columns=self.column_names
-            )
-            df.to_excel(full_path, index=False)
+
+            # Заголовки столбцов
+            for col_num, header in enumerate(self.column_names, 1):
+                cell = ws.cell(row=3, column=col_num, value=header)
+                cell.font = openpyxl.styles.Font(bold=True)
+                cell.fill = openpyxl.styles.PatternFill(start_color="00FF00", end_color="00FF00", fill_type="solid")
+
+            # Данные
+            for row_num, row_data in enumerate(all_data, 4):
+                for col_num, cell_value in enumerate(row_data, 1):
+                    ws.cell(row=row_num, column=col_num, value=cell_value)
+
+            # Автоподбор ширины столбцов
+            for column in ws.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+                for cell in column:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 50)
+                ws.column_dimensions[column_letter].width = adjusted_width
+
+            # Добавляем лист с итогами
+            ws_totals = wb.create_sheet("Итоги")
+            ws_totals['A1'] = f'ИТОГИ ПО ПЕРЕЧЕТНОЙ ВЕДОМОСТИ - УЧАСТОК {self.current_section}'
+            ws_totals['A1'].font = openpyxl.styles.Font(bold=True, size=14)
+            ws_totals.merge_cells('A1:D1')
+
+            # Общие итоги
+            ws_totals['A3'] = 'Общие показатели:'
+            ws_totals['A3'].font = openpyxl.styles.Font(bold=True)
+            ws_totals['A4'] = 'Всего деревьев:'
+            ws_totals['B4'] = totals_data.get('total_trees', 0)
+            ws_totals['A5'] = 'Средний диаметр (см):'
+            ws_totals['B5'] = round(totals_data.get('avg_diameter', 0), 1)
+            ws_totals['A6'] = 'Средняя высота (м):'
+            ws_totals['B6'] = round(totals_data.get('avg_height', 0), 1)
+
+            # Распределение по породам
+            species_summary = totals_data.get('species_summary', {})
+            if species_summary:
+                ws_totals['A8'] = 'Распределение по породам:'
+                ws_totals['A8'].font = openpyxl.styles.Font(bold=True)
+
+                row_num = 9
+                for species, data in sorted(species_summary.items()):
+                    ws_totals[f'A{row_num}'] = f'Порода: {species}'
+                    ws_totals[f'A{row_num}'].font = openpyxl.styles.Font(bold=True)
+                    ws_totals[f'B{row_num}'] = f'Количество: {data["count"]}'
+
+                    diameters = data['diameters']
+                    heights = data['heights']
+                    if diameters:
+                        avg_d = sum(diameters) / len(diameters)
+                        ws_totals[f'C{row_num}'] = f'Ср. диаметр: {avg_d:.1f} см'
+                    if heights:
+                        avg_h = sum(heights) / len(heights)
+                        ws_totals[f'D{row_num}'] = f'Ср. высота: {avg_h:.1f} м'
+
+                    row_num += 1
+
+                # Автоподбор ширины для листа итогов
+                for column in ws_totals.columns:
+                    max_length = 0
+                    column_letter = column[0].column_letter
+                    for cell in column:
+                        try:
+                            if len(str(cell.value)) > max_length:
+                                max_length = len(str(cell.value))
+                        except:
+                            pass
+                    adjusted_width = min(max_length + 2, 50)
+                    ws_totals.column_dimensions[column_letter].width = adjusted_width
+
+            wb.save(full_path)
             self.save_popup.dismiss()
             self.show_success(f"Файл сохранен: {filename}")
         except Exception as e:
@@ -1594,6 +2014,205 @@ class TableScreen(Screen):
             self.column_edit_popup.dismiss()
         else:
             self.show_error("Название не может быть пустым!")
+
+    def calculate_totals(self):
+        """Расчет итоговых данных по перечетной ведомости"""
+        try:
+            # Собираем все данные из всех страниц
+            all_data = []
+            for page in sorted(self.page_data.keys()):
+                all_data.extend(self.page_data[page])
+
+            # Словарь для группировки по породам
+            species_summary = {}
+
+            total_trees = 0
+            total_diameter = 0.0
+            total_height = 0.0
+            diameter_count = 0
+            height_count = 0
+
+            for row in all_data:
+                if len(row) >= 6:  # Проверяем, что строка содержит достаточное количество столбцов
+                    tree_num = row[0].strip()
+                    species = row[1].strip()
+                    age = row[3].strip()
+                    diameter_str = row[4].strip()
+                    height_str = row[5].strip()
+
+                    if tree_num and species:  # Только если есть номер дерева и порода
+                        total_trees += 1
+
+                        # Группировка по породам
+                        if species not in species_summary:
+                            species_summary[species] = {
+                                'count': 0,
+                                'diameters': [],
+                                'heights': [],
+                                'ages': []
+                            }
+
+                        species_summary[species]['count'] += 1
+
+                        # Диаметр
+                        try:
+                            diameter = float(diameter_str)
+                            species_summary[species]['diameters'].append(diameter)
+                            total_diameter += diameter
+                            diameter_count += 1
+                        except (ValueError, TypeError):
+                            pass
+
+                        # Высота
+                        try:
+                            height = float(height_str)
+                            species_summary[species]['heights'].append(height)
+                            total_height += height
+                            height_count += 1
+                        except (ValueError, TypeError):
+                            pass
+
+                        # Возраст
+                        if age:
+                            species_summary[species]['ages'].append(age)
+
+            # Рассчитываем средние значения
+            avg_diameter = total_diameter / diameter_count if diameter_count > 0 else 0
+            avg_height = total_height / height_count if height_count > 0 else 0
+
+            # Формируем итоговые данные
+            totals_data = {
+                'total_trees': total_trees,
+                'avg_diameter': avg_diameter,
+                'avg_height': avg_height,
+                'diameter_count': diameter_count,
+                'height_count': height_count,
+                'species_summary': species_summary
+            }
+
+            return totals_data
+
+        except Exception as e:
+            print(f"Error calculating totals: {str(e)}")
+            return {}
+
+    def show_total_summary_popup(self, instance=None):
+        """Показать popup с итоговыми данными по перечетной ведомости"""
+        try:
+            totals_data = self.calculate_totals()
+
+            # Создаем popup
+            content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+
+            # Заголовок
+            title_label = Label(
+                text=f'ИТОГИ ПО ПЕРЕЧЕТНОЙ ВЕДОМОСТИ\nУчасток: {self.current_section}',
+                font_name='Roboto',
+                font_size='20sp',
+                bold=True,
+                color=(0, 0.5, 0, 1),
+                size_hint=(1, None),
+                height=60,
+                halign='center',
+                valign='top'
+            )
+            content.add_widget(title_label)
+
+            # Общие итоги
+            summary_text = f"""
+Общие показатели:
+• Всего деревьев: {totals_data.get('total_trees', 0)}
+• Средний диаметр: {totals_data.get('avg_diameter', 0):.1f} см (измерено: {totals_data.get('diameter_count', 0)})
+• Средняя высота: {totals_data.get('avg_height', 0):.1f} м (измерено: {totals_data.get('height_count', 0)})
+"""
+
+            summary_label = Label(
+                text=summary_text,
+                font_name='Roboto',
+                font_size='16sp',
+                color=(0, 0, 0, 1),
+                size_hint=(1, None),
+                height=100,
+                halign='left',
+                valign='top'
+            )
+            summary_label.bind(size=lambda *args: setattr(summary_label, 'text_size', (summary_label.width, None)))
+            content.add_widget(summary_label)
+
+            # ScrollView для детального отчета по породам
+            scroll = ScrollView(size_hint=(1, None), height=400)
+            details_layout = GridLayout(cols=1, spacing=10, size_hint_y=None)
+            details_layout.bind(minimum_height=details_layout.setter('height'))
+
+            # Заголовок раздела пород
+            species_title = Label(
+                text='РАСПРЕДЕЛЕНИЕ ПО ПОРОДАМ:',
+                font_name='Roboto',
+                font_size='18sp',
+                bold=True,
+                color=(0, 0, 0, 1),
+                size_hint=(1, None),
+                height=40,
+                halign='center'
+            )
+            details_layout.add_widget(species_title)
+
+            # Детали по каждой породе
+            species_summary = totals_data.get('species_summary', {})
+            for species, data in sorted(species_summary.items()):
+                count = data['count']
+                diameters = data['diameters']
+                heights = data['heights']
+                ages = data['ages']
+
+                avg_diameter = sum(diameters) / len(diameters) if diameters else 0
+                avg_height = sum(heights) / len(heights) if heights else 0
+
+                species_text = f"""
+Порода: {species}
+• Количество деревьев: {count}
+• Средний диаметр: {avg_diameter:.1f} см (измерено: {len(diameters)})
+• Средняя высота: {avg_height:.1f} м (измерено: {len(heights)})
+• Возраста: {', '.join(ages[:10])}{'...' if len(ages) > 10 else ''}  # Показываем первые 10 возрастов
+"""
+
+                species_label = Label(
+                    text=species_text,
+                    font_name='Roboto',
+                    font_size='14sp',
+                    color=(0, 0, 0.5, 1),
+                    size_hint=(1, None),
+                    height=120,
+                    halign='left',
+                    valign='top'
+                )
+                species_label.bind(size=lambda *args: setattr(species_label, 'text_size', (species_label.width, None)))
+                details_layout.add_widget(species_label)
+
+            scroll.add_widget(details_layout)
+            content.add_widget(scroll)
+
+            # Кнопка закрытия
+            close_btn = ModernButton(
+                text='Закрыть',
+                bg_color=get_color_from_hex('#808080'),
+                size_hint=(1, None),
+                height=50
+            )
+            content.add_widget(close_btn)
+
+            popup = Popup(
+                title="Итоги перечетной ведомости",
+                content=content,
+                size_hint=(0.9, 0.9)
+            )
+
+            close_btn.bind(on_press=popup.dismiss)
+            popup.open()
+
+        except Exception as e:
+            import traceback
+            self.show_error(f"Ошибка расчета итогов: {str(e)}\n{traceback.format_exc()}")
 
 class ThemeChooser(Popup):
     def __init__(self, **kwargs):

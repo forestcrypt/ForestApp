@@ -645,7 +645,7 @@ class MolodnikiTreeDataInputPopup(Popup):
                         else:
                             breed_data[key] = float(inp.text)
                     except ValueError:
-                        breed_data[key] = inp.text
+                        breed_data[key] = 0 if key in ['density', 'age', 'do_05', '05_15', 'bolee_15'] else 0.0
 
             existing_breeds = self.table_screen.parse_breeds_data(instance.text)
             existing_breeds.append(breed_data)
@@ -671,7 +671,8 @@ class MolodnikiTreeDataInputPopup(Popup):
 
         def save_breeds(btn):
             existing_breeds = self.table_screen.parse_breeds_data(instance.text)
-            existing_breeds.append(breed_data)
+            if not existing_breeds:
+                existing_breeds = []
             instance.text = json.dumps(existing_breeds, ensure_ascii=False, indent=2)
 
             # Update the main table input to reflect the changes immediately
@@ -864,6 +865,8 @@ class ExtendedMolodnikiTableScreen(Screen):
     current_plot = StringProperty("")
     current_forestry = StringProperty("")
     current_radius = StringProperty("5.64")
+    current_plot_area_ha = StringProperty("")
+    plot_area_input = StringProperty("")
     MAX_PAGES = 200
 
     def __init__(self, **kwargs):
@@ -969,7 +972,7 @@ class ExtendedMolodnikiTableScreen(Screen):
         # Адресная строка с кнопками
         address_layout = BoxLayout(orientation='horizontal', size_hint=(1, None), height=35, spacing=5)
 
-        # Кнопки Квартал, Выдел, Лесничество, Радиус
+        # Кнопки Квартал, Выдел, Лесничество, Радиус, Площадь участка
         quarter_btn = ModernButton(
             text='Квартал',
             bg_color=get_color_from_hex('#87CEEB'),
@@ -1006,10 +1009,20 @@ class ExtendedMolodnikiTableScreen(Screen):
         )
         radius_btn.bind(on_press=self.show_radius_popup)
 
+        plot_area_combined_btn = ModernButton(
+            text='Площадь участка',
+            bg_color=get_color_from_hex('#32CD32'),
+            size_hint=(None, None),
+            size=(180, 35),
+            font_size='14sp'
+        )
+        plot_area_combined_btn.bind(on_press=self.show_plot_area_input_popup)
+
         address_layout.add_widget(quarter_btn)
         address_layout.add_widget(plot_btn)
         address_layout.add_widget(forestry_btn)
         address_layout.add_widget(radius_btn)
+        address_layout.add_widget(plot_area_combined_btn)
 
         # Адресная строка (текстовое поле для отображения адреса)
         self.address_label = Label(
@@ -1780,6 +1793,658 @@ class ExtendedMolodnikiTableScreen(Screen):
             breeds_data.pop(breed_index)
             instance.text = json.dumps(breeds_data, ensure_ascii=False, indent=2) if breeds_data else ''
         self.update_totals()
+        self.show_success("Порода удалена!")
+        if hasattr(self, 'popup') and self.popup:
+            self.popup.dismiss()
+
+    def save_totals_to_excel(self, breeds_data, current_radius, plot_area_ha, plot_count, total_plot_area_ha):
+        """Сохранить итоговые данные в Excel на новом листе"""
+        filename = f"Итоги_молодняков_{self.current_section}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M')}.xlsx"
+        full_path = os.path.join(self.reports_dir, filename)
+
+        try:
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Итоги"
+
+            # Заголовок
+            ws['A1'] = f'ИТОГИ ПО УЧАСТКУ МОЛОДНЯКОВ - {self.current_section}'
+            ws['A1'].font = openpyxl.styles.Font(bold=True, size=14)
+            ws.merge_cells('A1:E1')
+
+            # Информация о радиусе
+            ws['A3'] = f'Радиус участка: {current_radius:.2f} м'
+            ws['A4'] = f'1 дерево = {10000 / (3.14159 * (current_radius ** 2)):.0f} тыс.шт./га'
+
+            # Коэффициент состава
+            ws['A6'] = 'КОЭФФИЦИЕНТ СОСТАВА НАСАЖДЕНИЯ'
+            ws['A6'].font = openpyxl.styles.Font(bold=True, size=12)
+
+            # Расчет коэффициента состава
+            total_densities = {}
+            for breed_name, data in breeds_data.items():
+                if data['plots']:
+                    if data['plots'][0].get('type') == 'coniferous':
+                        total_density = 0
+                        for p in data['plots']:
+                            conif_density = (p.get('do_05_density', 0) + p.get('05_15_density', 0) + p.get('bolee_15_density', 0))
+                            total_density += conif_density
+                    else:
+                        total_density = sum(p.get('density', 0) for p in data['plots'])
+                    if total_density > 0:
+                        total_densities[breed_name] = total_density
+
+            if total_densities:
+                total_all_density = sum(total_densities.values())
+                composition_parts = []
+                for breed_name, density in sorted(total_densities.items(), key=lambda x: x[1], reverse=True):
+                    if total_all_density > 0:
+                        coeff = max(1, round(density / total_all_density * 10))
+                    else:
+                        coeff = 1
+                    breed_letter = self.get_breed_letter(breed_name)
+                    composition_parts.append(f"{coeff}{breed_letter}")
+
+                coeffs_only = [int(''.join(filter(str.isdigit, part))) for part in composition_parts]
+                total_coeffs = sum(coeffs_only)
+                iterations = 0
+                while total_coeffs != 10 and iterations < 100:
+                    if total_coeffs > 10:
+                        max_idx = coeffs_only.index(max(coeffs_only))
+                        coeffs_only[max_idx] -= 1
+                    elif total_coeffs < 10:
+                        max_idx = coeffs_only.index(max(coeffs_only))
+                        coeffs_only[max_idx] += 1
+                    total_coeffs = sum(coeffs_only)
+                    iterations += 1
+
+                sorted_breeds = sorted(total_densities.items(), key=lambda x: x[1], reverse=True)
+                composition_parts = []
+                for i, (breed_name, _) in enumerate(sorted_breeds):
+                    if i < len(coeffs_only):
+                        breed_letter = self.get_breed_letter(breed_name)
+                        composition_parts.append(f"{coeffs_only[i]}{breed_letter}")
+
+                composition_text = ''.join(composition_parts) + "Др"
+                ws['A7'] = f"Формула состава: {composition_text}"
+
+            # Хвойные породы
+            row = 9
+            ws[f'A{row}'] = 'ХВОЙНЫЕ ПОРОДЫ - ВЫСОТА ПО ГРАДАЦИЯМ'
+            ws[f'A{row}'].font = openpyxl.styles.Font(bold=True, size=12)
+
+            has_coniferous = False
+            for breed_name, data in sorted(breeds_data.items()):
+                if data['type'] == 'coniferous' and data['plots']:
+                    has_coniferous = True
+                    row += 1
+                    zones = data.get('coniferous_zones', {})
+                    avg_do_05 = zones.get('do_05', 0) / len(data['plots']) if data['plots'] else 0
+                    avg_05_15 = zones.get('05_15', 0) / len(data['plots']) if data['plots'] else 0
+                    avg_bolee_15 = zones.get('bolee_15', 0) / len(data['plots']) if data['plots'] else 0
+                    avg_height_total = sum(p['height'] for p in data['plots'] if p['height'] > 0) / len([p for p in data['plots'] if p['height'] > 0]) if any(p['height'] > 0 for p in data['plots']) else 0
+
+                    ws[f'A{row}'] = f"{breed_name}:"
+                    ws[f'B{row}'] = f"до 0.5м: {avg_do_05:.1f} шт/га"
+                    row += 1
+                    ws[f'B{row}'] = f"0.5-1.5м: {avg_05_15:.1f} шт/га"
+                    row += 1
+                    ws[f'B{row}'] = f">1.5м: {avg_bolee_15:.1f} шт/га"
+                    row += 1
+                    ws[f'B{row}'] = f"средняя высота породы: {avg_height_total:.1f}м"
+                    row += 1
+
+            # Лиственные породы
+            if has_coniferous:
+                row += 1
+            ws[f'A{row}'] = 'ЛИСТВЕННЫЕ ПОРОДЫ - СРЕДНИЕ ПОКАЗАТЕЛИ'
+            ws[f'A{row}'].font = openpyxl.styles.Font(bold=True, size=12)
+
+            has_deciduous = False
+            for breed_name, data in sorted(breeds_data.items()):
+                if data['type'] == 'deciduous' and data['plots']:
+                    has_deciduous = True
+                    row += 1
+                    avg_density = sum(p['density'] for p in data['plots']) / len(data['plots'])
+                    avg_heights = [p['height'] for p in data['plots'] if p['height'] > 0]
+                    avg_height = sum(avg_heights) / len(avg_heights) if avg_heights else 0
+                    avg_ages = [p['age'] for p in data['plots'] if p['age'] > 0]
+                    avg_age = sum(avg_ages) / len(avg_ages) if avg_ages else 0
+
+                    ws[f'A{row}'] = f"{breed_name}:"
+                    ws[f'B{row}'] = f"Средняя густота: {avg_density:.1f} шт/га"
+                    row += 1
+                    ws[f'B{row}'] = f"Средняя высота: {avg_height:.1f}м"
+                    row += 1
+                    ws[f'B{row}'] = f"Средний возраст: {avg_age:.1f} лет"
+                    row += 1
+
+            # Автоподбор ширины столбцов
+            for column in ws.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+                for cell in column:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 50)
+                ws.column_dimensions[column_letter].width = adjusted_width
+
+            wb.save(full_path)
+            self.show_success(f"Итоги сохранены в Excel: {filename}")
+        except Exception as e:
+            self.show_error(f"Ошибка сохранения итогов в Excel: {str(e)}")
+
+    def save_totals_to_word(self, breeds_data, current_radius, plot_area_ha, plot_count, total_plot_area_ha):
+        """Сохранить итоговые данные в Word"""
+        try:
+            from docx import Document
+            from docx.shared import Inches
+
+            filename = f"Итоги_молодняков_{self.current_section}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M')}.docx"
+            full_path = os.path.join(self.reports_dir, filename)
+
+            doc = Document()
+            doc.add_heading(f'ИТОГИ ПО УЧАСТКУ МОЛОДНЯКОВ - {self.current_section}', 0)
+
+            # Информация о радиусе
+            doc.add_paragraph(f'Радиус участка: {current_radius:.2f} м')
+            doc.add_paragraph(f'1 дерево = {10000 / (3.14159 * (current_radius ** 2)):.0f} тыс.шт./га')
+
+            # Коэффициент состава
+            doc.add_heading('КОЭФФИЦИЕНТ СОСТАВА НАСАЖДЕНИЯ', level=2)
+
+            total_densities = {}
+            for breed_name, data in breeds_data.items():
+                if data['plots']:
+                    if data['plots'][0].get('type') == 'coniferous':
+                        total_density = 0
+                        for p in data['plots']:
+                            conif_density = (p.get('do_05_density', 0) + p.get('05_15_density', 0) + p.get('bolee_15_density', 0))
+                            total_density += conif_density
+                    else:
+                        total_density = sum(p.get('density', 0) for p in data['plots'])
+                    if total_density > 0:
+                        total_densities[breed_name] = total_density
+
+            if total_densities:
+                total_all_density = sum(total_densities.values())
+                composition_parts = []
+                for breed_name, density in sorted(total_densities.items(), key=lambda x: x[1], reverse=True):
+                    if total_all_density > 0:
+                        coeff = max(1, round(density / total_all_density * 10))
+                    else:
+                        coeff = 1
+                    breed_letter = self.get_breed_letter(breed_name)
+                    composition_parts.append(f"{coeff}{breed_letter}")
+
+                coeffs_only = [int(''.join(filter(str.isdigit, part))) for part in composition_parts]
+                total_coeffs = sum(coeffs_only)
+                iterations = 0
+                while total_coeffs != 10 and iterations < 100:
+                    if total_coeffs > 10:
+                        max_idx = coeffs_only.index(max(coeffs_only))
+                        coeffs_only[max_idx] -= 1
+                    elif total_coeffs < 10:
+                        max_idx = coeffs_only.index(max(coeffs_only))
+                        coeffs_only[max_idx] += 1
+                    total_coeffs = sum(coeffs_only)
+                    iterations += 1
+
+                sorted_breeds = sorted(total_densities.items(), key=lambda x: x[1], reverse=True)
+                composition_parts = []
+                for i, (breed_name, _) in enumerate(sorted_breeds):
+                    if i < len(coeffs_only):
+                        breed_letter = self.get_breed_letter(breed_name)
+                        composition_parts.append(f"{coeffs_only[i]}{breed_letter}")
+
+                composition_text = ''.join(composition_parts) + "Др"
+                doc.add_paragraph(f"Формула состава: {composition_text}")
+
+            # Хвойные породы
+            doc.add_heading('ХВОЙНЫЕ ПОРОДЫ - ВЫСОТА ПО ГРАДАЦИЯМ', level=2)
+
+            has_coniferous = False
+            for breed_name, data in sorted(breeds_data.items()):
+                if data['type'] == 'coniferous' and data['plots']:
+                    has_coniferous = True
+                    zones = data.get('coniferous_zones', {})
+                    avg_do_05 = zones.get('do_05', 0) / len(data['plots']) if data['plots'] else 0
+                    avg_05_15 = zones.get('05_15', 0) / len(data['plots']) if data['plots'] else 0
+                    avg_bolee_15 = zones.get('bolee_15', 0) / len(data['plots']) if data['plots'] else 0
+                    avg_height_total = sum(p['height'] for p in data['plots'] if p['height'] > 0) / len([p for p in data['plots'] if p['height'] > 0]) if any(p['height'] > 0 for p in data['plots']) else 0
+
+                    p = doc.add_paragraph()
+                    p.add_run(f"{breed_name}:").bold = True
+                    doc.add_paragraph(f"• до 0.5м: {avg_do_05:.1f} шт/га")
+                    doc.add_paragraph(f"• 0.5-1.5м: {avg_05_15:.1f} шт/га")
+                    doc.add_paragraph(f"• >1.5м: {avg_bolee_15:.1f} шт/га")
+                    doc.add_paragraph(f"• средняя высота породы: {avg_height_total:.1f}м")
+
+            # Лиственные породы
+            doc.add_heading('ЛИСТВЕННЫЕ ПОРОДЫ - СРЕДНИЕ ПОКАЗАТЕЛИ', level=2)
+
+            has_deciduous = False
+            for breed_name, data in sorted(breeds_data.items()):
+                if data['type'] == 'deciduous' and data['plots']:
+                    has_deciduous = True
+                    avg_density = sum(p['density'] for p in data['plots']) / len(data['plots'])
+                    avg_heights = [p['height'] for p in data['plots'] if p['height'] > 0]
+                    avg_height = sum(avg_heights) / len(avg_heights) if avg_heights else 0
+                    avg_ages = [p['age'] for p in data['plots'] if p['age'] > 0]
+                    avg_age = sum(avg_ages) / len(avg_ages) if avg_ages else 0
+
+                    p = doc.add_paragraph()
+                    p.add_run(f"{breed_name}:").bold = True
+                    doc.add_paragraph(f"• Средняя густота: {avg_density:.1f} шт/га")
+                    doc.add_paragraph(f"• Средняя высота: {avg_height:.1f}м")
+                    doc.add_paragraph(f"• Средний возраст: {avg_age:.1f} лет")
+
+            doc.save(full_path)
+            self.show_success(f"Итоги сохранены в Word: {filename}")
+        except ImportError:
+            self.show_error("Для сохранения в Word установите библиотеку python-docx: pip install python-docx")
+        except Exception as e:
+            self.show_error(f"Ошибка сохранения итогов в Word: {str(e)}")
+
+    def show_plot_area_input_popup(self, instance):
+        """Показать popup для ввода площади участка в гектарах"""
+        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+
+        title_label = Label(
+            text="Введите площадь обследуемого участка",
+            font_name='Roboto',
+            font_size='18sp',
+            bold=True,
+            color=(0, 0.5, 0, 1),
+            size_hint=(1, None),
+            height=40
+        )
+        content.add_widget(title_label)
+
+        self.plot_area_input_field = TextInput(
+            hint_text="Площадь участка (га)",
+            multiline=False,
+            size_hint=(1, None),
+            height=50,
+            font_name='Roboto',
+            input_filter='float',
+            text=self.plot_area_input if hasattr(self, 'plot_area_input') and self.plot_area_input else ''
+        )
+        content.add_widget(self.plot_area_input_field)
+
+        info_label = Label(
+            text="Укажите площадь обследуемого участка в гектарах.\n"
+                 "Это значение используется для расчета площади перечета\n"
+                 "по всем площадкам и отображается в итоговых отчетах.",
+            font_name='Roboto',
+            font_size='14sp',
+            color=(0.3, 0.3, 0.3, 1),
+            size_hint=(1, None),
+            height=80,
+            halign='left',
+            valign='top'
+        )
+        info_label.bind(size=lambda *args: setattr(info_label, 'text_size', (info_label.width, None)))
+        content.add_widget(info_label)
+
+        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
+        save_btn = ModernButton(
+            text='Сохранить',
+            bg_color=get_color_from_hex('#00FF00'),
+            size_hint=(0.5, 1),
+            height=50
+        )
+        cancel_btn = ModernButton(
+            text='Отмена',
+            bg_color=get_color_from_hex('#FF6347'),
+            size_hint=(0.5, 1),
+            height=50
+        )
+        btn_layout.add_widget(save_btn)
+        btn_layout.add_widget(cancel_btn)
+        content.add_widget(btn_layout)
+
+        popup = Popup(
+            title="Площадь участка",
+            content=content,
+            size_hint=(0.8, 0.6)
+        )
+
+        def save_plot_area(btn):
+            try:
+                plot_area = float(self.plot_area_input_field.text.strip())
+                if plot_area <= 0:
+                    self.show_error("Площадь участка должна быть положительным числом!")
+                    return
+
+                self.plot_area_input = str(plot_area)
+                self.show_success(f"Площадь участка {plot_area} га сохранена")
+                popup.dismiss()
+
+            except ValueError:
+                self.show_error("Введите корректное числовое значение площади!")
+
+        save_btn.bind(on_press=save_plot_area)
+        cancel_btn.bind(on_press=popup.dismiss)
+
+        popup.open()
+
+    def show_plot_area_ha_popup(self, instance):
+        """Показать popup с информацией о площади участка в гектарах"""
+        try:
+            current_radius = float(self.current_radius) if self.current_radius else 5.64
+            plot_area_m2 = 3.14159 * (current_radius ** 2)
+            plot_area_ha = plot_area_m2 / 10000
+
+            # Расчет площади перечета по всем площадкам
+            total_plot_area_ha = 0.0
+            plot_count = 0
+
+            for page_num, page_rows in self.page_data.items():
+                for row in page_rows:
+                    if len(row) >= 4 and row[3]:  # Есть данные о породах
+                        try:
+                            breeds_data = json.loads(row[3]) if isinstance(row[3], str) else []
+                            if breeds_data:
+                                plot_count += 1
+                                total_plot_area_ha += plot_area_ha
+                        except (json.JSONDecodeError, TypeError):
+                            continue
+
+            content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+
+            title_label = Label(
+                text="Площадь участка в гектарах",
+                font_name='Roboto',
+                font_size='18sp',
+                bold=True,
+                color=(0, 0.5, 0, 1),
+                size_hint=(1, None),
+                height=40
+            )
+            content.add_widget(title_label)
+
+            info_text = f"""
+Одиночная площадка:
+Радиус: {current_radius:.2f} м
+Площадь: {plot_area_ha:.4f} га
+
+Всего площадок: {plot_count}
+Совокупная площадь перечета: {total_plot_area_ha:.4f} га
+
+Расчет совокупной площади:
+{plot_count} площадок × {plot_area_ha:.4f} га = {total_plot_area_ha:.4f} га
+
+Пример расчета густоты на гектар:
+Если на площадке 10 деревьев, то густота = 10 / {plot_area_ha:.4f} ≈ {10/plot_area_ha:.1f} шт/га
+"""
+
+            info_label = Label(
+                text=info_text,
+                font_name='Roboto',
+                font_size='14sp',
+                color=(0, 0, 0, 1),
+                size_hint=(1, None),
+                height=250,
+                halign='left',
+                valign='top'
+            )
+            info_label.bind(size=lambda *args: setattr(info_label, 'text_size', (info_label.width, None)))
+            content.add_widget(info_label)
+
+            close_btn = ModernButton(
+                text='Закрыть',
+                bg_color=get_color_from_hex('#808080'),
+                size_hint=(1, None),
+                height=50
+            )
+            content.add_widget(close_btn)
+
+            popup = Popup(
+                title="Площадь участка (га)",
+                content=content,
+                size_hint=(0.8, 0.8)
+            )
+
+            close_btn.bind(on_press=popup.dismiss)
+            popup.open()
+
+        except Exception as e:
+            self.show_error(f"Ошибка расчета площади: {str(e)}")
+
+    def show_plot_area_combined_popup(self, instance):
+        """Показать объединенное popup для работы с площадью участка"""
+        content = BoxLayout(orientation='vertical', spacing=20, padding=20)
+
+        try:
+            current_radius = float(self.current_radius) if self.current_radius else 5.64
+            plot_area_m2 = 3.14159 * (current_radius ** 2)
+            plot_area_ha = plot_area_m2 / 10000
+
+            # Расчет площади перечета по всем площадкам
+            total_plot_area_ha = 0.0
+            plot_count = 0
+
+            for page_num, page_rows in self.page_data.items():
+                for row in page_rows:
+                    if len(row) >= 4 and row[3]:  # Есть данные о породах
+                        try:
+                            breeds_data = json.loads(row[3]) if isinstance(row[3], str) else []
+                            if breeds_data:
+                                plot_count += 1
+                                total_plot_area_ha += plot_area_ha
+                        except (json.JSONDecodeError, TypeError):
+                            continue
+
+            title_label = Label(
+                text="Площадь участка",
+                font_name='Roboto',
+                font_size='20sp',
+                bold=True,
+                color=(0, 0.5, 0, 1),
+                size_hint=(1, None),
+                height=50,
+                halign='center'
+            )
+            content.add_widget(title_label)
+
+            # Раздел ввода площади участка
+            input_section = BoxLayout(orientation='vertical', spacing=10, size_hint=(1, None), height=120)
+
+            input_title = Label(
+                text="Ввод площади участка",
+                font_name='Roboto',
+                font_size='16sp',
+                bold=True,
+                size_hint=(1, None),
+                height=30,
+                halign='center'
+            )
+            input_section.add_widget(input_title)
+
+            plot_area_input_field = TextInput(
+                hint_text="Площадь участка (га)",
+                multiline=False,
+                size_hint=(1, None),
+                height=50,
+                font_name='Roboto',
+                input_filter='float',
+                text=str(self._get_current_plot_area_input()) if hasattr(self, 'plot_area_input') and self.plot_area_input else ''
+            )
+            input_section.add_widget(plot_area_input_field)
+
+            content.add_widget(input_section)
+
+            # Раздел информации о площади
+            info_label = Label(
+                text="Информация о площади участка:",
+                font_name='Roboto',
+                font_size='16sp',
+                bold=True,
+                size_hint=(1, None),
+                height=30,
+                halign='center'
+            )
+            content.add_widget(info_label)
+
+            info_text = ScrollView(size_hint=(1, None), height=250)
+            info_layout = BoxLayout(orientation='vertical', spacing=5, padding=10, size_hint_y=None)
+            info_layout.bind(minimum_height=info_layout.setter('height'))
+
+            info_data = Label(
+                text=f"""Одиночная площадка:
+Радиус: {current_radius:.2f} м
+Площадь: {plot_area_ha:.4f} га
+
+Всего площадок: {plot_count}
+Совокупная площадь перечета: {total_plot_area_ha:.4f} га
+
+Расчет совокупной площади:
+{plot_count} площадок × {plot_area_ha:.4f} га = {total_plot_area_ha:.4f} га
+
+Пример расчета густоты на гектар:
+Если на площадке 10 деревьев, то густота = 10 / {plot_area_ha:.4f} ≈ {10/plot_area_ha:.1f} шт/га""",
+                font_name='Roboto',
+                font_size='14sp',
+                color=(0, 0, 0, 1),
+                size_hint=(1, None),
+                height=200,
+                halign='left',
+                valign='top'
+            )
+            info_data.bind(size=lambda *args: setattr(info_data, 'text_size', (info_data.width, None)))
+            info_layout.add_widget(info_data)
+            info_text.add_widget(info_layout)
+
+            content.add_widget(info_text)
+
+            # Кнопки управления (объединение сохранения и обновления в одну кнопку)
+            btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=60)
+
+            combined_btn = ModernButton(
+                text='Сохранить и обновить',
+                bg_color=get_color_from_hex('#00FF00'),
+                size_hint=(0.7, 1),
+                height=60
+            )
+
+            close_btn = ModernButton(
+                text='Закрыть',
+                bg_color=get_color_from_hex('#FF6347'),
+                size_hint=(0.3, 1),
+                height=60
+            )
+
+            btn_layout.add_widget(combined_btn)
+            btn_layout.add_widget(close_btn)
+
+            content.add_widget(btn_layout)
+
+            popup = Popup(
+                title="Площадь участка",
+                content=content,
+                size_hint=(0.8, 0.9)
+            )
+
+            def save_and_refresh(btn):
+                # Сначала сохраняем площадь участка
+                try:
+                    plot_area = float(plot_area_input_field.text.strip())
+                    if plot_area <= 0:
+                        self.show_error("Площадь участка должна быть положительным числом!")
+                        return
+
+                    self.plot_area_input = str(plot_area)
+                    self.show_success(f"Площадь участка {plot_area} га сохранена")
+                except ValueError:
+                    self.show_error("Введите корректное числовое значение площади!")
+                    return
+
+                # Затем обновляем информацию о площади
+                popup.dismiss()
+                self.show_plot_area_combined_popup(instance)
+
+            combined_btn.bind(on_press=save_and_refresh)
+            close_btn.bind(on_press=popup.dismiss)
+
+            popup.open()
+
+        except Exception as e:
+            self.show_error(f"Ошибка расчета площади: {str(e)}")
+
+    def _get_current_plot_area_input(self):
+        """Получить текущее значение площади участка"""
+        # If stored in instance variable
+        if hasattr(self, 'plot_area_input') and self.plot_area_input:
+            return self.plot_area_input
+        return ''
+
+    def update_plot_total(self, instance, value):
+        """Обновляем итог по площадке при изменении данных"""
+        row_idx = instance.row_index
+
+        breeds_text = self.inputs[row_idx][3].text
+        breeds_data = self.parse_breeds_data(breeds_text)
+
+        if not breeds_data:
+            return
+
+        total_density = 0
+        total_height = 0.0
+        total_age = 0
+        breed_count = 0
+        breed_names = []
+
+        for breed_info in breeds_data:
+            breed_count += 1
+            breed_name = breed_info.get('name', 'Неизвестная')
+            breed_names.append(breed_name)
+
+            if breed_info.get('type') == 'coniferous':
+                coniferous_density = (breed_info.get('do_05', 0) +
+                                    breed_info.get('05_15', 0) +
+                                    breed_info.get('bolee_15', 0))
+                if coniferous_density > 0:
+                    total_density += coniferous_density
+            elif 'density' in breed_info and breed_info['density']:
+                total_density += breed_info['density']
+
+            if 'height' in breed_info and breed_info['height']:
+                total_height += breed_info['height']
+            if 'age' in breed_info and breed_info['age']:
+                total_age += breed_info['age']
+
+        # Метод завершен
+
+    def _get_current_plot_area_input(self):
+        """Получить текущее значение площади участка"""
+        # If stored in instance variable
+        if hasattr(self, 'plot_area_input') and self.plot_area_input:
+            return self.plot_area_input
+        return ''
+        if total_density > 0:
+            summary_parts.append(f"Общая густота: {total_density}")
+        if total_height > 0:
+            avg_height = total_height / breed_count if breed_count > 0 else 0
+            summary_parts.append(f"Средняя высота: {avg_height:.1f}м")
+        if total_age > 0:
+            avg_age = total_age / breed_count if breed_count > 0 else 0
+            summary_parts.append(f"Средний возраст: {avg_age:.1f} лет")
+
+        self.update_totals()
+        if total_density > 0:
+            summary_parts.append(f"Общая густота: {total_density}")
+        if total_height > 0:
+            avg_height = total_height / breed_count if breed_count > 0 else 0
+            summary_parts.append(f"Средняя высота: {avg_height:.1f}м")
+        if total_age > 0:
+            avg_age = total_age / breed_count if breed_count > 0 else 0
+            summary_parts.append(f"Средний возраст: {avg_age:.1f} лет")
+
+        self.update_totals()
 
     def get_breed_letter(self, breed_name):
         """Получение первой буквы для коэффициента состава породы"""
@@ -1880,7 +2545,8 @@ class ExtendedMolodnikiTableScreen(Screen):
             'export_date': datetime.datetime.now().isoformat()
         }
 
-        filename = f"Молодняки_приложение_{self.current_section}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M')}.json"
+        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M')
+        filename = f"Молодняки_{self.current_section}_{timestamp}.json"
         full_path = os.path.join(self.reports_dir, filename)
 
         try:
@@ -1892,7 +2558,8 @@ class ExtendedMolodnikiTableScreen(Screen):
 
     def save_to_excel_without_dialog(self):
         """Сохранение в Excel без диалога"""
-        filename = f"Молодняки_расширенный_{self.current_section}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M')}.xlsx"
+        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M')
+        filename = f"Молодняки_{self.current_section}_{timestamp}.xlsx"
         full_path = os.path.join(self.reports_dir, filename)
 
         try:
@@ -1913,6 +2580,16 @@ class ExtendedMolodnikiTableScreen(Screen):
             address_text = " | ".join(address_parts) if address_parts else "Адрес не указан"
             ws['A1'] = f"Адрес: {address_text}"
             ws['A1'].font = openpyxl.styles.Font(bold=True, size=12)
+
+            # Расчет площади перечета
+            current_radius = float(self.current_radius) if self.current_radius else 5.64
+            plot_area_m2 = 3.14159 * (current_radius ** 2)
+            plot_area_ha = plot_area_m2 / 10000
+            plot_count = len([row for page in self.page_data.values() for row in page if any(cell for cell in row[:3] if cell)])
+            total_plot_area_ha = plot_count * plot_area_ha
+
+            ws['A2'] = f"Площадь перечета: {total_plot_area_ha:.4f} га ({total_plot_area_ha*10000:.0f} м²) - {plot_count} площадок по {plot_area_ha:.4f} га каждая"
+            ws['A2'].font = openpyxl.styles.Font(bold=True, size=10)
 
             ws.append([])
 
@@ -1978,7 +2655,7 @@ class ExtendedMolodnikiTableScreen(Screen):
                                 current_row += 1
                     else:
                         # Если нет пород, добавить строку без данных
-                        processed_row = [row[0], row[1], row[2], '', '', '', '', row[4], row[5]]
+                        processed_row = [row[0], row[1], row[2], '', '', '', '', '', '', '', row[4], row[5]]
                         ws.append(processed_row)
                         current_row += 1
 
@@ -2004,11 +2681,22 @@ class ExtendedMolodnikiTableScreen(Screen):
         try:
             from docx import Document
 
-            filename = f"Молодняки_расширенный_{self.current_section}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M')}.docx"
+            timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M')
+            filename = f"Молодняки_{self.current_section}_{timestamp}.docx"
             full_path = os.path.join(self.reports_dir, filename)
 
             doc = Document()
             doc.add_heading(f'Расширенный отчет по молоднякам - Участок {self.current_section}', 0)
+
+            # Расчет площади перечета
+            current_radius = float(self.current_radius) if self.current_radius else 5.64
+            plot_area_m2 = 3.14159 * (current_radius ** 2)
+            plot_area_ha = plot_area_m2 / 10000
+            plot_count = len([row for page in self.page_data.values() for row in page if any(cell for cell in row[:3] if cell)])
+            total_plot_area_ha = plot_count * plot_area_ha
+
+            # Добавляем информацию о площади перечета
+            doc.add_paragraph(f"Площадь перечета: {total_plot_area_ha:.4f} га ({total_plot_area_ha*10000:.0f} м²) - {plot_count} площадок по {plot_area_ha:.4f} га каждая")
 
             all_data = []
             for page in sorted(self.page_data.keys()):
@@ -2096,31 +2784,75 @@ class ExtendedMolodnikiTableScreen(Screen):
         success_messages = []
         error_messages = []
 
-        # Сохранение в JSON
-        result, error = self.save_to_json()
-        if result:
-            success_messages.append(result)
-        else:
-            error_messages.append(error)
+        # Проверка наличия данных
+        if not self.page_data:
+            error_messages.append("Нет данных для сохранения!")
+            self.show_error("Ошибки сохранения:\n" + "\n".join(error_messages))
+            return
 
-        # Сохранение в Excel
-        result, error = self.save_to_excel_without_dialog()
-        if result:
-            success_messages.append(result)
-        else:
-            error_messages.append(error)
+        # Проверка наличия участка
+        if not self.current_section:
+            error_messages.append("Не указан номер участка!")
+            self.show_error("Ошибки сохранения:\n" + "\n".join(error_messages))
+            return
 
-        # Сохранение в Word
-        result, error = self.save_to_word_without_dialog()
-        if result:
-            success_messages.append(result)
-        else:
-            error_messages.append(error)
+        # Валидация радиуса
+        try:
+            radius = float(self.current_radius) if self.current_radius else 5.64
+            if radius <= 0:
+                error_messages.append("Радиус должен быть положительным числом!")
+                self.show_error("Ошибки сохранения:\n" + "\n".join(error_messages))
+                return
+        except (ValueError, TypeError):
+            error_messages.append("Некорректное значение радиуса!")
+            self.show_error("Ошибки сохранения:\n" + "\n".join(error_messages))
+            return
+
+        # Автоматически сохраняем текущую страницу перед сохранением отчёта
+        if not self.save_current_page():
+            error_messages.append("Не удалось сохранить текущую страницу в базу данных!")
+            self.show_error("Ошибки сохранения:\n" + "\n".join(error_messages))
+            return
+
+        # Проверка существования папки reports
+        if not os.path.exists(self.reports_dir):
+            try:
+                os.makedirs(self.reports_dir, exist_ok=True)
+            except Exception as e:
+                error_messages.append(f"Не удалось создать папку reports: {str(e)}")
+                self.show_error("Ошибки сохранения:\n" + "\n".join(error_messages))
+                return
+
+        try:
+            # Сохранение в JSON
+            result, error = self.save_to_json()
+            if result:
+                success_messages.append(result)
+            else:
+                error_messages.append(error)
+
+            # Сохранение в Excel
+            result, error = self.save_to_excel_without_dialog()
+            if result:
+                success_messages.append(result)
+            else:
+                error_messages.append(error)
+
+            # Сохранение в Word
+            result, error = self.save_to_word_without_dialog()
+            if result:
+                success_messages.append(result)
+            else:
+                error_messages.append(error)
+
+        except Exception as e:
+            import traceback
+            error_messages.append(f"Общая ошибка: {str(e)}\n{traceback.format_exc()}")
 
         if success_messages:
             self.show_success("Файлы сохранены:\n" + "\n".join(success_messages))
         if error_messages:
-            self.show_error("\n".join(error_messages))
+            self.show_error("Ошибки сохранения:\n" + "\n".join(error_messages))
 
     def show_edit_breed_popup(self, instance, breed_index, breed_info):
         """Показать popup для редактирования породы"""
@@ -2218,6 +2950,8 @@ class ExtendedMolodnikiTableScreen(Screen):
                 instance.text = json.dumps(breeds_data, ensure_ascii=False, indent=2)
                 self.update_totals()
                 self.show_success("Порода обновлена!")
+                if hasattr(self.table_screen, 'popup') and self.table_screen.popup:
+                    self.table_screen.popup.dismiss()
                 popup.dismiss()
 
         save_btn.bind(on_press=save_edit)
@@ -2698,13 +3432,22 @@ class ExtendedMolodnikiTableScreen(Screen):
             breeds_text = row_data[3]
             if breeds_text:
                 breeds_data = self.parse_breeds_data(breeds_text)
-                for breed_info in breeds_data:
-                    if breed_info.get('type') == 'deciduous':
-                        deciduous_density = breed_info.get('density', 0) * 10000 / plot_area_m2 if plot_area_m2 > 0 else 0
-                        height = breed_info.get('height', 0)
-                        age = breed_info.get('age', 0)
-                        if deciduous_density > 0 or height > 0 or age > 0:
-                            deciduous_stats.append({'density': deciduous_density, 'height': height, 'age': age})
+                if breeds_data:
+                    deciduous_density_total = 0
+                    deciduous_height = []
+                    deciduous_age = []
+                    for breed_info in breeds_data:
+                        if breed_info.get('type') == 'deciduous':
+                            deciduous_density_total += breed_info.get('density', 0)
+                            if breed_info.get('height', 0) > 0:
+                                deciduous_height.append(breed_info['height'])
+                            if breed_info.get('age', 0) > 0:
+                                deciduous_age.append(breed_info['age'])
+                    if deciduous_height or deciduous_age:
+                        deciduous_density_ha = deciduous_density_total
+                        avg_height = sum(deciduous_height) / len(deciduous_height) if deciduous_height else 0
+                        avg_age = sum(deciduous_age) / len(deciduous_age) if deciduous_age else 0
+                        deciduous_stats.append({'density': deciduous_density_ha, 'height': avg_height, 'age': avg_age})
 
         # Сводные итоги
         avg_composition = {}
@@ -2792,9 +3535,9 @@ class ExtendedMolodnikiTableScreen(Screen):
     def show_total_summary_popup(self, *args, **kwargs):
         """Показать popup со сводными итогами и таксационными расчетами (как в меню таксационные показатели)"""
         try:
-            current_radius = float(self.current_radius) if self.current_radius else 5.64
-            plot_area_m2 = 3.14159 * (current_radius ** 2)
-            plot_area_ha = plot_area_m2 / 10000  # Гектары
+            default_radius = float(self.current_radius) if self.current_radius else 1.78
+            plot_area_m2_default = 3.14159 * (default_radius ** 2)
+            trees_per_ha = 10000 / plot_area_m2_default if plot_area_m2_default > 0 else 0
 
             # Словарь для сбора данных по породам
             breeds_data = {}
@@ -2804,6 +3547,12 @@ class ExtendedMolodnikiTableScreen(Screen):
                 for row in page_rows:
                     if len(row) < 4:
                         continue
+
+                    # Get radius for this specific plot row
+                    plot_radius = default_radius  # always use default radius for consistent calculations
+
+                    plot_area_m2 = 3.14159 * (plot_radius ** 2)
+                    plot_area_ha = plot_area_m2 / 10000  # Гектары
 
                     # Столбец "Порода" в row[3]
                     breeds_text = row[3]
@@ -2851,7 +3600,7 @@ class ExtendedMolodnikiTableScreen(Screen):
                         else:
                             # Для лиственных пород - обычная плотность и средняя высота
                             density_value = breed_info.get('density', 0)
-                            density = density_value / plot_area_ha if plot_area_ha > 0 else density_value
+                            density = density_value
                             height = breed_info.get('height', 0) or 0
 
                         age = breed_info.get('age', 0) or 0
@@ -2889,10 +3638,9 @@ class ExtendedMolodnikiTableScreen(Screen):
             content = BoxLayout(orientation='vertical', spacing=10, padding=10)
 
             # Заголовок результатов с радиусом
-            trees_per_ha = 10000 / plot_area_m2 if plot_area_m2 > 0 else 0
             header_label = Label(
                 text=f'ИТОГИ ПО УЧАСТКУ МОЛОДНЯКОВ\n' +
-                     f'Радиус участка: {current_radius:.2f} м\n' +
+                     f'Радиус участка: {default_radius:.2f} м\n' +
                      f'1 дерево = {trees_per_ha:.0f} тыс.шт./га',
                 font_name='Roboto',
                 font_size='18sp',
@@ -3076,20 +3824,17 @@ class ExtendedMolodnikiTableScreen(Screen):
                 if data['type'] == 'deciduous' and data['plots']:
                     has_deciduous = True
 
-                    # Средняя густота
                     avg_density = sum(p['density'] for p in data['plots']) / len(data['plots'])
 
-                    # Средняя высота
                     avg_heights = [p['height'] for p in data['plots'] if p['height'] > 0]
                     avg_height = sum(avg_heights) / len(avg_heights) if avg_heights else 0
 
-                    # Средний возраст
                     avg_ages = [p['age'] for p in data['plots'] if p['age'] > 0]
                     avg_age = sum(avg_ages) / len(avg_ages) if avg_ages else 0
 
                     deciduous_result = Label(
                         text=f"{breed_name}:\n"
-                             f"• Средняя густота: {avg_density:.1f} шт/га\n"
+                             f"• Густота: {avg_density:.1f} шт/га\n"
                              f"• Средняя высота: {avg_height:.1f}м\n"
                              f"• Средний возраст: {avg_age:.1f} лет",
                         font_name='Roboto',
@@ -3115,17 +3860,27 @@ class ExtendedMolodnikiTableScreen(Screen):
                 )
                 results_layout.add_widget(no_deciduous)
 
-            # Информация о площади участка
-            plot_area_label = Label(
-                text=f"Площадь участка: {plot_area_ha:.4f} га (радиус пробной площади: {current_radius:.2f}м)",
+            # Информация о площади участка и площади перечета
+            plot_count = len([row for page in self.page_data.values() for row in page if any(cell for cell in row[:3] if cell)])
+            total_plot_area_ha = plot_count * plot_area_ha
+
+            plot_area_info = Label(
+                text=f"Информация о площади:\n"
+                     f"• Радиус пробной площади: {default_radius:.2f} м\n"
+                     f"• Площадь одной площадки: {plot_area_ha:.4f} га ({plot_area_m2:.4f} м²)\n"
+                     f"• Всего площадок: {plot_count}\n"
+                     f"• Совокупная площадь перечета: {total_plot_area_ha:.4f} га ({total_plot_area_ha*10000:.0f} м²)\n"
+                     f"• Пример: 1 площадка = {plot_area_ha:.4f} га, значит площадь перечета = {plot_area_m2:.0f} м²",
                 font_name='Roboto',
                 font_size='12sp',
                 color=(0.5, 0.5, 0.5, 1),
                 size_hint=(1, None),
-                height=30,
-                halign='center'
+                height=120,
+                halign='left',
+                valign='top'
             )
-            results_layout.add_widget(plot_area_label)
+            plot_area_info.bind(size=lambda *args: setattr(plot_area_info, 'text_size', (plot_area_info.width, None)))
+            results_layout.add_widget(plot_area_info)
 
             scroll.add_widget(results_layout)
             content.add_widget(scroll)
@@ -3215,7 +3970,7 @@ class ExtendedMolodnikiTableScreen(Screen):
 
             # Рассчитываем итоги по странице
 
-            current_radius = float(self.current_radius) if self.current_radius else 5.64
+            current_radius = float(self.current_radius) if self.current_radius else 1.78
             plot_area_m2 = 3.14159 * (current_radius ** 2)  # Площадь пробной площади в м²
 
             # Расчет средних по градациям для хвойных по формулам лесного хозяйства на гектар
@@ -3502,10 +4257,12 @@ class ExtendedMolodnikiTableScreen(Screen):
 
             conn.commit()
             self.show_success("Страница сохранена в базу данных!")
+            success = True
 
         except Exception as e:
             conn.rollback()
             self.show_error(f"Ошибка сохранения: {str(e)}")
+            success = False
         finally:
             conn.close()
 
@@ -3513,6 +4270,8 @@ class ExtendedMolodnikiTableScreen(Screen):
         for row in self.inputs:
             page_data.append([inp.text for inp in row])
         self.page_data[self.current_page] = page_data
+
+        return success
 
     def show_save_dialog(self, instance=None):
         content = BoxLayout(orientation='vertical', spacing=10, padding=10)
@@ -3533,7 +4292,8 @@ class ExtendedMolodnikiTableScreen(Screen):
             height=40,
             font_name='Roboto'
         )
-        default_name = f"Молодняки_расширенный_{self.current_section}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M')}"
+        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M')
+        default_name = f"Молодняки_{self.current_section}_{timestamp}"
         self.filename_input.text = default_name
         content.add_widget(self.filename_input)
 
@@ -3670,7 +4430,8 @@ class ExtendedMolodnikiTableScreen(Screen):
         try:
             from docx import Document
 
-            filename = f"Молодняки_расширенный_{self.current_section}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M')}.docx"
+            timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M')
+            filename = f"Молодняки_{self.current_section}_{timestamp}.docx"
             full_path = os.path.join(self.reports_dir, filename)
 
             doc = Document()
@@ -3744,23 +4505,74 @@ class ExtendedMolodnikiTableScreen(Screen):
             self.show_error(f"Ошибка сохранения Word: {str(e)}")
 
     def aggregate_breeds_data(self, df):
-        """Агрегирует данные пород по площадкам из Excel файла без учета заголовков"""
+        """Агрегирует данные пород по площадкам из Excel файла с учетом заголовков"""
+        # Получаем заголовки из первой строки
+        headers = df.iloc[0] if not df.empty else []
+
+        # Находим индексы нужных столбцов
+        nn_idx = None
+        gps_idx = None
+        predmet_idx = None
+        breed_name_idx = None
+        density_idx = None
+        do_05_idx = None
+        _05_15_idx = None
+        bolee_15_idx = None
+        height_idx = None
+        age_idx = None
+        primechanie_idx = None
+        tip_lesa_idx = None
+
+        for i, header in enumerate(headers):
+            header_str = str(header).strip().lower()
+            if '№ппр' in header_str:
+                nn_idx = i
+            elif 'gps' in header_str:
+                gps_idx = i
+            elif 'предмет ухода' in header_str:
+                predmet_idx = i
+            elif 'порода' in header_str:
+                breed_name_idx = i
+            elif 'густота' in header_str:
+                density_idx = i
+            elif 'до 0.5м' in header_str:
+                do_05_idx = i
+            elif '0.5-1.5м' in header_str:
+                _05_15_idx = i
+            elif '>1.5м' in header_str or 'выше' in header_str:
+                bolee_15_idx = i
+            elif 'высота' in header_str:
+                height_idx = i
+            elif 'возраст' in header_str:
+                age_idx = i
+            elif 'примечания' in header_str:
+                primechanie_idx = i
+            elif 'тип леса' in header_str:
+                tip_lesa_idx = i
+
         # Группировка по данным площадки (GPS, Предмет ухода, Примечания, Тип Леса)
         grouped = {}
 
         print(f"DEBUG: aggregate_breeds_data starting, df shape: {df.shape}")
 
-        for index, row in df.iterrows():
-            print(f"DEBUG: Processing row {index}: breed_name at iloc[3] = {row.iloc[3] if len(row) > 3 else 'NO COL'}")
-            # Предполагаемый порядок столбцов: 0=№ППР, 1=GPS, 2=Предмет ухода, 3=Порода, 4=Густота, 5=Высота, 6=Возраст, 7=Примечания, 8=Тип Леса
-            gps = str(row.iloc[1]) if len(row) > 1 else ''
-            predmet = str(row.iloc[2]) if len(row) > 2 else ''
-            breed_name = str(row.iloc[3]) if len(row) > 3 else ''
-            density = str(row.iloc[4]) if len(row) > 4 else ''
-            height = str(row.iloc[5]) if len(row) > 5 else ''
-            age = str(row.iloc[6]) if len(row) > 6 else ''
-            primechanie = str(row.iloc[7]) if len(row) > 7 else ''
-            tip_lesa = str(row.iloc[8]) if len(row) > 8 else ''
+        # Начинаем с второй строки (после заголовков)
+        for index in range(1, len(df)):
+            row = df.iloc[index]
+
+            # Извлекаем данные по найденным индексам
+            gps = str(row.iloc[gps_idx]) if gps_idx is not None and gps_idx < len(row) else ''
+            predmet = str(row.iloc[predmet_idx]) if predmet_idx is not None and predmet_idx < len(row) else ''
+            breed_name = str(row.iloc[breed_name_idx]) if breed_name_idx is not None and breed_name_idx < len(row) else ''
+            density = str(row.iloc[density_idx]) if density_idx is not None and density_idx < len(row) else ''
+            do_05 = str(row.iloc[do_05_idx]) if do_05_idx is not None and do_05_idx < len(row) else ''
+            _05_15 = str(row.iloc[_05_15_idx]) if _05_15_idx is not None and _05_15_idx < len(row) else ''
+            bolee_15 = str(row.iloc[bolee_15_idx]) if bolee_15_idx is not None and bolee_15_idx < len(row) else ''
+            height = str(row.iloc[height_idx]) if height_idx is not None and height_idx < len(row) else ''
+            age = str(row.iloc[age_idx]) if age_idx is not None and age_idx < len(row) else ''
+            primechanie = str(row.iloc[primechanie_idx]) if primechanie_idx is not None and primechanie_idx < len(row) else ''
+            tip_lesa = str(row.iloc[tip_lesa_idx]) if tip_lesa_idx is not None and tip_lesa_idx < len(row) else ''
+
+            print(f"DEBUG: Processing row {index}: breed_name='{breed_name}', primechanie='{primechanie}', tip_lesa='{tip_lesa}'")
 
             # Ключ группы по уникальной комбинации данных площадки
             key = (str(gps), str(predmet), str(primechanie), str(tip_lesa))
@@ -3775,7 +4587,7 @@ class ExtendedMolodnikiTableScreen(Screen):
                 }
 
             # Пропускаем строки без породы
-            if not breed_name.strip() or breed_name in ['nan', 'NaN']:
+            if not breed_name.strip() or breed_name in ['nan', 'NaN', '']:
                 continue
 
             # Определяем тип породы
@@ -3787,32 +4599,42 @@ class ExtendedMolodnikiTableScreen(Screen):
                 'type': breed_type
             }
 
-            # Добавляем параметры
-            if density and density not in ['nan', 'NaN']:
+            # Добавляем параметры с проверкой типов
+            if density and density not in ['nan', 'NaN', '']:
                 try:
                     breed_data['density'] = int(float(density))
                 except (ValueError, TypeError):
                     pass
 
-            if height and height not in ['nan', 'NaN']:
+            if do_05 and do_05 not in ['nan', 'NaN', '']:
+                try:
+                    breed_data['do_05'] = int(float(do_05))
+                except (ValueError, TypeError):
+                    pass
+
+            if _05_15 and _05_15 not in ['nan', 'NaN', '']:
+                try:
+                    breed_data['05_15'] = int(float(_05_15))
+                except (ValueError, TypeError):
+                    pass
+
+            if bolee_15 and bolee_15 not in ['nan', 'NaN', '']:
+                try:
+                    breed_data['bolee_15'] = int(float(bolee_15))
+                except (ValueError, TypeError):
+                    pass
+
+            if height and height not in ['nan', 'NaN', '']:
                 try:
                     breed_data['height'] = float(height)
                 except (ValueError, TypeError):
                     pass
 
-            if age and age not in ['nan', 'NaN']:
+            if age and age not in ['nan', 'NaN', '']:
                 try:
                     breed_data['age'] = int(float(age))
                 except (ValueError, TypeError):
                     pass
-
-            # Для хвойных пород распределяем густоту по градациям, если градации не заданы
-            if breed_type == 'coniferous' and 'density' in breed_data and breed_data['density'] > 0:
-                if not any(breed_data.get(k) for k in ['do_05', '05_15', 'bolee_15']):
-                    breed_data['do_05'] = 0
-                    breed_data['05_15'] = 0
-                    breed_data['bolee_15'] = breed_data['density']
-                    del breed_data['density']  # Удаляем, поскольку для хвойных густота рассчитывается из градаций
 
             # Если порода уже есть в списке, добавляем/обновляем параметры
             existing_breed = None
@@ -3824,7 +4646,7 @@ class ExtendedMolodnikiTableScreen(Screen):
             if existing_breed:
                 # Обновляем существующую породу
                 for k, v in breed_data.items():
-                    if k not in existing_breed or existing_breed[k] == '':
+                    if k not in existing_breed or not existing_breed.get(k):
                         existing_breed[k] = v
             else:
                 grouped[key]['breeds'].append(breed_data)
@@ -4256,16 +5078,4 @@ class ExtendedMolodnikiTableScreen(Screen):
             if 'age' in breed_info and breed_info['age']:
                 total_age += breed_info['age']
 
-        summary_parts = []
-        if breed_names:
-            summary_parts.append(f"Породы: {', '.join(breed_names)}")
-        if total_density > 0:
-            summary_parts.append(f"Общая густота: {total_density}")
-        if total_height > 0:
-            avg_height = total_height / breed_count if breed_count > 0 else 0
-            summary_parts.append(f"Средняя высота: {avg_height:.1f}м")
-        if total_age > 0:
-            avg_age = total_age / breed_count if breed_count > 0 else 0
-            summary_parts.append(f"Средний возраст: {avg_age:.1f} лет")
-
-        self.update_totals()
+        # Метод завершен

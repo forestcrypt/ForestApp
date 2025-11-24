@@ -247,7 +247,7 @@ class TaxationPopup(Popup):
                         else:
                             # Для лиственных пород - обычная плотность и средняя высота
                             density_value = breed_info.get('density', 0)
-                            density = density_value / plot_area_ha if plot_area_ha > 0 else density_value
+                            density = density_value  # Абсолютное количество деревьев, не на га
                             height = breed_info.get('height', 0) or 0
 
                         age = breed_info.get('age', 0) or 0
@@ -484,7 +484,7 @@ class TaxationPopup(Popup):
 
                 deciduous_result = Label(
                     text=f"{breed_name}:\n"
-                         f"• Средняя густота: {avg_density:.1f} шт/га\n"
+                         f"• Средняя густота: {avg_density:.1f} шт\n"
                          f"• Средняя высота: {avg_height:.1f}м\n"
                          f"• Средний возраст: {avg_age:.1f} лет",
                     font_name='Roboto',
