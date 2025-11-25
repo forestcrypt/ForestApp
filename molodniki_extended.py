@@ -554,8 +554,10 @@ class MolodnikiTreeDataInputPopup(Popup):
             )
             content.add_widget(breeds_list_label)
 
-        # Поля ввода для параметров породы
-        fields_layout = GridLayout(cols=2, spacing=5, size_hint=(1, None), height=200)
+        # Поля ввода для параметров породы с прокруткой
+        scroll_fields = ScrollView(size_hint=(1, None), height=250)
+        fields_layout = GridLayout(cols=2, spacing=5, size_hint_y=None)
+        fields_layout.bind(minimum_height=fields_layout.setter('height'))
 
         if breed_type == 'coniferous':
             fields = [
@@ -563,6 +565,7 @@ class MolodnikiTreeDataInputPopup(Popup):
                 ('0.5-1.5м:', '05_15'),
                 ('>1.5м:', 'bolee_15'),
                 ('Высота (м):', 'height'),
+                ('Диаметр (см):', 'diameter'),
                 ('Густота:', 'density'),
                 ('Возраст (лет):', 'age')
             ]
@@ -570,13 +573,15 @@ class MolodnikiTreeDataInputPopup(Popup):
             fields = [
                 ('Густота:', 'density'),
                 ('Высота (м):', 'height'),
+                ('Диаметр (см):', 'diameter'),
                 ('Возраст (лет):', 'age')
             ]
 
         self.breed_inputs = {}
         for label_text, field_key in fields:
-            lbl = Label(text=label_text, font_name='Roboto', size_hint=(None, None), size=(100, 30))
-            inp = TextInput(multiline=False, size_hint=(None, None), size=(100, 30))
+            lbl = Label(text=label_text, font_name='Roboto', size_hint=(None, None), size=(120, 40), halign='left', valign='middle')
+            lbl.bind(size=lambda *args: setattr(lbl, 'text_size', (lbl.width, None)))
+            inp = TextInput(multiline=False, size_hint=(None, None), size=(120, 40))
             if field_key in ['density', 'age']:
                 inp.input_filter = 'int'
             elif field_key == 'height':
@@ -589,7 +594,8 @@ class MolodnikiTreeDataInputPopup(Popup):
             fields_layout.add_widget(inp)
             self.breed_inputs[field_key] = inp
 
-        content.add_widget(fields_layout)
+        scroll_fields.add_widget(fields_layout)
+        content.add_widget(scroll_fields)
 
         # Кнопки управления
         btn_layout = BoxLayout(orientation='horizontal', spacing=5, size_hint=(1, None), height=50)
@@ -920,6 +926,7 @@ class ExtendedMolodnikiTableScreen(Screen):
                         bolee_15 INTEGER DEFAULT 0,
                         density INTEGER DEFAULT 0,
                         height REAL DEFAULT 0.0,
+                        diameter REAL DEFAULT 0.0,
                         age INTEGER DEFAULT 0,
                         composition_coefficient REAL DEFAULT 0.0,
                         FOREIGN KEY(molodniki_data_id) REFERENCES molodniki_data(id) ON DELETE CASCADE)''')
@@ -2419,6 +2426,32 @@ class ExtendedMolodnikiTableScreen(Screen):
 
         # Метод завершен
 
+    def parse_care_subject_density(self, care_text):
+        """Парсит предмет ухода и возвращает оставляемую густоту на гектар"""
+        if not care_text:
+            return 0
+
+        care_text = care_text.strip().upper()
+
+        # Регулярное выражение для поиска чисел и букв
+        # Примеры: "3С", "2Б1С", "1Е0.5С" и т.д.
+        matches = re.findall(r'(\d+(?:\.\d+)?)([А-ЯA-Z]+)', care_text)
+
+        if not matches:
+            return 0
+
+        total_density = 0
+        for number_str, breed_code in matches:
+            try:
+                density = float(number_str)
+                total_density += density
+            except ValueError:
+                continue
+
+        # Предмет ухода показывает сколько деревьев оставить на гектар
+        # Например, "3С" значит оставить 3000 сосен на гектар
+        return total_density * 1000  # Умножаем на 1000, так как числа обычно означают тысячи деревьев
+
     def _get_current_plot_area_input(self):
         """Получить текущее значение площади участка"""
         # If stored in instance variable
@@ -3600,17 +3633,19 @@ class ExtendedMolodnikiTableScreen(Screen):
                         else:
                             # Для лиственных пород - обычная плотность и средняя высота
                             density_value = breed_info.get('density', 0)
-                            density = density_value
+                            density = density_value / plot_area_ha if plot_area_ha > 0 else 0
                             height = breed_info.get('height', 0) or 0
 
                         age = breed_info.get('age', 0) or 0
+                        diameter = breed_info.get('diameter', 0) or 0
 
                         # Сбор данных по породе
                         if breed_name not in breeds_data:
                             breeds_data[breed_name] = {
                                 'type': breed_type,
                                 'plots': [],
-                                'coniferous_zones': {'do_05': 0, '05_15': 0, 'bolee_15': 0} if breed_type == 'coniferous' else None
+                                'coniferous_zones': {'do_05': 0, '05_15': 0, 'bolee_15': 0} if breed_type == 'coniferous' else None,
+                                'diameters': []
                             }
 
                         # Добавляем данные
@@ -3628,6 +3663,7 @@ class ExtendedMolodnikiTableScreen(Screen):
                             })
 
                         breeds_data[breed_name]['plots'].append(plot_data)
+                        breeds_data[breed_name]['diameters'].append(diameter)
 
                         if breed_type == 'coniferous':
                             breeds_data[breed_name]['coniferous_zones']['do_05'] += plot_data['do_05_density']
@@ -3773,21 +3809,25 @@ class ExtendedMolodnikiTableScreen(Screen):
                     avg_05_15 = zones.get('05_15', 0) / len(data['plots']) if data['plots'] else 0
                     avg_bolee_15 = zones.get('bolee_15', 0) / len(data['plots']) if data['plots'] else 0
 
-                    # Средняя общая высота
-                    avg_heights = [p['height'] for p in data['plots'] if p['height'] > 0]
-                    avg_height_total = sum(avg_heights) / len(avg_heights) if avg_heights else 0
+                    # Средняя высота только по значениям >1.5м
+                    avg_heights_over_15 = [p['height'] for p in data['plots'] if p['height'] > 1.5]
+                    avg_height_total = sum(avg_heights_over_15) / len(avg_heights_over_15) if avg_heights_over_15 else 0
+
+                    # Средний диаметр
+                    avg_diameter = sum(data['diameters']) / len(data['diameters']) if data['diameters'] else 0
 
                     coniferous_result = Label(
                         text=f"{breed_name}:\n"
                              f"• до 0.5м: {avg_do_05:.1f} шт/га\n"
                              f"• 0.5-1.5м: {avg_05_15:.1f} шт/га\n"
                              f"• >1.5м: {avg_bolee_15:.1f} шт/га\n"
-                             f"• средняя высота породы: {avg_height_total:.1f}м",
+                             f"• средняя высота (>1.5м): {avg_height_total:.1f}м\n"
+                             f"• средний диаметр: {avg_diameter:.1f} см",
                         font_name='Roboto',
                         font_size='14sp',
                         color=(0, 0.5, 0, 1),
                         size_hint=(1, None),
-                        height=100,
+                        height=120,
                         halign='left',
                         valign='top'
                     )
@@ -3832,16 +3872,20 @@ class ExtendedMolodnikiTableScreen(Screen):
                     avg_ages = [p['age'] for p in data['plots'] if p['age'] > 0]
                     avg_age = sum(avg_ages) / len(avg_ages) if avg_ages else 0
 
+                    # Средний диаметр
+                    avg_diameter = sum(data['diameters']) / len(data['diameters']) if data['diameters'] else 0
+
                     deciduous_result = Label(
                         text=f"{breed_name}:\n"
                              f"• Густота: {avg_density:.1f} шт/га\n"
                              f"• Средняя высота: {avg_height:.1f}м\n"
-                             f"• Средний возраст: {avg_age:.1f} лет",
+                             f"• Средний возраст: {avg_age:.1f} лет\n"
+                             f"• Средний диаметр: {avg_diameter:.1f} см",
                         font_name='Roboto',
                         font_size='14sp',
                         color=(0, 0.3, 0.5, 1),
                         size_hint=(1, None),
-                        height=80,
+                        height=100,
                         halign='left',
                         valign='top'
                     )
@@ -3859,6 +3903,172 @@ class ExtendedMolodnikiTableScreen(Screen):
                     halign='center'
                 )
                 results_layout.add_widget(no_deciduous)
+
+            # Средние данные в целом по участку
+            overall_label = Label(
+                text='\nСРЕДНИЕ ДАННЫЕ В ЦЕЛОМ ПО УЧАСТКУ',
+                font_name='Roboto',
+                font_size='16sp',
+                bold=True,
+                color=(0, 0, 0, 1),
+                size_hint=(1, None),
+                height=50,
+                halign='center'
+            )
+            results_layout.add_widget(overall_label)
+
+            # Рассчитываем общие средние
+            all_densities = []
+            all_heights = []
+            all_ages = []
+            all_diameters = []
+
+            for breed_name, data in breeds_data.items():
+                if data['plots']:
+                    all_densities.extend([p['density'] for p in data['plots'] if p['density'] > 0])
+                    all_heights.extend([p['height'] for p in data['plots'] if p['height'] > 0])
+                    all_ages.extend([p['age'] for p in data['plots'] if p['age'] > 0])
+                    all_diameters.extend([d for d in data['diameters'] if d > 0])
+
+            avg_overall_density = sum(all_densities) / len(all_densities) if all_densities else 0
+            avg_overall_height = sum(all_heights) / len(all_heights) if all_heights else 0
+            avg_overall_age = sum(all_ages) / len(all_ages) if all_ages else 0
+            avg_overall_diameter = sum(all_diameters) / len(all_diameters) if all_diameters else 0
+
+            overall_result = Label(
+                text=f"Средняя густота: {avg_overall_density:.1f} шт/га\n"
+                     f"Средняя высота: {avg_overall_height:.1f} м\n"
+                     f"Средний возраст: {avg_overall_age:.1f} лет\n"
+                     f"Средний диаметр: {avg_overall_diameter:.1f} см",
+                font_name='Roboto',
+                font_size='14sp',
+                color=(0.8, 0.4, 0, 1),
+                size_hint=(1, None),
+                height=100,
+                halign='left',
+                valign='top'
+            )
+            overall_result.bind(size=lambda *args: setattr(overall_result, 'text_size', (overall_result.width, None)))
+            results_layout.add_widget(overall_result)
+
+
+
+            # Предмет ухода и интенсивность рубки
+            care_label = Label(
+                text='\nПРЕДМЕТ УХОДА И ИНТЕНСИВНОСТЬ РУБКИ',
+                font_name='Roboto',
+                font_size='16sp',
+                bold=True,
+                color=(0, 0, 0, 1),
+                size_hint=(1, None),
+                height=50,
+                halign='center'
+            )
+            results_layout.add_widget(care_label)
+
+            # Собираем данные по предмету ухода и рассчитываем интенсивность
+            care_data = []
+            total_density_all_plots = 0
+            total_remaining_density = 0
+            plot_count_with_care = 0
+
+            for page_num, page_rows in self.page_data.items():
+                for row in page_rows:
+                    if len(row) >= 4 and row[2]:  # Предмет ухода и данные пород
+                        care_text = row[2].strip()
+                        if care_text:
+                            # Рассчитываем общую густоту на этой площадке
+                            plot_density = 0
+                            breeds_text = row[3]
+                            if breeds_text:
+                                try:
+                                    breeds_list = json.loads(breeds_text) if isinstance(breeds_text, str) else []
+                                    for breed_info in breeds_list:
+                                        if isinstance(breed_info, dict):
+                                            if breed_info.get('type') == 'coniferous':
+                                                # Для хвойных суммируем градации
+                                                do_05 = breed_info.get('do_05', 0)
+                                                _05_15 = breed_info.get('05_15', 0)
+                                                bolee_15 = breed_info.get('bolee_15', 0)
+                                                plot_density += (do_05 + _05_15 + bolee_15) / plot_area_ha if plot_area_ha > 0 else 0
+                                            else:
+                                                # Для лиственных обычная густота
+                                                density = breed_info.get('density', 0)
+                                                plot_density += density / plot_area_ha if plot_area_ha > 0 else 0
+                                except (json.JSONDecodeError, TypeError):
+                                    pass
+
+                            if plot_density > 0:
+                                # Парсим предмет ухода для получения оставляемой густоты
+                                remaining_density = self.parse_care_subject_density(care_text)
+                                if remaining_density > 0:
+                                    care_data.append({
+                                        'care_text': care_text,
+                                        'plot_density': plot_density,
+                                        'remaining_density': remaining_density
+                                    })
+                                    total_density_all_plots += plot_density
+                                    total_remaining_density += remaining_density
+                                    plot_count_with_care += 1
+
+            if care_data:
+                # Находим наиболее частый предмет ухода
+                care_counts = {}
+                for item in care_data:
+                    care_text = item['care_text']
+                    if care_text not in care_counts:
+                        care_counts[care_text] = 0
+                    care_counts[care_text] += 1
+
+                most_common_care = max(care_counts.items(), key=lambda x: x[1])
+                care_result = Label(
+                    text=f"Наиболее частый предмет ухода: {most_common_care[0]} "
+                         f"(встречается в {most_common_care[1]} площадках)",
+                    font_name='Roboto',
+                    font_size='14sp',
+                    color=(0.2, 0.6, 0.2, 1),
+                    size_hint=(1, None),
+                    height=40,
+                    halign='left',
+                    valign='top'
+                )
+                care_result.bind(size=lambda *args: setattr(care_result, 'text_size', (care_result.width, None)))
+                results_layout.add_widget(care_result)
+
+                # Рассчитываем среднюю интенсивность рубки
+                if plot_count_with_care > 0:
+                    avg_plot_density = total_density_all_plots / plot_count_with_care
+                    avg_remaining_density = total_remaining_density / plot_count_with_care
+
+                    # Интенсивность рубки = (оставляемые / общая густота) * 100 - 100%
+                    if avg_plot_density > 0:
+                        intensity = (avg_remaining_density / avg_plot_density) * 100 - 100
+
+                        intensity_result = Label(
+                            text=f"Средняя интенсивность рубки: {intensity:.1f}%\n"
+                                 f"(было {avg_plot_density:.0f} шт/га, "
+                                 f"останется {avg_remaining_density:.0f} шт/га)",
+                            font_name='Roboto',
+                            font_size='14sp',
+                            color=(0.8, 0.2, 0.2, 1),
+                            size_hint=(1, None),
+                            height=60,
+                            halign='left',
+                            valign='top'
+                        )
+                        intensity_result.bind(size=lambda *args: setattr(intensity_result, 'text_size', (intensity_result.width, None)))
+                        results_layout.add_widget(intensity_result)
+            else:
+                no_care = Label(
+                    text="Предмет ухода не указан или недостаточно данных для расчета",
+                    font_name='Roboto',
+                    font_size='14sp',
+                    color=(0.5, 0.5, 0.5, 1),
+                    size_hint=(1, None),
+                    height=30,
+                    halign='center'
+                )
+                results_layout.add_widget(no_care)
 
             # Информация о площади участка и площади перечета
             plot_count = len([row for page in self.page_data.values() for row in page if any(cell for cell in row[:3] if cell)])
@@ -4220,11 +4430,13 @@ class ExtendedMolodnikiTableScreen(Screen):
                                     area = 3.14159 * (radius ** 2)
                                     composition_coeff = (density * area) / 10000
 
+                                diameter = float(breed_info.get('diameter', 0.0) or 0.0)
+
                                 cursor.execute('''
                                     INSERT INTO molodniki_breeds
                                     (molodniki_data_id, breed_name, breed_type, do_05, _05_15, bolee_15,
-                                     density, height, age, composition_coefficient)
-                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                     density, height, diameter, age, composition_coefficient)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                                 ''', (
                                     molodniki_data_id,
                                     breed_info.get('name', ''),
@@ -4234,6 +4446,7 @@ class ExtendedMolodnikiTableScreen(Screen):
                                     bolee_15,
                                     density,
                                     height,
+                                    diameter,
                                     age,
                                     composition_coeff
                                 ))
