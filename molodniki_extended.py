@@ -2452,6 +2452,30 @@ class ExtendedMolodnikiTableScreen(Screen):
         # Например, "3С" значит оставить 3000 сосен на гектар
         return total_density * 1000  # Умножаем на 1000, так как числа обычно означают тысячи деревьев
 
+    def parse_care_subject_by_breeds(self, care_text):
+        """Парсит предмет ухода и возвращает словарь {порода: густота в тыс. шт/га}"""
+        if not care_text:
+            return {}
+
+        care_text = care_text.strip().upper()
+
+        matches = re.findall(r'(\d+(?:\.\d+)?)([А-ЯA-Z]+)', care_text)
+
+        if not matches:
+            return {}
+
+        breed_densities = {}
+        for number_str, breed_code in matches:
+            try:
+                density = float(number_str)
+                if breed_code not in breed_densities:
+                    breed_densities[breed_code] = 0
+                breed_densities[breed_code] += density
+            except ValueError:
+                continue
+
+        return breed_densities
+
     def _get_current_plot_area_input(self):
         """Получить текущее значение площади участка"""
         # If stored in instance variable
@@ -3494,6 +3518,14 @@ class ExtendedMolodnikiTableScreen(Screen):
             if count > 0:
                 composition_text += f"{int(count)}{breed}"
 
+        # Обновляем итоговую строку или возвращаем данные
+        # В зависимости от логики приложения
+        return {
+            'composition_text': composition_text,
+            'forestry_formulas_text': forestry_formulas_text if 'forestry_formulas_text' in locals() else "",
+            'total_plots': total_plots if 'total_plots' in locals() else 0
+        }
+
         forestry_formulas_text = ""
 
         # Расчет градаций для хвойных пород
@@ -3968,12 +4000,41 @@ class ExtendedMolodnikiTableScreen(Screen):
 
             # Собираем данные по предмету ухода и рассчитываем интенсивность
             care_data = []
-            total_density_all_plots = 0
+            total_density_all_plots = 0  # Для площадок с предметом ухода
             total_remaining_density = 0
             plot_count_with_care = 0
 
+            # Рассчитываем среднюю густоту по всем площадкам
+            total_density_all = 0
+            plot_count_all = 0
+
             for page_num, page_rows in self.page_data.items():
                 for row in page_rows:
+                    if len(row) >= 4 and row[3]:  # Есть данные пород
+                        plot_density = 0
+                        breeds_text = row[3]
+                        if breeds_text:
+                            try:
+                                breeds_list = json.loads(breeds_text) if isinstance(breeds_text, str) else []
+                                for breed_info in breeds_list:
+                                    if isinstance(breed_info, dict):
+                                        if breed_info.get('type') == 'coniferous':
+                                            # Для хвойных суммируем градации
+                                            do_05 = breed_info.get('do_05', 0)
+                                            _05_15 = breed_info.get('05_15', 0)
+                                            bolee_15 = breed_info.get('bolee_15', 0)
+                                            plot_density += (do_05 + _05_15 + bolee_15) / plot_area_ha if plot_area_ha > 0 else 0
+                                        else:
+                                            # Для лиственных обычная густота
+                                            density = breed_info.get('density', 0)
+                                            plot_density += density / plot_area_ha if plot_area_ha > 0 else 0
+                            except (json.JSONDecodeError, TypeError):
+                                pass
+
+                        if plot_density > 0:
+                            total_density_all += plot_density
+                            plot_count_all += 1
+
                     if len(row) >= 4 and row[2]:  # Предмет ухода и данные пород
                         care_text = row[2].strip()
                         if care_text:
@@ -4012,41 +4073,53 @@ class ExtendedMolodnikiTableScreen(Screen):
                                     plot_count_with_care += 1
 
             if care_data:
-                # Находим наиболее частый предмет ухода
-                care_counts = {}
+                # Рассчитываем средний предмет ухода
+                care_breed_totals = {}
+                care_plot_count = 0
+
                 for item in care_data:
                     care_text = item['care_text']
-                    if care_text not in care_counts:
-                        care_counts[care_text] = 0
-                    care_counts[care_text] += 1
+                    breed_densities = self.parse_care_subject_by_breeds(care_text)
+                    for breed, density in breed_densities.items():
+                        if breed not in care_breed_totals:
+                            care_breed_totals[breed] = 0
+                        care_breed_totals[breed] += density
+                    care_plot_count += 1
 
-                most_common_care = max(care_counts.items(), key=lambda x: x[1])
-                care_result = Label(
-                    text=f"Наиболее частый предмет ухода: {most_common_care[0]} "
-                         f"(встречается в {most_common_care[1]} площадках)",
-                    font_name='Roboto',
-                    font_size='14sp',
-                    color=(0.2, 0.6, 0.2, 1),
-                    size_hint=(1, None),
-                    height=40,
-                    halign='left',
-                    valign='top'
-                )
-                care_result.bind(size=lambda *args: setattr(care_result, 'text_size', (care_result.width, None)))
-                results_layout.add_widget(care_result)
+                if care_breed_totals and care_plot_count > 0:
+                    avg_care_parts = []
+                    short_parts = []
+                    for breed, total_density in sorted(care_breed_totals.items()):
+                        avg_density = total_density / care_plot_count
+                        avg_care_parts.append(f"{avg_density * 1000:.0f}шт/га{breed}")
+                        short_parts.append(f"{avg_density:.1f}{breed}")
+                    avg_care_text = ''.join(avg_care_parts)
+                    short_text = ''.join(short_parts).replace('.', ',')
 
-                # Рассчитываем среднюю интенсивность рубки
-                if plot_count_with_care > 0:
-                    avg_plot_density = total_density_all_plots / plot_count_with_care
+                    care_result = Label(
+                        text=f"Средний предмет ухода: {avg_care_text} = {short_text}",
+                        font_name='Roboto',
+                        font_size='14sp',
+                        color=(0.2, 0.6, 0.2, 1),
+                        size_hint=(1, None),
+                        height=40,
+                        halign='left',
+                        valign='top'
+                    )
+                    care_result.bind(size=lambda *args: setattr(care_result, 'text_size', (care_result.width, None)))
+                    results_layout.add_widget(care_result)
+
+                    # Рассчитываем среднюю интенсивность рубки
+                if plot_count_with_care > 0 and plot_count_all > 0:
                     avg_remaining_density = total_remaining_density / plot_count_with_care
 
-                    # Интенсивность рубки = (оставляемые / общая густота) * 100 - 100%
-                    if avg_plot_density > 0:
-                        intensity = (avg_remaining_density / avg_plot_density) * 100 - 100
+                    # Интенсивность рубки = ((общая густота - оставляемая густота) / общая густота) * 100%
+                    if avg_overall_density > 0:
+                        intensity = ((avg_overall_density - avg_remaining_density) / avg_overall_density) * 100
 
                         intensity_result = Label(
                             text=f"Средняя интенсивность рубки: {intensity:.1f}%\n"
-                                 f"(было {avg_plot_density:.0f} шт/га, "
+                                 f"(было {avg_overall_density:.0f} шт/га, "
                                  f"останется {avg_remaining_density:.0f} шт/га)",
                             font_name='Roboto',
                             font_size='14sp',
