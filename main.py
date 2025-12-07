@@ -31,6 +31,31 @@ from openpyxl import load_workbook, Workbook
 from tkinter import Tk, filedialog
 from molodniki_extended import ExtendedMolodnikiTableScreen
 from new_taxation_menu import TaxationPopup
+import statistics
+
+# Monkey patch to fix Kivy TextInput mode issue
+import kivy.uix.textinput
+
+def patched_insert_text(self, substring, from_undo=False):
+    if self.readonly:
+        return
+    if from_undo:
+        self._undo.append((self.cursor, self.text))
+    # Ensure substring is properly handled without calling mode
+    if not substring:
+        return
+    cc, cr = self.cursor
+    ci = self.cursor_index()
+    text = self.text
+    len_str = len(substring)
+    if not from_undo:
+        self._undo.append([substring, (cc, cr), (cc + len_str, cr), text, -1])
+    self.text = text[:ci] + substring + text[ci:]
+    self.cursor = self.get_cursor_from_index(ci + len_str)
+    self._refresh_text(self.text)
+    self._trigger_update_graphics()
+
+kivy.uix.textinput.TextInput.insert_text = patched_insert_text
 
 LabelBase.register(name='Roboto', 
                  fn_regular='fonts/Roboto-Medium.ttf',

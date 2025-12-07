@@ -1,0 +1,42 @@
+{
+  "address_data": {
+    "quarter": "1",
+    "plot": "15",
+    "section": "Володозерское",
+    "forestry": "Сегежское лесничество",
+    "target_purpose": "Эксплуатационные леса",
+    "plot_area": "25.5",
+    "forest_type": "Сосняк черничный"
+  },
+  "total_data": {
+    "page_number": 0,
+    "section_name": "Молодняки",
+    "total_composition": "8С2БДр",
+    "avg_age": 25.0,
+    "avg_density": 350.0,
+    "avg_height": 12.5,
+    "total_plots": 10,
+    "composition": "8С2БДр",
+    "care_subject": "300шт/гаС + 50шт/гаБ",
+    "intensity": "25%",
+    "breeds": [
+      {
+        "name": "Сосна",
+        "type": "coniferous",
+        "density": 300,
+        "height": 15.0,
+        "age": 30.0,
+        "do_05": 50,
+        "_05_15": 150,
+        "bolee_15": 100
+      },
+      {
+        "name": "Берёза",
+        "type": "deciduous",
+        "density": 50,
+        "height": 10.0,
+        "age": 20.0
+      }
+    ]
+  }
+}

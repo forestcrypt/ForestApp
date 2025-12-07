@@ -11,6 +11,7 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.popup import Popup
 from kivy.uix.label import Label
 from kivy.uix.floatlayout import FloatLayout
+from kivy.uix.checkbox import CheckBox
 from kivy.properties import (NumericProperty, BooleanProperty,
                           ObjectProperty, ListProperty, StringProperty)
 from kivy.core.window import Window
@@ -26,6 +27,7 @@ import os
 import datetime
 import re
 import json
+import sys
 import openpyxl
 from openpyxl import Workbook
 from tkinter import Tk, filedialog
@@ -934,6 +936,17 @@ class ExtendedMolodnikiTableScreen(Screen):
         # Создаем индекс для поиска данных пород
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_molodniki_breeds ON molodniki_breeds (molodniki_data_id)')
 
+        # Добавляем недостающие столбцы, если они отсутствуют
+        try:
+            cursor.execute('ALTER TABLE molodniki_breeds ADD COLUMN diameter REAL DEFAULT 0.0')
+        except sqlite3.OperationalError:
+            pass  # Столбец уже существует
+
+        try:
+            cursor.execute('ALTER TABLE molodniki_breeds ADD COLUMN composition_coefficient REAL DEFAULT 0.0')
+        except sqlite3.OperationalError:
+            pass  # Столбец уже существует
+
         # Создаем таблицу для хранения итогов по страницам
         cursor.execute('''CREATE TABLE IF NOT EXISTS molodniki_totals (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1002,7 +1015,7 @@ class ExtendedMolodnikiTableScreen(Screen):
             text='Лесничество',
             bg_color=get_color_from_hex('#87CEEB'),
             size_hint=(None, None),
-            size=(120, 35),
+            size=(180, 35),
             font_size='14sp'
         )
         forestry_btn.bind(on_press=self.show_forestry_popup)
@@ -1144,14 +1157,14 @@ class ExtendedMolodnikiTableScreen(Screen):
 
 
 
-        # Добавляем кнопку "Итого" по середине после строки итогов
+        # Добавляем кнопки "Итого" и "Проект ухода" по середине после строки итогов
         # Пустая строка для разделения
         spacer = BoxLayout(orientation='horizontal', size_hint_y=None, height=10)
         self.table.add_widget(spacer)
 
-        # Кнопка "Итого" по середине
-        button_container = BoxLayout(orientation='horizontal', size_hint_y=None, height=50, size_hint_x=1)
-        button_spacer = BoxLayout(size_hint_x=0.25)  # Спейсер слева
+        # Кнопки "Итого", "Проект ухода" и "Дополнительные функции" по середине
+        button_container = BoxLayout(orientation='horizontal', size_hint_y=None, height=50, size_hint_x=1, spacing=10)
+        button_spacer = BoxLayout(size_hint_x=0.15)  # Спейсер слева
         button_container.add_widget(button_spacer)
 
         self.total_summary_button = ModernButton(
@@ -1165,7 +1178,31 @@ class ExtendedMolodnikiTableScreen(Screen):
         self.total_summary_button.bind(on_press=self.show_total_summary_popup)
         button_container.add_widget(self.total_summary_button)
 
-        button_spacer2 = BoxLayout(size_hint_x=0.25)  # Спейсер справа
+        # Кнопка "Проект ухода"
+        self.care_project_button = ModernButton(
+            text='Проект ухода',
+            bg_color=get_color_from_hex('#FF8C00'),  # Оранжевый цвет
+            size_hint=(None, None),
+            size=(200, 50),
+            font_size='16sp',
+            bold=True
+        )
+        self.care_project_button.bind(on_press=self.generate_care_project)
+        button_container.add_widget(self.care_project_button)
+
+        # Кнопка "Дополнительные функции"
+        self.additional_functions_button = ModernButton(
+            text='Дополнительные функции',
+            bg_color=get_color_from_hex('#9370DB'),  # Фиолетовый цвет
+            size_hint=(None, None),
+            size=(300, 50),
+            font_size='16sp',
+            bold=True
+        )
+        self.additional_functions_button.bind(on_press=self.show_additional_functions_popup)
+        button_container.add_widget(self.additional_functions_button)
+
+        button_spacer2 = BoxLayout(size_hint_x=0.15)  # Спейсер справа
         button_container.add_widget(button_spacer2)
 
         self.table.add_widget(button_container)
@@ -2424,7 +2461,2163 @@ class ExtendedMolodnikiTableScreen(Screen):
             if 'age' in breed_info and breed_info['age']:
                 total_age += breed_info['age']
 
-        # Метод завершен
+        # Обновляем общие итоги
+        self.update_totals()
+
+    def show_care_queue_popup(self, instance):
+        """Показать popup для выбора мероприятий рубки"""
+        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+
+        title_label = Label(
+            text="Выберите мероприятие:",
+            font_name='Roboto',
+            font_size='18sp',
+            bold=True,
+            color=(0, 0.5, 0, 1),
+            size_hint=(1, None),
+            height=40
+        )
+        content.add_widget(title_label)
+
+        # Поле для ввода мероприятия
+        self.activity_input = TextInput(
+            hint_text="Введите мероприятие",
+            multiline=False,
+            size_hint=(1, None),
+            height=50,
+            font_name='Roboto'
+        )
+        content.add_widget(self.activity_input)
+
+        # Выбор очереди
+        queue_label = Label(
+            text="Очередь:",
+            font_name='Roboto',
+            font_size='16sp',
+            bold=True,
+            size_hint=(1, None),
+            height=30,
+            color=(0.3, 0.3, 0.3, 1)
+        )
+        content.add_widget(queue_label)
+
+        # Радио-кнопки для выбора очереди
+        from kivy.uix.spinner import Spinner
+        self.queue_spinner = Spinner(
+            text='Выберите очередь',
+            values=('первая', 'вторая', 'третья'),
+            size_hint=(1, None),
+            height=50,
+            font_name='Roboto'
+        )
+        content.add_widget(self.queue_spinner)
+
+        # Чекбоксы для выбора типов мероприятий
+        self.activity_checkboxes = {}
+        activities = ['осветление', 'прочистка']
+
+        activities_label = Label(
+            text="Типы мероприятий:",
+            font_name='Roboto',
+            font_size='16sp',
+            bold=True,
+            size_hint=(1, None),
+            height=30,
+            color=(0.3, 0.3, 0.3, 1)
+        )
+        content.add_widget(activities_label)
+
+        for activity in activities:
+            checkbox_layout = BoxLayout(orientation='horizontal', size_hint=(1, None), height=40)
+            checkbox = CheckBox(size_hint=(None, 1), width=40)
+            label = Label(
+                text=activity,
+                font_name='Roboto',
+                font_size='16sp',
+                size_hint=(1, 1),
+                halign='left',
+                valign='middle'
+            )
+            label.bind(size=lambda *args: setattr(label, 'text_size', (label.width, None)))
+            checkbox_layout.add_widget(checkbox)
+            checkbox_layout.add_widget(label)
+            content.add_widget(checkbox_layout)
+            self.activity_checkboxes[activity] = checkbox
+
+        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
+        save_btn = ModernButton(
+            text='Сохранить',
+            bg_color=get_color_from_hex('#00FF00'),
+            size_hint=(0.5, 1),
+            height=50
+        )
+        cancel_btn = ModernButton(
+            text='Отмена',
+            bg_color=get_color_from_hex('#FF6347'),
+            size_hint=(0.5, 1),
+            height=50
+        )
+        btn_layout.add_widget(save_btn)
+        btn_layout.add_widget(cancel_btn)
+        content.add_widget(btn_layout)
+
+        popup = Popup(
+            title="Мероприятие рубки",
+            content=content,
+            size_hint=(0.8, 0.8)
+        )
+
+        def save_activity(btn):
+            activity_text = self.activity_input.text.strip()
+            selected_queue = self.queue_spinner.text
+            selected_activities = [activity for activity, checkbox in self.activity_checkboxes.items() if checkbox.active]
+
+            if not activity_text and not selected_activities:
+                self.show_error("Введите мероприятие или выберите тип мероприятия!")
+                return
+
+            if selected_queue == 'Выберите очередь':
+                self.show_error("Выберите очередь!")
+                return
+
+            result_parts = []
+            if activity_text:
+                result_parts.append(f"Мероприятие: {activity_text}")
+            if selected_queue != 'Выберите очередь':
+                result_parts.append(f"Очередь: {selected_queue}")
+            if selected_activities:
+                result_parts.append(f"Типы: {', '.join(selected_activities)}")
+
+            self.show_success(f"Мероприятие сохранено: {'; '.join(result_parts)}")
+            popup.dismiss()
+
+        save_btn.bind(on_press=save_activity)
+        cancel_btn.bind(on_press=popup.dismiss)
+
+        popup.open()
+
+    def show_characteristics_popup(self, instance):
+        """Показать popup для характеристики молодняков"""
+        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+
+        title_label = Label(
+            text="Характеристика молодняков:",
+            font_name='Roboto',
+            font_size='18sp',
+            bold=True,
+            color=(0, 0.5, 0, 1),
+            size_hint=(1, None),
+            height=40
+        )
+        content.add_widget(title_label)
+
+        # Поля для ввода характеристик
+        self.characteristics_inputs = {}
+        characteristics = ['Лучшие', 'Вспомогательные', 'Нежелательные']
+
+        for char in characteristics:
+            char_layout = BoxLayout(orientation='vertical', size_hint=(1, None), height=80, spacing=5)
+            char_label = Label(
+                text=f"{char}:",
+                font_name='Roboto',
+                font_size='16sp',
+                bold=True,
+                size_hint=(1, None),
+                height=25
+            )
+            char_input = TextInput(
+                hint_text="Введите название породы",
+                multiline=True,
+                size_hint=(1, None),
+                height=50,
+                font_name='Roboto'
+            )
+            char_layout.add_widget(char_label)
+            char_layout.add_widget(char_input)
+            content.add_widget(char_layout)
+            self.characteristics_inputs[char] = char_input
+
+        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
+        save_btn = ModernButton(
+            text='Сохранить',
+            bg_color=get_color_from_hex('#00FF00'),
+            size_hint=(0.5, 1),
+            height=50
+        )
+        cancel_btn = ModernButton(
+            text='Отмена',
+            bg_color=get_color_from_hex('#FF6347'),
+            size_hint=(0.5, 1),
+            height=50
+        )
+        btn_layout.add_widget(save_btn)
+        btn_layout.add_widget(cancel_btn)
+        content.add_widget(btn_layout)
+
+        popup = Popup(
+            title="Характеристика молодняков",
+            content=content,
+            size_hint=(0.8, 0.8)
+        )
+
+        def save_characteristics(btn):
+            filled_characteristics = {}
+            for char, input_field in self.characteristics_inputs.items():
+                value = input_field.text.strip()
+                if value:
+                    filled_characteristics[char] = value
+
+            if filled_characteristics:
+                characteristics_text = "\n".join([f"{k}: {v}" for k, v in filled_characteristics.items()])
+                self.show_success(f"Характеристики сохранены:\n{characteristics_text}")
+            else:
+                self.show_error("Заполните хотя бы одну характеристику!")
+                return
+            popup.dismiss()
+
+        save_btn.bind(on_press=save_characteristics)
+        cancel_btn.bind(on_press=popup.dismiss)
+
+        popup.open()
+
+    def show_date_popup(self, instance):
+        """Показать popup для ввода даты рубки"""
+        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+
+        title_label = Label(
+            text="Введите дату рубки:",
+            font_name='Roboto',
+            font_size='18sp',
+            bold=True,
+            color=(0, 0.5, 0, 1),
+            size_hint=(1, None),
+            height=40
+        )
+        content.add_widget(title_label)
+
+        # Поле для ввода даты
+        self.date_input = TextInput(
+            hint_text="ДД.ММ.ГГГГ",
+            multiline=False,
+            size_hint=(1, None),
+            height=50,
+            font_name='Roboto',
+            input_filter='0123456789.'
+        )
+        content.add_widget(self.date_input)
+
+        info_label = Label(
+            text="Формат: ДД.ММ.ГГГГ\nНапример: 15.06.2025",
+            font_name='Roboto',
+            font_size='14sp',
+            color=(0.3, 0.3, 0.3, 1),
+            size_hint=(1, None),
+            height=50,
+            halign='left',
+            valign='top'
+        )
+        info_label.bind(size=lambda *args: setattr(info_label, 'text_size', (info_label.width, None)))
+        content.add_widget(info_label)
+
+        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
+        save_btn = ModernButton(
+            text='Сохранить',
+            bg_color=get_color_from_hex('#00FF00'),
+            size_hint=(0.5, 1),
+            height=50
+        )
+        cancel_btn = ModernButton(
+            text='Отмена',
+            bg_color=get_color_from_hex('#FF6347'),
+            size_hint=(0.5, 1),
+            height=50
+        )
+        btn_layout.add_widget(save_btn)
+        btn_layout.add_widget(cancel_btn)
+        content.add_widget(btn_layout)
+
+        popup = Popup(
+            title="Дата рубки",
+            content=content,
+            size_hint=(0.8, 0.6)
+        )
+
+        def save_date(btn):
+            date_text = self.date_input.text.strip()
+            if date_text:
+                # Простая валидация формата даты
+                import re
+                if re.match(r'^\d{2}\.\d{2}\.\d{4}$', date_text):
+                    self.show_success(f"Дата рубки сохранена: {date_text}")
+                else:
+                    self.show_error("Неверный формат даты! Используйте ДД.ММ.ГГГГ")
+                    return
+            else:
+                self.show_error("Введите дату рубки!")
+                return
+            popup.dismiss()
+
+        save_btn.bind(on_press=save_date)
+        cancel_btn.bind(on_press=popup.dismiss)
+
+        popup.open()
+
+    def show_technology_popup(self, instance):
+        """Показать popup для ввода технологии ухода"""
+        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+
+        title_label = Label(
+            text="Введите технологию ухода:",
+            font_name='Roboto',
+            font_size='18sp',
+            bold=True,
+            color=(0, 0.5, 0, 1),
+            size_hint=(1, None),
+            height=40
+        )
+        content.add_widget(title_label)
+
+        # Поле для ввода технологии
+        self.technology_input = TextInput(
+            hint_text="Опишите технологию ухода",
+            multiline=True,
+            size_hint=(1, None),
+            height=100,
+            font_name='Roboto'
+        )
+        content.add_widget(self.technology_input)
+
+        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
+        save_btn = ModernButton(
+            text='Сохранить',
+            bg_color=get_color_from_hex('#00FF00'),
+            size_hint=(0.5, 1),
+            height=50
+        )
+        cancel_btn = ModernButton(
+            text='Отмена',
+            bg_color=get_color_from_hex('#FF6347'),
+            size_hint=(0.5, 1),
+            height=50
+        )
+        btn_layout.add_widget(save_btn)
+        btn_layout.add_widget(cancel_btn)
+        content.add_widget(btn_layout)
+
+        popup = Popup(
+            title="Технология ухода",
+            content=content,
+            size_hint=(0.8, 0.7)
+        )
+
+        def save_technology(btn):
+            technology_text = self.technology_input.text.strip()
+            if technology_text:
+                self.show_success(f"Технология ухода сохранена: {technology_text[:50]}...")
+            else:
+                self.show_error("Введите технологию ухода!")
+                return
+            popup.dismiss()
+
+        save_btn.bind(on_press=save_technology)
+        cancel_btn.bind(on_press=popup.dismiss)
+
+        popup.open()
+
+    def show_forest_purpose_popup(self, instance):
+        """Показать popup для выбора назначения лесов"""
+        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+
+        title_label = Label(
+            text="Выберите назначение лесов:",
+            font_name='Roboto',
+            font_size='18sp',
+            bold=True,
+            color=(0, 0.5, 0, 1),
+            size_hint=(1, None),
+            height=40
+        )
+        content.add_widget(title_label)
+
+        # Чекбоксы выбора назначения лесов
+        forest_purposes = [
+            ('Эксплуатационные', 'Эксплуатационные леса'),
+            ('Защитные', 'Защитные леса'),
+            ('Резервные', 'Резервные леса')
+        ]
+
+        self.forest_purpose_checkboxes = {}
+        self.selected_forest_purpose = None
+
+        for short_name, full_name in forest_purposes:
+            checkbox_layout = BoxLayout(orientation='horizontal', size_hint=(1, None), height=50, spacing=10)
+            checkbox = CheckBox(size_hint=(None, 1), width=40)
+            label = Label(
+                text=f"{short_name} ({full_name})",
+                font_name='Roboto',
+                font_size='16sp',
+                size_hint=(1, 1),
+                halign='left',
+                valign='middle',
+                color=(0, 0, 0, 1)
+            )
+            label.bind(size=lambda *args: setattr(label, 'text_size', (label.width, None)))
+            checkbox_layout.add_widget(checkbox)
+            checkbox_layout.add_widget(label)
+            content.add_widget(checkbox_layout)
+            self.forest_purpose_checkboxes[full_name] = checkbox
+
+        # Кнопки управления
+        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
+        save_btn = ModernButton(
+            text='Сохранить',
+            bg_color=get_color_from_hex('#00FF00'),
+            size_hint=(0.5, 1),
+            height=50
+        )
+        cancel_btn = ModernButton(
+            text='Отмена',
+            bg_color=get_color_from_hex('#FF6347'),
+            size_hint=(0.5, 1),
+            height=50
+        )
+        btn_layout.add_widget(save_btn)
+        btn_layout.add_widget(cancel_btn)
+        content.add_widget(btn_layout)
+
+        popup = Popup(
+            title="Назначение лесов",
+            content=content,
+            size_hint=(0.8, 0.7)
+        )
+
+        def save_forest_purpose(btn):
+            selected_purpose = None
+            for purpose, checkbox in self.forest_purpose_checkboxes.items():
+                if checkbox.active:
+                    selected_purpose = purpose
+                    break
+
+            if selected_purpose:
+                self.selected_forest_purpose = selected_purpose
+                self.show_success(f"Назначение лесов установлено: {selected_purpose}")
+                popup.dismiss()
+            else:
+                self.show_error("Выберите назначение лесов!")
+
+        save_btn.bind(on_press=save_forest_purpose)
+        cancel_btn.bind(on_press=popup.dismiss)
+        self.forest_purpose_popup = popup
+        popup.open()
+
+    def select_forest_purpose(self, purpose):
+        """Обработка выбора назначения лесов"""
+        self.selected_forest_purpose = purpose
+        self.show_success(f"Назначение лесов установлено: {purpose}")
+        if hasattr(self, 'forest_purpose_popup'):
+            self.forest_purpose_popup.dismiss()
+
+    def show_additional_functions_popup(self, instance):
+        """Показать popup с дополнительными функциями"""
+        content = BoxLayout(orientation='vertical', spacing=15, padding=15)
+
+        title_label = Label(
+            text="Дополнительные функции:",
+            font_name='Roboto',
+            font_size='20sp',
+            bold=True,
+            color=(0, 0.5, 0, 1),
+            size_hint=(1, None),
+            height=50,
+            halign='center'
+        )
+        content.add_widget(title_label)
+
+        # Кнопки дополнительных функций
+        buttons_layout = GridLayout(cols=2, spacing=10, size_hint=(1, None), height=400)
+
+        # Кнопка Очередь рубки
+        care_queue_btn = ModernButton(
+            text='Очередь рубки',
+            bg_color=get_color_from_hex('#FF8C00'),
+            size_hint=(1, None),
+            height=60,
+            font_size='16sp'
+        )
+        care_queue_btn.bind(on_press=self.show_care_queue_popup)
+        buttons_layout.add_widget(care_queue_btn)
+
+        # Кнопка Характеристика молодняков
+        characteristics_btn = ModernButton(
+            text='Характеристика\nмолодняков',
+            bg_color=get_color_from_hex('#32CD32'),
+            size_hint=(1, None),
+            height=60,
+            font_size='14sp'
+        )
+        characteristics_btn.bind(on_press=self.show_characteristics_popup)
+        buttons_layout.add_widget(characteristics_btn)
+
+        # Кнопка Дата рубки
+        date_btn = ModernButton(
+            text='Дата рубки',
+            bg_color=get_color_from_hex('#87CEEB'),
+            size_hint=(1, None),
+            height=60,
+            font_size='16sp'
+        )
+        date_btn.bind(on_press=self.show_date_popup)
+        buttons_layout.add_widget(date_btn)
+
+        # Кнопка Технология ухода
+        technology_btn = ModernButton(
+            text='Технология\nухода',
+            bg_color=get_color_from_hex('#DDA0DD'),
+            size_hint=(1, None),
+            height=60,
+            font_size='14sp'
+        )
+        technology_btn.bind(on_press=self.show_technology_popup)
+        buttons_layout.add_widget(technology_btn)
+
+        # Кнопка Назначение лесов
+        forest_purpose_btn = ModernButton(
+            text='Назначение\nлесов',
+            bg_color=get_color_from_hex('#8B4513'),
+            size_hint=(1, None),
+            height=60,
+            font_size='14sp'
+        )
+        forest_purpose_btn.bind(on_press=self.show_forest_purpose_popup)
+        buttons_layout.add_widget(forest_purpose_btn)
+
+        content.add_widget(buttons_layout)
+
+        # Кнопка закрытия
+        close_btn = ModernButton(
+            text='Закрыть',
+            bg_color=get_color_from_hex('#808080'),
+            size_hint=(1, None),
+            height=50
+        )
+        content.add_widget(close_btn)
+
+        popup = Popup(
+            title="Дополнительные функции",
+            content=content,
+            size_hint=(0.9, 0.9)
+        )
+
+        close_btn.bind(on_press=popup.dismiss)
+        popup.open()
+
+    def get_breed_letter(self, breed_name):
+        """Получение первой буквы для коэффициента состава породы"""
+        breed_letters = {
+            'Сосна': 'С',
+            'Ель': 'Е',
+            'Пихта': 'П',
+            'Кедр': 'К',
+            'Лиственница': 'Л',
+            'Берёза': 'Б',
+            'Осина': 'Ос',
+            'Ольха чёрная': 'ОЧ',
+            'Ольха серая': 'ОС',
+            'Ива': 'И',
+            'Ива кустарниковая': 'ИК'
+        }
+
+        for full_name, letter in breed_letters.items():
+            if full_name.lower() in breed_name.lower():
+                return letter
+
+        # Возвращаем первую букву имени породы, если не найдено
+        return breed_name[0].upper() if breed_name else 'Н'
+
+    def get_breed_letter(self, breed_name):
+        """Получение первой буквы для коэффициента состава породы"""
+        breed_letters = {
+            'Сосна': 'С',
+            'Ель': 'Е',
+            'Пихта': 'П',
+            'Кедр': 'К',
+            'Лиственница': 'Л',
+            'Берёза': 'Б',
+            'Осина': 'Ос',
+            'Ольха чёрная': 'ОЧ',
+            'Ольха серая': 'ОС',
+            'Ива': 'И',
+            'Ива кустарниковая': 'ИК'
+        }
+
+        for full_name, letter in breed_letters.items():
+            if full_name.lower() in breed_name.lower():
+                return letter
+
+        # Возвращаем первую букву имени породы, если не найдено
+        return breed_name[0].upper() if breed_name else 'Н'
+
+    def show_error(self, message):
+        Popup(
+            title='Ошибка',
+            content=Label(text=message, color=(1, 0, 0, 1)),
+            size_hint=(0.6, 0.3)
+        ).open()
+
+    def show_success(self, message):
+        Popup(
+            title='Успешно',
+            content=Label(text=message, color=(0, 0.5, 0, 1)),
+            size_hint=(0.6, 0.3)
+        ).open()
+
+    def show_quarter_popup(self, instance):
+        """Показать popup для ввода квартала"""
+        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+
+        title_label = Label(
+            text="Введите номер квартала",
+            font_name='Roboto',
+            bold=True,
+            size_hint=(1, None),
+            height=30
+        )
+        content.add_widget(title_label)
+
+        self.quarter_input = TextInput(
+            hint_text="Номер квартала",
+            multiline=False,
+            size_hint=(1, None),
+            height=40,
+            font_name='Roboto',
+            input_filter='int',
+            text=self.current_quarter
+        )
+        content.add_widget(self.quarter_input)
+
+        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=40)
+        save_btn = ModernButton(
+            text='Сохранить',
+            bg_color=get_color_from_hex('#00FF00'),
+            size_hint=(0.5, 1),
+            height=50
+        )
+        cancel_btn = ModernButton(
+            text='Отмена',
+            bg_color=get_color_from_hex('#FF6347'),
+            size_hint=(0.5, 1),
+            height=50
+        )
+        btn_layout.add_widget(save_btn)
+        btn_layout.add_widget(cancel_btn)
+        content.add_widget(btn_layout)
+
+        popup = Popup(
+            title="Настройка квартала",
+            content=content,
+            size_hint=(0.6, 0.5)
+        )
+
+        def save_quarter(btn):
+            quarter = self.quarter_input.text.strip()
+            if quarter:
+                self.current_quarter = quarter
+                self.update_address_label()
+                self.show_success(f"Квартал установлен: {quarter}")
+                popup.dismiss()
+            else:
+                self.show_error("Номер квартала не может быть пустым!")
+
+        save_btn.bind(on_press=save_quarter)
+        cancel_btn.bind(on_press=popup.dismiss)
+
+        popup.open()
+
+    def show_plot_popup(self, instance):
+        """Показать popup для ввода выдела"""
+        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+
+        title_label = Label(
+            text="Введите номер выдела",
+            font_name='Roboto',
+            bold=True,
+            size_hint=(1, None),
+            height=30
+        )
+        content.add_widget(title_label)
+
+        self.plot_input = TextInput(
+            hint_text="Номер выдела",
+            multiline=False,
+            size_hint=(1, None),
+            height=40,
+            font_name='Roboto',
+            input_filter='int',
+            text=self.current_plot
+        )
+        content.add_widget(self.plot_input)
+
+        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
+        save_btn = ModernButton(
+            text='Сохранить',
+            bg_color=get_color_from_hex('#00FF00'),
+            size_hint=(0.5, 1),
+            height=50
+        )
+        cancel_btn = ModernButton(
+            text='Отмена',
+            bg_color=get_color_from_hex('#FF6347'),
+            size_hint=(0.5, 1),
+            height=50
+        )
+        btn_layout.add_widget(save_btn)
+        btn_layout.add_widget(cancel_btn)
+        content.add_widget(btn_layout)
+
+        popup = Popup(
+            title="Настройка выдела",
+            content=content,
+            size_hint=(0.6, 0.5)
+        )
+
+        def save_plot(btn):
+            plot = self.plot_input.text.strip()
+            if plot:
+                self.current_plot = plot
+                self.update_address_label()
+                self.show_success(f"Выдел установлен: {plot}")
+                popup.dismiss()
+            else:
+                self.show_error("Номер выдела не может быть пустым!")
+
+        save_btn.bind(on_press=save_plot)
+        cancel_btn.bind(on_press=popup.dismiss)
+
+        popup.open()
+
+    def show_forestry_popup(self, instance):
+        """Показать popup для ввода лесничества"""
+        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+
+        title_label = Label(
+            text="Введите название лесничества",
+            font_name='Roboto',
+            bold=True,
+            size_hint=(1, None),
+            height=30
+        )
+        content.add_widget(title_label)
+
+        # Поле для лесничества
+        forestry_label = Label(
+            text="Лесничество:",
+            font_name='Roboto',
+            size_hint=(1, None),
+            height=25,
+            color=(0.3, 0.3, 0.3, 1)
+        )
+        content.add_widget(forestry_label)
+
+        self.forestry_input = TextInput(
+            hint_text="Название лесничества",
+            multiline=False,
+            size_hint=(1, None),
+            height=40,
+            font_name='Roboto',
+            text=self.current_forestry
+        )
+        content.add_widget(self.forestry_input)
+
+        # Поле для участкового лесничества
+        district_forestry_label = Label(
+            text="Участковое лесничество:",
+            font_name='Roboto',
+            size_hint=(1, None),
+            height=25,
+            color=(0.3, 0.3, 0.3, 1)
+        )
+        content.add_widget(district_forestry_label)
+
+        self.district_forestry_input = TextInput(
+            hint_text="Название участкового лесничества",
+            multiline=False,
+            size_hint=(1, None),
+            height=40,
+            font_name='Roboto',
+            text=getattr(self, 'current_district_forestry', '')
+        )
+        content.add_widget(self.district_forestry_input)
+
+        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
+        save_btn = ModernButton(
+            text='Сохранить',
+            bg_color=get_color_from_hex('#00FF00'),
+            size_hint=(0.5, 1),
+            height=50
+        )
+        cancel_btn = ModernButton(
+            text='Отмена',
+            bg_color=get_color_from_hex('#FF6347'),
+            size_hint=(0.5, 1),
+            height=50
+        )
+        btn_layout.add_widget(save_btn)
+        btn_layout.add_widget(cancel_btn)
+        content.add_widget(btn_layout)
+
+        popup = Popup(
+            title="Настройка лесничества",
+            content=content,
+            size_hint=(0.6, 0.7)
+        )
+
+        def save_forestry(btn):
+            forestry = self.forestry_input.text.strip()
+            district_forestry = self.district_forestry_input.text.strip()
+            if forestry:
+                self.current_forestry = forestry
+                self.current_district_forestry = district_forestry
+                self.update_address_label()
+                self.show_success(f"Лесничество установлено: {forestry}" + (f", участковое: {district_forestry}" if district_forestry else ""))
+                popup.dismiss()
+            else:
+                self.show_error("Название лесничества не может быть пустым!")
+
+        save_btn.bind(on_press=save_forestry)
+        cancel_btn.bind(on_press=popup.dismiss)
+
+        popup.open()
+
+    def calculate_section_totals(self):
+        """Расчет итогов по всему разделу (все страницы)"""
+        breed_composition = {}
+        total_stats = {'density': [], 'height': [], 'age': []}
+        coniferous_stats = {'do_05': [], '05_15': [], 'bolee_15': [], 'height': [], 'age': []}
+
+        for page_num, page_data in self.page_data.items():
+            for row_data in page_data:
+                # row_data имеет 6 элементов: nn, gps_point, predmet_uhoda, poroda, primechanie, tip_lesa
+                if row_data[2]:  # predmet_uhoda
+                    composition = self.parse_composition(row_data[2])
+                    for breed, count in composition.items():
+                        if breed not in breed_composition:
+                            breed_composition[breed] = []
+                        breed_composition[breed].append(count)
+
+                breeds_text = row_data[3]  # poroda
+                if breeds_text:
+                    breeds_data = self.parse_breeds_data(breeds_text)
+                    for breed_info in breeds_data:
+                        if breed_info.get('type') == 'coniferous':
+                            # Густота хвойных = сумма градаций
+                            coniferous_density = (breed_info.get('do_05', 0) +
+                                                breed_info.get('05_15', 0) +
+                                                breed_info.get('bolee_15', 0))
+                            if coniferous_density > 0:
+                                total_stats['density'].append(coniferous_density)
+                            else:
+                                if 'density' in breed_info and breed_info['density']:
+                                    total_stats['density'].append(breed_info['density'])
+
+                        elif 'density' in breed_info and breed_info['density']:
+                            total_stats['density'].append(breed_info['density'])
+
+                        if 'height' in breed_info and breed_info['height']:
+                            total_stats['height'].append(breed_info['height'])
+                        if 'age' in breed_info and breed_info['age']:
+                            total_stats['age'].append(breed_info['age'])
+
+        # Рассчитываем остальные итоги
+
+        current_radius = float(self.current_radius) if self.current_radius else 5.64
+        plot_area_m2 = 3.14159 * (current_radius ** 2)  # Площадь пробной площади в м²
+
+        # Расчет средних по градациям для хвойных по формулам лесного хозяйства на гектар
+        coniferous_stats_ha = []
+        for row_data in [row for page in self.page_data.values() for row in page]:
+            breeds_text = row_data[3]
+            if breeds_text:
+                breeds_data = self.parse_breeds_data(breeds_text)
+                if breeds_data and any(b.get('type') == 'coniferous' for b in breeds_data):
+                    coniferous_density_ha = 0
+                    height_sum = 0
+                    age_sum = 0
+                    count = 0
+                    for breed_info in breeds_data:
+                        if breed_info.get('type') == 'coniferous':
+                            do_05 = breed_info.get('do_05', 0)
+                            _05_15 = breed_info.get('05_15', 0)
+                            bolee_15 = breed_info.get('bolee_15', 0)
+                            coniferous_density_ha += (do_05 * 10000 / plot_area_m2) + (_05_15 * 10000 / plot_area_m2) + (bolee_15 * 10000 / plot_area_m2)
+                            if breed_info.get('height'):
+                                height_sum += breed_info['height']
+                                count += 1
+                            if breed_info.get('age'):
+                                age_sum += breed_info['age']
+
+                    coniferous_stats_ha.append({
+                        'density_ha': coniferous_density_ha if coniferous_density_ha > 0 else 0,
+                        'height': height_sum / count if count > 0 else 0,
+                        'age': age_sum / count if count > 0 else 0
+                    })
+
+        # Итоги по лиственным
+        deciduous_stats = []
+        for row_data in [row for page in self.page_data.values() for row in page]:
+            breeds_text = row_data[3]
+            if breeds_text:
+                breeds_data = self.parse_breeds_data(breeds_text)
+                if breeds_data:
+                    deciduous_density_total = 0
+                    deciduous_height = []
+                    deciduous_age = []
+                    for breed_info in breeds_data:
+                        if breed_info.get('type') == 'deciduous':
+                            deciduous_density_total += breed_info.get('density', 0)
+                            if breed_info.get('height', 0) > 0:
+                                deciduous_height.append(breed_info['height'])
+                            if breed_info.get('age', 0) > 0:
+                                deciduous_age.append(breed_info['age'])
+                    if deciduous_height or deciduous_age:
+                        deciduous_density_ha = deciduous_density_total
+                        avg_height = sum(deciduous_height) / len(deciduous_height) if deciduous_height else 0
+                        avg_age = sum(deciduous_age) / len(deciduous_age) if deciduous_age else 0
+                        deciduous_stats.append({'density': deciduous_density_ha, 'height': avg_height, 'age': avg_age})
+
+        # Сводные итоги
+        avg_composition = {}
+        for breed, counts in breed_composition.items():
+            if counts:
+                avg_composition[breed] = sum(counts) / len(counts)
+
+        composition_text = ""
+        for breed in sorted(avg_composition.keys()):
+            count = avg_composition[breed]
+            if count > 0:
+                composition_text += f"{int(count)}{breed}"
+
+        # Обновляем итоговую строку или возвращаем данные
+        # В зависимости от логики приложения
+        return {
+            'composition_text': composition_text,
+            'forestry_formulas_text': forestry_formulas_text if 'forestry_formulas_text' in locals() else "",
+            'total_plots': total_plots if 'total_plots' in locals() else 0
+        }
+
+        forestry_formulas_text = ""
+
+        # Расчет градаций для хвойных пород
+        coniferous_gradiations_stats = {'do_05_ha': [], '05_15_ha': [], 'bolee_15_ha': [], 'height': [], 'age': []}
+
+        current_radius = float(self.current_radius) if self.current_radius else 5.64
+        plot_area_m2 = 3.14159 * (current_radius ** 2)
+
+        for row_data in [row for page in self.page_data.values() for row in page]:
+            breeds_text = row_data[3]
+            if breeds_text:
+                breeds_data = self.parse_breeds_data(breeds_text)
+                for breed_info in breeds_data:
+                    if breed_info.get('type') == 'coniferous':
+                        do_05_ha = breed_info.get('do_05', 0) * 10000 / plot_area_m2 if plot_area_m2 > 0 else 0
+                        _05_15_ha = breed_info.get('05_15', 0) * 10000 / plot_area_m2 if plot_area_m2 > 0 else 0
+                        bolee_15_ha = breed_info.get('bolee_15', 0) * 10000 / plot_area_m2 if plot_area_m2 > 0 else 0
+                        height = breed_info.get('height', 0)
+                        age = breed_info.get('age', 0)
+
+                        coniferous_gradiations_stats['do_05_ha'].append(do_05_ha)
+                        coniferous_gradiations_stats['05_15_ha'].append(_05_15_ha)
+                        coniferous_gradiations_stats['bolee_15_ha'].append(bolee_15_ha)
+                        if height > 0:
+                            coniferous_gradiations_stats['height'].append(height)
+                        if age > 0:
+                            coniferous_gradiations_stats['age'].append(age)
+
+        if coniferous_gradiations_stats['do_05_ha'] or coniferous_gradiations_stats['05_15_ha'] or coniferous_gradiations_stats['bolee_15_ha']:
+            forestry_formulas_text += "Хвойные: "
+            gradiations = []
+            avg_do_05 = sum(coniferous_gradiations_stats['do_05_ha']) / len(coniferous_gradiations_stats['do_05_ha']) if coniferous_gradiations_stats['do_05_ha'] else 0
+            gradiations.append(f"до 0.5м: {avg_do_05:.1f} шт/га")
+
+            avg_05_15 = sum(coniferous_gradiations_stats['05_15_ha']) / len(coniferous_gradiations_stats['05_15_ha']) if coniferous_gradiations_stats['05_15_ha'] else 0
+            gradiations.append(f"0.5-1.5м: {avg_05_15:.1f} шт/га")
+
+            avg_bolee_15 = sum(coniferous_gradiations_stats['bolee_15_ha']) / len(coniferous_gradiations_stats['bolee_15_ha']) if coniferous_gradiations_stats['bolee_15_ha'] else 0
+            gradiations.append(f">1.5м: {avg_bolee_15:.1f} шт/га")
+
+            forestry_formulas_text += ", ".join(gradiations)
+
+            if coniferous_gradiations_stats['height']:
+                avg_height = sum(coniferous_gradiations_stats['height']) / len(coniferous_gradiations_stats['height'])
+                forestry_formulas_text += f", высота: {avg_height:.1f}м"
+            if coniferous_gradiations_stats['age']:
+                avg_age = sum(coniferous_gradiations_stats['age']) / len(coniferous_gradiations_stats['age'])
+                forestry_formulas_text += f", возраст: {avg_age:.1f} лет"
+
+        # Лиственные итоги
+        if deciduous_stats:
+            if forestry_formulas_text:
+                forestry_formulas_text += "; "
+            forestry_formulas_text += "Лиственные: "
+            avg_deciduous_density = sum(d['density'] for d in deciduous_stats) / len(deciduous_stats) if deciduous_stats else 0
+            avg_deciduous_height = sum(d['height'] for d in deciduous_stats) / len(deciduous_stats) if deciduous_stats else 0
+            avg_deciduous_age = sum(d['age'] for d in deciduous_stats) / len(deciduous_stats) if deciduous_stats else 0
+
+            if avg_deciduous_density > 0:
+                forestry_formulas_text += f"густота: {avg_deciduous_density:.1f} шт/га "
+            if avg_deciduous_height > 0:
+                forestry_formulas_text += f"высота: {avg_deciduous_height:.1f}м "
+            if avg_deciduous_age > 0:
+                forestry_formulas_text += f"возраст: {avg_deciduous_age:.1f} лет"
+
+        return {
+            'composition_text': composition_text,
+            'forestry_formulas_text': forestry_formulas_text,
+            'total_plots': sum(len(page) for page in self.page_data.values() if page)
+        }
+
+    def show_total_summary_popup(self, *args, **kwargs):
+        """Показать popup со сводными итогами и таксационными расчетами (как в меню таксационные показатели)"""
+        try:
+            default_radius = float(self.current_radius) if self.current_radius else 1.78
+            plot_area_m2_default = 3.14159 * (default_radius ** 2)
+            trees_per_ha = 10000 / plot_area_m2_default if plot_area_m2_default > 0 else 0
+
+            # Словарь для сбора данных по породам
+            breeds_data = {}
+
+            # Обрабатываем все страницы
+            for page_num, page_rows in self.page_data.items():
+                for row in page_rows:
+                    if len(row) < 4:
+                        continue
+
+                    # Get radius for this specific plot row
+                    plot_radius = default_radius  # always use default radius for consistent calculations
+
+                    plot_area_m2 = 3.14159 * (plot_radius ** 2)
+                    plot_area_ha = plot_area_m2 / 10000  # Гектары
+
+                    # Столбец "Порода" в row[3]
+                    breeds_text = row[3]
+                    if not breeds_text:
+                        continue
+
+                    try:
+                        breeds_list = json.loads(breeds_text) if isinstance(breeds_text, str) else []
+                    except json.JSONDecodeError:
+                        continue
+
+                    for breed_info in breeds_list:
+                        if not isinstance(breed_info, dict):
+                            continue
+
+                        breed_name = breed_info.get('name', '').strip()
+                        if not breed_name:
+                            continue
+
+                        breed_type = breed_info.get('type', 'deciduous')
+                        density = 0
+                        height = None
+                        age = None
+
+                        # Расчет густоты и высоты в зависимости от типа породы
+                        if breed_type == 'coniferous':
+                            do_05 = breed_info.get('do_05', 0)
+                            _05_15 = breed_info.get('05_15', 0)
+                            bolee_15 = breed_info.get('bolee_15', 0)
+                            density = (do_05 + _05_15 + bolee_15) / plot_area_ha if plot_area_ha > 0 else 0
+
+                            # Для хвойных пород определяем высоту по градациям или среднюю
+                            if any([do_05, _05_15, bolee_15]):
+                                # Высота определяется по градациям
+                                if bolee_15 > 0:
+                                    height = 2.0  # >1.5m
+                                elif _05_15 > 0:
+                                    height = 1.0  # 0.5-1.5m
+                                elif do_05 > 0:
+                                    height = 0.3  # до 0.5m
+                                else:
+                                    height = 0.0
+                            else:
+                                height = breed_info.get('height', 0) or 0
+                        else:
+                            # Для лиственных пород - обычная плотность и средняя высота
+                            density_value = breed_info.get('density', 0)
+                            density = density_value / plot_area_ha if plot_area_ha > 0 else 0
+                            height = breed_info.get('height', 0) or 0
+
+                        age = breed_info.get('age', 0) or 0
+                        diameter = breed_info.get('diameter', 0) or 0
+
+                        # Сбор данных по породе
+                        if breed_name not in breeds_data:
+                            breeds_data[breed_name] = {
+                                'type': breed_type,
+                                'plots': [],
+                                'coniferous_zones': {'do_05': 0, '05_15': 0, 'bolee_15': 0} if breed_type == 'coniferous' else None,
+                                'diameters': []
+                            }
+
+                        # Добавляем данные
+                        plot_data = {
+                            'density': density,
+                            'height': height,
+                            'age': age
+                        }
+
+                        if breed_type == 'coniferous':
+                            plot_data.update({
+                                'do_05_density': do_05 / plot_area_ha if plot_area_ha > 0 else 0,
+                                '05_15_density': _05_15 / plot_area_ha if plot_area_ha > 0 else 0,
+                                'bolee_15_density': bolee_15 / plot_area_ha if plot_area_ha > 0 else 0
+                            })
+
+                        breeds_data[breed_name]['plots'].append(plot_data)
+                        breeds_data[breed_name]['diameters'].append(diameter)
+
+                        if breed_type == 'coniferous':
+                            breeds_data[breed_name]['coniferous_zones']['do_05'] += plot_data['do_05_density']
+                            breeds_data[breed_name]['coniferous_zones']['05_15'] += plot_data['05_15_density']
+                            breeds_data[breed_name]['coniferous_zones']['bolee_15'] += plot_data['bolee_15_density']
+
+            # Создаем popup с результатами
+            content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+
+            # Заголовок результатов с радиусом и адресными данными
+            address_parts = []
+            if self.current_quarter:
+                address_parts.append(f"Квартал: {self.current_quarter}")
+            if self.current_plot:
+                address_parts.append(f"Выдел: {self.current_plot}")
+            if self.current_forestry:
+                address_parts.append(f"Лесничество: {self.current_forestry}")
+            if self.current_section:
+                address_parts.append(f"Участок: {self.current_section}")
+
+            address_text = " | ".join(address_parts) if address_parts else "Адрес не указан"
+
+            header_label = Label(
+                text=f'ИТОГИ ПО УЧАСТКУ МОЛОДНЯКОВ\n' +
+                     f'{address_text}\n' +
+                     f'Радиус участка: {default_radius:.2f} м\n' +
+                     f'1 дерево = {trees_per_ha:.0f} тыс.шт./га',
+                font_name='Roboto',
+                font_size='16sp',
+                bold=True,
+                color=(0, 0.5, 0, 1),
+                size_hint=(1, None),
+                height=100,
+                halign='center',
+                valign='top'
+            )
+            header_label.bind(size=lambda *args: setattr(header_label, 'text_size', (header_label.width, None)))
+            content.add_widget(header_label)
+
+            scroll = ScrollView(size_hint=(1, None), height=600)
+            results_layout = GridLayout(cols=1, spacing=10, size_hint_y=None)
+            results_layout.bind(minimum_height=results_layout.setter('height'))
+
+            # Коэффициент состава насаждения
+            composition_label = Label(
+                text='КОЭФФИЦИЕНТ СОСТАВА НАСАЖДЕНИЯ',
+                font_name='Roboto',
+                font_size='16sp',
+                bold=True,
+                color=(0, 0, 0, 1),
+                size_hint=(1, None),
+                height=30,
+                halign='center'
+            )
+            results_layout.add_widget(composition_label)
+
+            # Расчет коэффициента состава на основе суммарной густоты пород
+            total_densities = {}
+            for breed_name, data in breeds_data.items():
+                if data['plots']:
+                    if data['plots'][0].get('type') == 'coniferous':
+                        # Для хвойных суммируем густоту по градациям
+                        total_density = 0
+                        for p in data['plots']:
+                            conif_density = (p.get('do_05_density', 0) + p.get('05_15_density', 0) + p.get('bolee_15_density', 0))
+                            total_density += conif_density
+                    else:
+                        # Для лиственных обычная густота
+                        total_density = sum(p.get('density', 0) for p in data['plots'])
+                    if total_density > 0:
+                        total_densities[breed_name] = total_density
+
+            if total_densities:
+                # Расчет коэффициентов состава так, чтобы их сумма равнялась 10
+                total_all_density = sum(total_densities.values())
+                composition_parts = []
+
+                # Сортируем по убыванию плотности
+                for breed_name, density in sorted(total_densities.items(), key=lambda x: x[1], reverse=True):
+                    if total_all_density > 0:
+                        # Коэффициент пропорционален плотности, сумма всех коэффициентов = 10
+                        coeff = max(1, round(density / total_all_density * 10))
+                    else:
+                        coeff = 1
+                    breed_letter = self.get_breed_letter(breed_name)
+                    composition_parts.append(f"{coeff}{breed_letter}")
+
+                # Корректировка чтобы сумма равнялась 10
+                coeffs_only = [int(''.join(filter(str.isdigit, part))) for part in composition_parts]
+                total_coeffs = sum(coeffs_only)
+                iterations = 0
+                while total_coeffs != 10 and iterations < 100:
+                    if total_coeffs > 10:
+                        # Уменьшаем самый большой коэффициент
+                        max_idx = coeffs_only.index(max(coeffs_only))
+                        coeffs_only[max_idx] -= 1
+                    elif total_coeffs < 10:
+                        # Увеличиваем самый большой коэффициент
+                        max_idx = coeffs_only.index(max(coeffs_only))
+                        coeffs_only[max_idx] += 1
+
+                    total_coeffs = sum(coeffs_only)
+                    iterations += 1
+
+                # Обновляем composition_parts
+                sorted_breeds = sorted(total_densities.items(), key=lambda x: x[1], reverse=True)
+                composition_parts = []
+                for i, (breed_name, _) in enumerate(sorted_breeds):
+                    if i < len(coeffs_only):
+                        breed_letter = self.get_breed_letter(breed_name)
+                        composition_parts.append(f"{coeffs_only[i]}{breed_letter}")
+
+                composition_text = ''.join(composition_parts) + "Др"
+                composition_result = Label(
+                    text=f"Формула состава: {composition_text}",
+                    font_name='Roboto',
+                    font_size='14sp',
+                    color=(0, 0, 0, 1),
+                    size_hint=(1, None),
+                    height=30,
+                    halign='center'
+                )
+                results_layout.add_widget(composition_result)
+            else:
+                no_composition = Label(
+                    text="Коэффициент состава не определен (недостаточно данных)",
+                    font_name='Roboto',
+                    font_size='14sp',
+                    color=(1, 0, 0, 1),
+                    size_hint=(1, None),
+                    height=30,
+                    halign='center'
+                )
+                results_layout.add_widget(no_composition)
+
+            # Хвойные породы с градациями высот
+            coniferous_label = Label(
+                text='\nХВОЙНЫЕ ПОРОДЫ - ВЫСОТА ПО ГРАДАЦИЯМ',
+                font_name='Roboto',
+                font_size='16sp',
+                bold=True,
+                color=(0, 0, 0, 1),
+                size_hint=(1, None),
+                height=50,
+                halign='center'
+            )
+            results_layout.add_widget(coniferous_label)
+
+            has_coniferous = False
+            for breed_name, data in sorted(breeds_data.items()):
+                if data['type'] == 'coniferous' and data['plots']:
+                    has_coniferous = True
+
+                    # Средняя густота в градациях
+                    zones = data.get('coniferous_zones', {})
+                    avg_do_05 = zones.get('do_05', 0) / len(data['plots']) if data['plots'] else 0
+                    avg_05_15 = zones.get('05_15', 0) / len(data['plots']) if data['plots'] else 0
+                    avg_bolee_15 = zones.get('bolee_15', 0) / len(data['plots']) if data['plots'] else 0
+
+                    # Средняя высота только по значениям >1.5м
+                    avg_heights_over_15 = [p['height'] for p in data['plots'] if p['height'] > 1.5]
+                    avg_height_total = sum(avg_heights_over_15) / len(avg_heights_over_15) if avg_heights_over_15 else 0
+
+                    # Средний диаметр
+                    avg_diameter = sum(data['diameters']) / len(data['diameters']) if data['diameters'] else 0
+
+                    coniferous_result = Label(
+                        text=f"{breed_name}:\n"
+                             f"• до 0.5м: {avg_do_05:.1f} шт/га\n"
+                             f"• 0.5-1.5м: {avg_05_15:.1f} шт/га\n"
+                             f"• >1.5м: {avg_bolee_15:.1f} шт/га\n"
+                             f"• средняя высота (>1.5м): {avg_height_total:.1f}м\n"
+                             f"• средний диаметр: {avg_diameter:.1f} см",
+                        font_name='Roboto',
+                        font_size='14sp',
+                        color=(0, 0.5, 0, 1),
+                        size_hint=(1, None),
+                        height=120,
+                        halign='left',
+                        valign='top'
+                    )
+                    coniferous_result.bind(size=lambda *args: setattr(coniferous_result, 'text_size', (coniferous_result.width, None)))
+                    results_layout.add_widget(coniferous_result)
+
+            if not has_coniferous:
+                no_coniferous = Label(
+                    text="Хвойные породы не найдены",
+                    font_name='Roboto',
+                    font_size='14sp',
+                    color=(0.5, 0.5, 0.5, 1),
+                    size_hint=(1, None),
+                    height=30,
+                    halign='center'
+                )
+                results_layout.add_widget(no_coniferous)
+
+            # Лиственные породы - средние высоты и возраст
+            deciduous_label = Label(
+                text='\nЛИСТВЕННЫЕ ПОРОДЫ - СРЕДНИЕ ПОКАЗАТЕЛИ',
+                font_name='Roboto',
+                font_size='16sp',
+                bold=True,
+                color=(0, 0, 0, 1),
+                size_hint=(1, None),
+                height=50,
+                halign='center'
+            )
+            results_layout.add_widget(deciduous_label)
+
+            has_deciduous = False
+            for breed_name, data in sorted(breeds_data.items()):
+                if data['type'] == 'deciduous' and data['plots']:
+                    has_deciduous = True
+
+                    avg_density = sum(p['density'] for p in data['plots']) / len(data['plots'])
+
+                    avg_heights = [p['height'] for p in data['plots'] if p['height'] > 0]
+                    avg_height = sum(avg_heights) / len(avg_heights) if avg_heights else 0
+
+                    avg_ages = [p['age'] for p in data['plots'] if p['age'] > 0]
+                    avg_age = sum(avg_ages) / len(avg_ages) if avg_ages else 0
+
+                    # Средний диаметр
+                    avg_diameter = sum(data['diameters']) / len(data['diameters']) if data['diameters'] else 0
+
+                    deciduous_result = Label(
+                        text=f"{breed_name}:\n"
+                             f"• Густота: {avg_density:.1f} шт/га\n"
+                             f"• Средняя высота: {avg_height:.1f}м\n"
+                             f"• Средний возраст: {avg_age:.1f} лет\n"
+                             f"• Средний диаметр: {avg_diameter:.1f} см",
+                        font_name='Roboto',
+                        font_size='14sp',
+                        color=(0, 0.3, 0.5, 1),
+                        size_hint=(1, None),
+                        height=100,
+                        halign='left',
+                        valign='top'
+                    )
+                    deciduous_result.bind(size=lambda *args: setattr(deciduous_result, 'text_size', (deciduous_result.width, None)))
+                    results_layout.add_widget(deciduous_result)
+
+            if not has_deciduous:
+                no_deciduous = Label(
+                    text="Лиственные породы не найдены",
+                    font_name='Roboto',
+                    font_size='14sp',
+                    color=(0.5, 0.5, 0.5, 1),
+                    size_hint=(1, None),
+                    height=30,
+                    halign='center'
+                )
+                results_layout.add_widget(no_deciduous)
+
+            # Средние данные в целом по участку
+            overall_label = Label(
+                text='\nСРЕДНИЕ ДАННЫЕ В ЦЕЛОМ ПО УЧАСТКУ',
+                font_name='Roboto',
+                font_size='16sp',
+                bold=True,
+                color=(0, 0, 0, 1),
+                size_hint=(1, None),
+                height=50,
+                halign='center'
+            )
+            results_layout.add_widget(overall_label)
+
+            # Рассчитываем общие средние
+            all_densities = []
+            all_heights = []
+            all_ages = []
+            all_diameters = []
+
+            for breed_name, data in breeds_data.items():
+                if data['plots']:
+                    all_densities.extend([p['density'] for p in data['plots'] if p['density'] > 0])
+                    all_heights.extend([p['height'] for p in data['plots'] if p['height'] > 0])
+                    all_ages.extend([p['age'] for p in data['plots'] if p['age'] > 0])
+                    all_diameters.extend([d for d in data['diameters'] if d > 0])
+
+            avg_overall_density = sum(all_densities) / len(all_densities) if all_densities else 0
+            avg_overall_height = sum(all_heights) / len(all_heights) if all_heights else 0
+            avg_overall_age = sum(all_ages) / len(all_ages) if all_ages else 0
+            avg_overall_diameter = sum(all_diameters) / len(all_diameters) if all_diameters else 0
+
+            overall_result = Label(
+                text=f"Средняя густота: {avg_overall_density:.1f} шт/га\n"
+                     f"Средняя высота: {avg_overall_height:.1f} м\n"
+                     f"Средний возраст: {avg_overall_age:.1f} лет\n"
+                     f"Средний диаметр: {avg_overall_diameter:.1f} см",
+                font_name='Roboto',
+                font_size='14sp',
+                color=(0.8, 0.4, 0, 1),
+                size_hint=(1, None),
+                height=100,
+                halign='left',
+                valign='top'
+            )
+            overall_result.bind(size=lambda *args: setattr(overall_result, 'text_size', (overall_result.width, None)))
+            results_layout.add_widget(overall_result)
+
+
+
+            # Предмет ухода и интенсивность рубки
+            care_label = Label(
+                text='\nПРЕДМЕТ УХОДА И ИНТЕНСИВНОСТЬ РУБКИ',
+                font_name='Roboto',
+                font_size='16sp',
+                bold=True,
+                color=(0, 0, 0, 1),
+                size_hint=(1, None),
+                height=50,
+                halign='center'
+            )
+            results_layout.add_widget(care_label)
+
+            # Собираем данные по предмету ухода и рассчитываем интенсивность
+            care_data = []
+            total_density_all_plots = 0  # Для площадок с предметом ухода
+            total_remaining_density = 0
+            plot_count_with_care = 0
+
+            # Рассчитываем среднюю густоту по всем площадкам
+            total_density_all = 0
+            plot_count_all = 0
+
+            for page_num, page_rows in self.page_data.items():
+                for row in page_rows:
+                    if len(row) >= 4 and row[3]:  # Есть данные пород
+                        plot_density = 0
+                        breeds_text = row[3]
+                        if breeds_text:
+                            try:
+                                breeds_list = json.loads(breeds_text) if isinstance(breeds_text, str) else []
+                                for breed_info in breeds_list:
+                                    if isinstance(breed_info, dict):
+                                        if breed_info.get('type') == 'coniferous':
+                                            # Для хвойных суммируем градации
+                                            do_05 = breed_info.get('do_05', 0)
+                                            _05_15 = breed_info.get('05_15', 0)
+                                            bolee_15 = breed_info.get('bolee_15', 0)
+                                            plot_density += (do_05 + _05_15 + bolee_15) / plot_area_ha if plot_area_ha > 0 else 0
+                                        else:
+                                            # Для лиственных обычная густота
+                                            density = breed_info.get('density', 0)
+                                            plot_density += density / plot_area_ha if plot_area_ha > 0 else 0
+                            except (json.JSONDecodeError, TypeError):
+                                pass
+
+                        if plot_density > 0:
+                            total_density_all += plot_density
+                            plot_count_all += 1
+
+                    if len(row) >= 4 and row[2]:  # Предмет ухода и данные пород
+                        care_text = row[2].strip()
+                        if care_text:
+                            # Рассчитываем общую густоту на этой площадке
+                            plot_density = 0
+                            breeds_text = row[3]
+                            if breeds_text:
+                                try:
+                                    breeds_list = json.loads(breeds_text) if isinstance(breeds_text, str) else []
+                                    for breed_info in breeds_list:
+                                        if isinstance(breed_info, dict):
+                                            if breed_info.get('type') == 'coniferous':
+                                                # Для хвойных суммируем градации
+                                                do_05 = breed_info.get('do_05', 0)
+                                                _05_15 = breed_info.get('05_15', 0)
+                                                bolee_15 = breed_info.get('bolee_15', 0)
+                                                plot_density += (do_05 + _05_15 + bolee_15) / plot_area_ha if plot_area_ha > 0 else 0
+                                            else:
+                                                # Для лиственных обычная густота
+                                                density = breed_info.get('density', 0)
+                                                plot_density += density / plot_area_ha if plot_area_ha > 0 else 0
+                                except (json.JSONDecodeError, TypeError):
+                                    pass
+
+                            if plot_density > 0:
+                                # Парсим предмет ухода для получения оставляемой густоты
+                                remaining_density = self.parse_care_subject_density(care_text)
+                                if remaining_density > 0:
+                                    care_data.append({
+                                        'care_text': care_text,
+                                        'plot_density': plot_density,
+                                        'remaining_density': remaining_density
+                                    })
+                                    total_density_all_plots += plot_density
+                                    total_remaining_density += remaining_density
+                                    plot_count_with_care += 1
+
+            if care_data:
+                # Рассчитываем средний предмет ухода
+                care_breed_totals = {}
+                care_plot_count = 0
+
+                for item in care_data:
+                    care_text = item['care_text']
+                    breed_densities = self.parse_care_subject_by_breeds(care_text)
+                    for breed, density in breed_densities.items():
+                        if breed not in care_breed_totals:
+                            care_breed_totals[breed] = 0
+                        care_breed_totals[breed] += density
+                    care_plot_count += 1
+
+                if care_breed_totals and care_plot_count > 0:
+                    avg_care_parts = []
+                    short_parts = []
+                    for breed, total_density in sorted(care_breed_totals.items()):
+                        avg_density = total_density / care_plot_count
+                        avg_care_parts.append(f"{avg_density * 1000:.0f}шт/га{breed}")
+                        short_parts.append(f"{avg_density:.1f}{breed}")
+                    avg_care_text = ''.join(avg_care_parts)
+                    short_text = ''.join(short_parts).replace('.', ',')
+
+                    care_result = Label(
+                        text=f"Средний предмет ухода: {avg_care_text} = {short_text}",
+                        font_name='Roboto',
+                        font_size='14sp',
+                        color=(0.2, 0.6, 0.2, 1),
+                        size_hint=(1, None),
+                        height=40,
+                        halign='left',
+                        valign='top'
+                    )
+                    care_result.bind(size=lambda *args: setattr(care_result, 'text_size', (care_result.width, None)))
+                    results_layout.add_widget(care_result)
+
+                    # Рассчитываем среднюю интенсивность рубки
+                if plot_count_with_care > 0 and plot_count_all > 0:
+                    avg_remaining_density = total_remaining_density / plot_count_with_care
+
+                    # Интенсивность рубки = ((общая густота - оставляемая густота) / общая густота) * 100%
+                    if avg_overall_density > 0:
+                        intensity = ((avg_overall_density - avg_remaining_density) / avg_overall_density) * 100
+
+                        intensity_result = Label(
+                            text=f"Средняя интенсивность рубки: {intensity:.1f}%\n"
+                                 f"(было {avg_overall_density:.0f} шт/га, "
+                                 f"останется {avg_remaining_density:.0f} шт/га)",
+                            font_name='Roboto',
+                            font_size='14sp',
+                            color=(0.8, 0.2, 0.2, 1),
+                            size_hint=(1, None),
+                            height=60,
+                            halign='left',
+                            valign='top'
+                        )
+                        intensity_result.bind(size=lambda *args: setattr(intensity_result, 'text_size', (intensity_result.width, None)))
+                        results_layout.add_widget(intensity_result)
+            else:
+                no_care = Label(
+                    text="Предмет ухода не указан или недостаточно данных для расчета",
+                    font_name='Roboto',
+                    font_size='14sp',
+                    color=(0.5, 0.5, 0.5, 1),
+                    size_hint=(1, None),
+                    height=30,
+                    halign='center'
+                )
+                results_layout.add_widget(no_care)
+
+            # Расчет преобладающего типа леса
+            forest_types_count = {}
+            for page_num, page_rows in self.page_data.items():
+                for row in page_rows:
+                    if len(row) >= 6 and row[5]:  # Тип Леса в row[5]
+                        forest_type = row[5].strip()
+                        if forest_type:
+                            forest_types_count[forest_type] = forest_types_count.get(forest_type, 0) + 1
+
+            predominant_forest_type = ""
+            if forest_types_count:
+                predominant_forest_type = max(forest_types_count.items(), key=lambda x: x[1])[0]
+
+            # Отображение преобладающего типа леса
+            forest_type_label = Label(
+                text=f'\nПРЕОБЛАДАЮЩИЙ ТИП ЛЕСА: {predominant_forest_type}',
+                font_name='Roboto',
+                font_size='16sp',
+                bold=True,
+                color=(0.2, 0.4, 0.6, 1),
+                size_hint=(1, None),
+                height=50,
+                halign='center'
+            )
+            results_layout.add_widget(forest_type_label)
+
+            # Расчет средних значений по типам леса
+            forest_type_stats = {}
+            for page_num, page_rows in self.page_data.items():
+                for row in page_rows:
+                    if len(row) >= 6 and row[5]:  # Тип Леса в row[5]
+                        forest_type = row[5].strip()
+                        if forest_type:
+                            if forest_type not in forest_type_stats:
+                                forest_type_stats[forest_type] = {
+                                    'count': 0,
+                                    'total_density': 0,
+                                    'total_height': 0,
+                                    'total_age': 0,
+                                    'valid_density': 0,
+                                    'valid_height': 0,
+                                    'valid_age': 0
+                                }
+
+                            # Расчет плотности для этой строки
+                            plot_density = 0
+                            breeds_text = row[3]
+                            if breeds_text:
+                                try:
+                                    breeds_list = json.loads(breeds_text) if isinstance(breeds_text, str) else []
+                                    for breed_info in breeds_list:
+                                        if isinstance(breed_info, dict):
+                                            if breed_info.get('type') == 'coniferous':
+                                                do_05 = breed_info.get('do_05', 0)
+                                                _05_15 = breed_info.get('05_15', 0)
+                                                bolee_15 = breed_info.get('bolee_15', 0)
+                                                plot_density += (do_05 + _05_15 + bolee_15) / plot_area_ha if plot_area_ha > 0 else 0
+                                            else:
+                                                density = breed_info.get('density', 0)
+                                                plot_density += density / plot_area_ha if plot_area_ha > 0 else 0
+                                except (json.JSONDecodeError, TypeError):
+                                    pass
+
+                            forest_type_stats[forest_type]['count'] += 1
+                            if plot_density > 0:
+                                forest_type_stats[forest_type]['total_density'] += plot_density
+                                forest_type_stats[forest_type]['valid_density'] += 1
+
+                            # Средняя высота и возраст по породам в этой строке
+                            heights = []
+                            ages = []
+                            if breeds_text:
+                                try:
+                                    breeds_list = json.loads(breeds_text) if isinstance(breeds_text, str) else []
+                                    for breed_info in breeds_list:
+                                        if isinstance(breed_info, dict):
+                                            if breed_info.get('height', 0) > 0:
+                                                heights.append(breed_info['height'])
+                                            if breed_info.get('age', 0) > 0:
+                                                ages.append(breed_info['age'])
+                                except (json.JSONDecodeError, TypeError):
+                                    pass
+
+                            if heights:
+                                avg_height = sum(heights) / len(heights)
+                                forest_type_stats[forest_type]['total_height'] += avg_height
+                                forest_type_stats[forest_type]['valid_height'] += 1
+
+                            if ages:
+                                avg_age = sum(ages) / len(ages)
+                                forest_type_stats[forest_type]['total_age'] += avg_age
+                                forest_type_stats[forest_type]['valid_age'] += 1
+
+            # Отображение средних значений по типам леса
+            forest_types_avg_label = Label(
+                text='\nСРЕДНИЕ ЗНАЧЕНИЯ ПО ТИПАМ ЛЕСА',
+                font_name='Roboto',
+                font_size='16sp',
+                bold=True,
+                color=(0.4, 0.2, 0.6, 1),
+                size_hint=(1, None),
+                height=50,
+                halign='center'
+            )
+            results_layout.add_widget(forest_types_avg_label)
+
+            for forest_type, stats in sorted(forest_type_stats.items()):
+                if stats['count'] > 0:
+                    avg_density = stats['total_density'] / stats['valid_density'] if stats['valid_density'] > 0 else 0
+                    avg_height = stats['total_height'] / stats['valid_height'] if stats['valid_height'] > 0 else 0
+                    avg_age = stats['total_age'] / stats['valid_age'] if stats['valid_age'] > 0 else 0
+
+                    is_predominant = forest_type == predominant_forest_type
+                    color = (0.8, 0.4, 0.2, 1) if is_predominant else (0.3, 0.3, 0.3, 1)
+
+                    forest_type_avg_result = Label(
+                        text=f"{forest_type} ({stats['count']} площадок){' - ПРЕОБЛАДАЮЩИЙ' if is_predominant else ''}:\n"
+                             f"• Средняя густота: {avg_density:.1f} шт/га\n"
+                             f"• Средняя высота: {avg_height:.1f} м\n"
+                             f"• Средний возраст: {avg_age:.1f} лет",
+                        font_name='Roboto',
+                        font_size='14sp',
+                        color=color,
+                        size_hint=(1, None),
+                        height=80,
+                        halign='left',
+                        valign='top'
+                    )
+                    forest_type_avg_result.bind(size=lambda *args: setattr(forest_type_avg_result, 'text_size', (forest_type_avg_result.width, None)))
+                    results_layout.add_widget(forest_type_avg_result)
+
+            # Информация о площади участка и площади перечета
+            plot_count = len([row for page in self.page_data.values() for row in page if any(cell for cell in row[:3] if cell)])
+            total_plot_area_ha = plot_count * plot_area_ha
+
+            plot_area_info = Label(
+                text=f"Информация о площади:\n"
+                     f"• Радиус пробной площади: {default_radius:.2f} м\n"
+                     f"• Площадь одной площадки: {plot_area_ha:.4f} га ({plot_area_m2:.4f} м²)\n"
+                     f"• Всего площадок: {plot_count}\n"
+                     f"• Совокупная площадь перечета: {total_plot_area_ha:.4f} га ({total_plot_area_ha*10000:.0f} м²)\n"
+                     f"• Пример: 1 площадка = {plot_area_ha:.4f} га, значит площадь перечета = {plot_area_m2:.0f} м²",
+                font_name='Roboto',
+                font_size='12sp',
+                color=(0.5, 0.5, 0.5, 1),
+                size_hint=(1, None),
+                height=120,
+                halign='left',
+                valign='top'
+            )
+            plot_area_info.bind(size=lambda *args: setattr(plot_area_info, 'text_size', (plot_area_info.width, None)))
+            results_layout.add_widget(plot_area_info)
+
+
+
+            scroll.add_widget(results_layout)
+            content.add_widget(scroll)
+
+            close_btn = ModernButton(
+                text='Закрыть',
+                bg_color=get_color_from_hex('#808080'),
+                size_hint=(1, None),
+                height=50
+            )
+            content.add_widget(close_btn)
+
+            popup = Popup(
+                title="Таксационные показатели молодняков",
+                content=content,
+                size_hint=(0.95, 0.95)
+            )
+
+            close_btn.bind(on_press=popup.dismiss)
+            popup.open()
+
+        except Exception as e:
+            import traceback
+            self.show_error(f"Ошибка расчета таксационных показателей: {str(e)}\n{traceback.format_exc()}")
+
+    def update_totals(self, update_global=True):
+        """Обновление строки итогов с поддержкой множественных пород"""
+        breed_composition = {}  # Initialize at top
+        total_stats = {'density': [], 'height': [], 'age': []}  # Initialize at top
+
+        # Calculate radius and area once
+        current_radius = float(self.current_radius) if self.current_radius else 5.64
+        plot_area_m2 = 3.14159 * (current_radius ** 2)
+        if update_global:
+            section_data = self.calculate_section_totals()
+            composition_text = section_data['composition_text']
+            forestry_formulas_text = section_data['forestry_formulas_text']
+            total_plots = section_data['total_plots']
+
+    def generate_care_project(self, instance):
+        """Генерирует проект ухода в Word документе"""
+        try:
+            # Сохраняем текущую страницу перед генерацией отчета
+            if not self.save_current_page():
+                self.show_error("Не удалось сохранить текущую страницу!")
+                return
+
+            # Собираем данные из адресной строки
+            address_data = {
+                'quarter': str(self.current_quarter or ''),
+                'plot': str(self.current_plot or ''),
+                'section': str(self.current_section or ''),
+                'forestry': str(self.current_forestry or ''),
+                'plot_area': str(self.plot_area_input or ''),
+                'target_purpose': 'Эксплуатационные леса',  # Можно настроить
+                'forest_type': 'Смешанный лес'  # Можно настроить
+            }
+
+            # Получаем итоговые данные из текущих данных приложения
+            total_data = self.get_total_data_from_db()
+
+            # Создаем временный JSON файл с данными для скрипта
+            import tempfile
+            import subprocess
+
+            temp_data = {
+                'address_data': address_data,
+                'total_data': total_data
+            }
+
+            # Сохраняем данные во временный файл
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False, encoding='utf-8') as f:
+                json.dump(temp_data, f, ensure_ascii=False, indent=2)
+                temp_file = f.name
+
+            # Вызываем скрипт fill_word_document.py с параметром
+            script_path = os.path.join(os.path.dirname(__file__), 'fill_word_document.py')
+            result = subprocess.run([
+                sys.executable, script_path, '--data-file', temp_file
+            ], capture_output=True, text=False)
+
+            # Удаляем временный файл
+            try:
+                os.unlink(temp_file)
+            except:
+                pass
+
+            # Декодируем вывод с обработкой ошибок кодировки
+            def decode_output(output_bytes):
+                try:
+                    if output_bytes is None:
+                        return ""
+                    if not output_bytes:
+                        return ""
+                    return output_bytes.decode('utf-8')
+                except UnicodeDecodeError:
+                    try:
+                        return output_bytes.decode('cp1251')  # Windows-1251 для русского
+                    except UnicodeDecodeError:
+                        return output_bytes.decode('utf-8', errors='replace')
+                except Exception:
+                    return ""
+
+            if result.returncode == 0:
+                stdout_text = decode_output(result.stdout)
+                self.show_success(f"Проект ухода успешно создан!\n{stdout_text}")
+            else:
+                stderr_text = decode_output(result.stderr)
+                self.show_error(f"Ошибка при создании проекта ухода:\n{stderr_text}")
+
+        except Exception as e:
+            self.show_error(f"Ошибка при генерации проекта ухода: {str(e)}")
+
+    def get_total_data_from_db(self):
+        """Получает итоговые данные из рассчитанных данных меню Итого"""
+        try:
+            # Используем рассчитанные данные из меню Итого вместо данных из БД
+            # Получаем данные аналогично методу show_total_summary_popup
+
+            default_radius = float(self.current_radius) if self.current_radius else 5.64
+            plot_area_ha = 3.14159 * (default_radius ** 2) / 10000
+
+            # Словарь для сбора данных по породам
+            breeds_data = {}
+
+            # Обрабатываем все страницы
+            for page_num, page_rows in self.page_data.items():
+                for row in page_rows:
+                    if len(row) < 4:
+                        continue
+
+                    # Столбец "Порода" в row[3]
+                    breeds_text = row[3]
+                    if not breeds_text:
+                        continue
+
+                    try:
+                        breeds_list = json.loads(breeds_text) if isinstance(breeds_text, str) else []
+                    except json.JSONDecodeError:
+                        continue
+
+                    for breed_info in breeds_list:
+                        if not isinstance(breed_info, dict):
+                            continue
+
+                        breed_name = breed_info.get('name', '').strip()
+                        if not breed_name:
+                            continue
+
+                        breed_type = breed_info.get('type', 'deciduous')
+                        density = 0
+                        height = None
+                        age = None
+
+                        # Расчет густоты и высоты в зависимости от типа породы
+                        if breed_type == 'coniferous':
+                            do_05 = breed_info.get('do_05', 0)
+                            _05_15 = breed_info.get('05_15', 0)
+                            bolee_15 = breed_info.get('bolee_15', 0)
+                            density = (do_05 + _05_15 + bolee_15) / plot_area_ha if plot_area_ha > 0 else 0
+
+                            # Для хвойных пород определяем высоту по градациям или среднюю
+                            if any([do_05, _05_15, bolee_15]):
+                                # Высота определяется по градациям
+                                if bolee_15 > 0:
+                                    height = 2.0  # >1.5m
+                                elif _05_15 > 0:
+                                    height = 1.0  # 0.5-1.5m
+                                elif do_05 > 0:
+                                    height = 0.3  # до 0.5m
+                                else:
+                                    height = 0.0
+                            else:
+                                height = breed_info.get('height', 0) or 0
+                        else:
+                            # Для лиственных пород - обычная плотность и средняя высота
+                            density_value = breed_info.get('density', 0)
+                            density = density_value / plot_area_ha if plot_area_ha > 0 else 0
+                            height = breed_info.get('height', 0) or 0
+
+                        age = breed_info.get('age', 0) or 0
+                        diameter = breed_info.get('diameter', 0) or 0
+
+                        # Сбор данных по породе
+                        if breed_name not in breeds_data:
+                            breeds_data[breed_name] = {
+                                'type': breed_type,
+                                'plots': [],
+                                'coniferous_zones': {'do_05': 0, '05_15': 0, 'bolee_15': 0} if breed_type == 'coniferous' else None,
+                                'diameters': []
+                            }
+
+                        # Добавляем данные
+                        plot_data = {
+                            'density': density,
+                            'height': height,
+                            'age': age
+                        }
+
+                        if breed_type == 'coniferous':
+                            plot_data.update({
+                                'do_05_density': do_05 / plot_area_ha if plot_area_ha > 0 else 0,
+                                '05_15_density': _05_15 / plot_area_ha if plot_area_ha > 0 else 0,
+                                'bolee_15_density': bolee_15 / plot_area_ha if plot_area_ha > 0 else 0
+                            })
+
+                        breeds_data[breed_name]['plots'].append(plot_data)
+                        breeds_data[breed_name]['diameters'].append(diameter)
+
+                        if breed_type == 'coniferous':
+                            breeds_data[breed_name]['coniferous_zones']['do_05'] += plot_data['do_05_density']
+                            breeds_data[breed_name]['coniferous_zones']['05_15'] += plot_data['05_15_density']
+                            breeds_data[breed_name]['coniferous_zones']['bolee_15'] += plot_data['bolee_15_density']
+
+            # Расчет коэффициента состава на основе суммарной густоты пород
+            total_densities = {}
+            for breed_name, data in breeds_data.items():
+                if data['plots']:
+                    if data['plots'][0].get('type') == 'coniferous':
+                        # Для хвойных суммируем густоту по градациям
+                        total_density = 0
+                        for p in data['plots']:
+                            conif_density = (p.get('do_05_density', 0) + p.get('05_15_density', 0) + p.get('bolee_15_density', 0))
+                            total_density += conif_density
+                    else:
+                        # Для лиственных обычная густота
+                        total_density = sum(p.get('density', 0) for p in data['plots'])
+                    if total_density > 0:
+                        total_densities[breed_name] = total_density
+
+            # Расчет коэффициентов состава
+            composition_text = ""
+            if total_densities:
+                total_all_density = sum(total_densities.values())
+                composition_parts = []
+
+                # Сортируем по убыванию плотности
+                for breed_name, density in sorted(total_densities.items(), key=lambda x: x[1], reverse=True):
+                    if total_all_density > 0:
+                        # Коэффициент пропорционален плотности, сумма всех коэффициентов = 10
+                        coeff = max(1, round(density / total_all_density * 10))
+                    else:
+                        coeff = 1
+                    breed_letter = self.get_breed_letter(breed_name)
+                    composition_parts.append(f"{coeff}{breed_letter}")
+
+                # Корректировка чтобы сумма равнялась 10
+                coeffs_only = [int(''.join(filter(str.isdigit, part))) for part in composition_parts]
+                total_coeffs = sum(coeffs_only)
+                iterations = 0
+                while total_coeffs != 10 and iterations < 100:
+                    if total_coeffs > 10:
+                        # Уменьшаем самый большой коэффициент
+                        max_idx = coeffs_only.index(max(coeffs_only))
+                        coeffs_only[max_idx] -= 1
+                    elif total_coeffs < 10:
+                        # Увеличиваем самый большой коэффициент
+                        max_idx = coeffs_only.index(max(coeffs_only))
+                        coeffs_only[max_idx] += 1
+
+                    total_coeffs = sum(coeffs_only)
+                    iterations += 1
+
+                # Обновляем composition_parts
+                sorted_breeds = sorted(total_densities.items(), key=lambda x: x[1], reverse=True)
+                composition_parts = []
+                for i, (breed_name, _) in enumerate(sorted_breeds):
+                    if i < len(coeffs_only):
+                        breed_letter = self.get_breed_letter(breed_name)
+                        composition_parts.append(f"{coeffs_only[i]}{breed_letter}")
+
+                composition_text = ''.join(composition_parts) + "Др"
+
+            # Расчет предмета ухода и интенсивности
+            care_data = []
+            total_density_all_plots = 0
+            total_remaining_density = 0
+            plot_count_with_care = 0
+
+            for page_num, page_rows in self.page_data.items():
+                for row in page_rows:
+                    if len(row) >= 4 and row[3]:
+                        plot_density = 0
+                        breeds_text = row[3]
+                        if breeds_text:
+                            try:
+                                breeds_list = json.loads(breeds_text) if isinstance(breeds_text, str) else []
+                                for breed_info in breeds_list:
+                                    if isinstance(breed_info, dict):
+                                        if breed_info.get('type') == 'coniferous':
+                                            do_05 = breed_info.get('do_05', 0)
+                                            _05_15 = breed_info.get('05_15', 0)
+                                            bolee_15 = breed_info.get('bolee_15', 0)
+                                            plot_density += (do_05 + _05_15 + bolee_15) / plot_area_ha if plot_area_ha > 0 else 0
+                                        else:
+                                            density = breed_info.get('density', 0)
+                                            plot_density += density / plot_area_ha if plot_area_ha > 0 else 0
+                            except (json.JSONDecodeError, TypeError):
+                                pass
+
+                        if plot_density > 0:
+                            total_density_all_plots += plot_density
+
+                    if len(row) >= 4 and row[2]:
+                        care_text = row[2].strip()
+                        if care_text:
+                            plot_density = 0
+                            breeds_text = row[3]
+                            if breeds_text:
+                                try:
+                                    breeds_list = json.loads(breeds_text) if isinstance(breeds_text, str) else []
+                                    for breed_info in breeds_list:
+                                        if isinstance(breed_info, dict):
+                                            if breed_info.get('type') == 'coniferous':
+                                                do_05 = breed_info.get('do_05', 0)
+                                                _05_15 = breed_info.get('05_15', 0)
+                                                bolee_15 = breed_info.get('bolee_15', 0)
+                                                plot_density += (do_05 + _05_15 + bolee_15) / plot_area_ha if plot_area_ha > 0 else 0
+                                            else:
+                                                density = breed_info.get('density', 0)
+                                                plot_density += density / plot_area_ha if plot_area_ha > 0 else 0
+                                except (json.JSONDecodeError, TypeError):
+                                    pass
+
+                            if plot_density > 0:
+                                remaining_density = self.parse_care_subject_density(care_text)
+                                if remaining_density > 0:
+                                    care_data.append({
+                                        'care_text': care_text,
+                                        'plot_density': plot_density,
+                                        'remaining_density': remaining_density
+                                    })
+                                    total_remaining_density += remaining_density
+                                    plot_count_with_care += 1
+
+            # Расчет среднего предмета ухода
+            care_subject = ""
+            intensity = 25.0  # По умолчанию
+
+            if care_data:
+                care_breed_totals = {}
+                care_plot_count = 0
+
+                for item in care_data:
+                    care_text = item['care_text']
+                    breed_densities = self.parse_care_subject_by_breeds(care_text)
+                    for breed, density in breed_densities.items():
+                        if breed not in care_breed_totals:
+                            care_breed_totals[breed] = 0
+                        care_breed_totals[breed] += density
+                    care_plot_count += 1
+
+                if care_breed_totals and care_plot_count > 0:
+                    avg_care_parts = []
+                    for breed, total_density in sorted(care_breed_totals.items()):
+                        avg_density = total_density / care_plot_count
+                        avg_care_parts.append(f"{avg_density * 1000:.0f}шт/га{breed}")
+                    care_subject = ''.join(avg_care_parts)
+
+                    # Расчет интенсивности
+                    if plot_count_with_care > 0:
+                        avg_remaining_density = total_remaining_density / plot_count_with_care
+                        avg_overall_density = total_density_all_plots / len([row for page in self.page_data.values() for row in page if any(cell for cell in row[:3] if cell)])
+
+                        if avg_overall_density > 0:
+                            intensity = ((avg_overall_density - avg_remaining_density) / avg_overall_density) * 100
+
+            # Расчет средних значений по участку
+            all_densities = []
+            all_heights = []
+            all_ages = []
+
+            for breed_name, data in breeds_data.items():
+                if data['plots']:
+                    all_densities.extend([p['density'] for p in data['plots'] if p['density'] > 0])
+                    all_heights.extend([p['height'] for p in data['plots'] if p['height'] > 0])
+                    all_ages.extend([p['age'] for p in data['plots'] if p['age'] > 0])
+
+            avg_overall_density = sum(all_densities) / len(all_densities) if all_densities else 0
+            avg_overall_height = sum(all_heights) / len(all_heights) if all_heights else 0
+            avg_overall_age = sum(all_ages) / len(all_ages) if all_ages else 0
+
+            # Формируем итоговые данные
+            total_data = {
+                'page_number': self.current_page,
+                'section_name': self.current_section or '',
+                'total_composition': composition_text,
+                'avg_age': avg_overall_age,
+                'avg_density': avg_overall_density,
+                'avg_height': avg_overall_height,
+                'total_plots': len([row for page in self.page_data.values() for row in page if any(cell for cell in row[:3] if cell)]),
+                'composition': composition_text,
+                'care_subject': care_subject,
+                'intensity': intensity,
+                'breeds': []
+            }
+
+            # Добавляем данные по породам
+            for breed_name, data in breeds_data.items():
+                if data['plots']:
+                    avg_density = sum(p['density'] for p in data['plots']) / len(data['plots'])
+                    avg_height = sum(p['height'] for p in data['plots'] if p['height'] > 0) / len([p for p in data['plots'] if p['height'] > 0]) if any(p['height'] > 0 for p in data['plots']) else 0
+                    avg_age = sum(p['age'] for p in data['plots'] if p['age'] > 0) / len([p for p in data['plots'] if p['age'] > 0]) if any(p['age'] > 0 for p in data['plots']) else 0
+
+                    breed_data = {
+                        'name': breed_name,
+                        'type': data['type'],
+                        'density': avg_density,
+                        'height': avg_height,
+                        'age': avg_age
+                    }
+
+                    if data['type'] == 'coniferous':
+                        zones = data.get('coniferous_zones', {})
+                        breed_data.update({
+                            'do_05': zones.get('do_05', 0) / len(data['plots']) if data['plots'] else 0,
+                            '_05_15': zones.get('05_15', 0) / len(data['plots']) if data['plots'] else 0,
+                            'bolee_15': zones.get('bolee_15', 0) / len(data['plots']) if data['plots'] else 0
+                        })
+
+                    total_data['breeds'].append(breed_data)
+
+            return total_data
+
+        except Exception as e:
+            print(f"Ошибка получения данных из меню Итого: {e}")
+            import traceback
+            traceback.print_exc()
+            return {}
 
     def parse_care_subject_density(self, care_text):
         """Парсит предмет ухода и возвращает оставляемую густоту на гектар"""
@@ -3103,6 +5296,8 @@ class ExtendedMolodnikiTableScreen(Screen):
             address_parts.append(f"{self.current_plot} выд.")
         if self.current_forestry:
             address_parts.append(self.current_forestry)
+        if getattr(self, 'current_district_forestry', ''):
+            address_parts.append(f"участковое: {self.current_district_forestry}")
 
         address_text = "Адрес: " + " ".join(address_parts) if address_parts else "Адрес: не указан"
         self.address_label.text = address_text
@@ -3350,17 +5545,27 @@ class ExtendedMolodnikiTableScreen(Screen):
         popup.open()
 
     def show_forestry_popup(self, instance):
-        """Показать popup для ввода лесничества"""
+        """Показать popup для ввода лесничества и участкового лесничества"""
         content = BoxLayout(orientation='vertical', spacing=10, padding=10)
 
         title_label = Label(
-            text="Введите название лесничества",
+            text="Введите название лесничества и участкового лесничества",
             font_name='Roboto',
             bold=True,
             size_hint=(1, None),
             height=30
         )
         content.add_widget(title_label)
+
+        # Поле для лесничества
+        forestry_label = Label(
+            text="Лесничество:",
+            font_name='Roboto',
+            size_hint=(1, None),
+            height=25,
+            color=(0.3, 0.3, 0.3, 1)
+        )
+        content.add_widget(forestry_label)
 
         self.forestry_input = TextInput(
             hint_text="Название лесничества",
@@ -3371,6 +5576,26 @@ class ExtendedMolodnikiTableScreen(Screen):
             text=self.current_forestry
         )
         content.add_widget(self.forestry_input)
+
+        # Поле для участкового лесничества
+        district_forestry_label = Label(
+            text="Участковое лесничество:",
+            font_name='Roboto',
+            size_hint=(1, None),
+            height=25,
+            color=(0.3, 0.3, 0.3, 1)
+        )
+        content.add_widget(district_forestry_label)
+
+        self.district_forestry_input = TextInput(
+            hint_text="Название участкового лесничества",
+            multiline=False,
+            size_hint=(1, None),
+            height=40,
+            font_name='Roboto',
+            text=getattr(self, 'current_district_forestry', '')
+        )
+        content.add_widget(self.district_forestry_input)
 
         btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
         save_btn = ModernButton(
@@ -3392,20 +5617,83 @@ class ExtendedMolodnikiTableScreen(Screen):
         popup = Popup(
             title="Настройка лесничества",
             content=content,
-            size_hint=(0.6, 0.5)
+            size_hint=(0.6, 0.7)
         )
 
         def save_forestry(btn):
             forestry = self.forestry_input.text.strip()
+            district_forestry = self.district_forestry_input.text.strip()
             if forestry:
                 self.current_forestry = forestry
+                self.current_district_forestry = district_forestry
                 self.update_address_label()
-                self.show_success(f"Лесничество установлено: {forestry}")
+                self.show_success(f"Лесничество установлено: {forestry}" + (f", участковое: {district_forestry}" if district_forestry else ""))
                 popup.dismiss()
             else:
                 self.show_error("Название лесничества не может быть пустым!")
 
         save_btn.bind(on_press=save_forestry)
+        cancel_btn.bind(on_press=popup.dismiss)
+
+        popup.open()
+
+    def show_district_forestry_popup(self):
+        """Показать popup для ввода участкового лесничества"""
+        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+
+        title_label = Label(
+            text="Введите название участкового лесничества",
+            font_name='Roboto',
+            bold=True,
+            size_hint=(1, None),
+            height=30
+        )
+        content.add_widget(title_label)
+
+        self.district_forestry_input = TextInput(
+            hint_text="Название участкового лесничества",
+            multiline=False,
+            size_hint=(1, None),
+            height=40,
+            font_name='Roboto',
+            text=getattr(self, 'current_district_forestry', '')
+        )
+        content.add_widget(self.district_forestry_input)
+
+        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
+        save_btn = ModernButton(
+            text='Сохранить',
+            bg_color=get_color_from_hex('#00FF00'),
+            size_hint=(0.5, 1),
+            height=50
+        )
+        cancel_btn = ModernButton(
+            text='Отмена',
+            bg_color=get_color_from_hex('#FF6347'),
+            size_hint=(0.5, 1),
+            height=50
+        )
+        btn_layout.add_widget(save_btn)
+        btn_layout.add_widget(cancel_btn)
+        content.add_widget(btn_layout)
+
+        popup = Popup(
+            title="Настройка участкового лесничества",
+            content=content,
+            size_hint=(0.6, 0.4)
+        )
+
+        def save_district_forestry(btn):
+            district_forestry = self.district_forestry_input.text.strip()
+            self.current_district_forestry = district_forestry
+            self.update_address_label()
+            if district_forestry:
+                self.show_success(f"Участковое лесничество установлено: {district_forestry}")
+            else:
+                self.show_success("Участковое лесничество очищено")
+            popup.dismiss()
+
+        save_btn.bind(on_press=save_district_forestry)
         cancel_btn.bind(on_press=popup.dismiss)
 
         popup.open()
