@@ -1131,7 +1131,7 @@ class TableScreen(Screen):
         for row_idx in range(self.rows_per_page):
             row = []
             for col_idx in range(9):
-                inp = AutoCompleteTextInput(multiline=False, size_hint_y=None, height=30)
+                inp = AutoCompleteTextInput(multiline=False, size_hint_y=None, height=30, size_hint_x=None, width=150 if col_idx == 1 else 100)
                 inp.row_index = row_idx
                 inp.col_index = col_idx
                 inp.bind(focus=self.update_focus)

@@ -19,7 +19,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 class WordDocumentFiller:
     def __init__(self, db_name='forest_data.db', data_file=None, address_data=None, total_data=None):
         self.db_name = db_name
-        self.document_path = 'reports/Проект ухода для молодняков.docx'
+        self.document_path = 'reports/проект 224-56-38га Волдозерское.docx'
         self.data_file = data_file
 
         # Данные адресной строки (можно настроить)
@@ -77,6 +77,13 @@ class WordDocumentFiller:
                     'avg_height': totals_row[7]
                 }
 
+            # Рассчитываем количество площадок
+            cursor.execute('''
+                SELECT COUNT(DISTINCT id) FROM molodniki_data
+            ''')
+            total_plots = cursor.fetchone()[0]
+            self.total_data['total_plots'] = total_plots
+
             # Получаем данные пород
             cursor.execute('''
                 SELECT breed_name, breed_type, density, height, age, do_05, _05_15, bolee_15
@@ -122,6 +129,45 @@ class WordDocumentFiller:
         if not self.total_data.get('intensity'):
             self.total_data['intensity'] = '25%'  # Интенсивность из Итого или по умолчанию
 
+    def calculate_forest_type(self):
+        """Определяем тип леса как среднее по площадкам из данных таблицы"""
+        try:
+            # Получаем данные из базы данных о типах леса по площадкам
+            conn = sqlite3.connect(self.db_name)
+            cursor = conn.cursor()
+
+            # Проверяем, существует ли столбец tip_lesa
+            cursor.execute("PRAGMA table_info(molodniki_data)")
+            columns = [col[1] for col in cursor.fetchall()]
+
+            if 'tip_lesa' not in columns:
+                print("Столбец tip_lesa не найден, используем значение по умолчанию")
+                conn.close()
+                return self.address_data.get('forest_type', 'Бр В2')
+
+            # Получаем все типы леса из таблицы molodniki_data
+            cursor.execute('''
+                SELECT tip_lesa, COUNT(*) as count
+                FROM molodniki_data
+                WHERE tip_lesa IS NOT NULL AND tip_lesa != ''
+                GROUP BY tip_lesa
+                ORDER BY count DESC
+            ''')
+
+            forest_types = cursor.fetchall()
+            conn.close()
+
+            if forest_types:
+                # Возвращаем наиболее часто встречающийся тип леса
+                predominant_type = forest_types[0][0]
+                return predominant_type
+            else:
+                return self.address_data.get('forest_type', 'Бр В2')
+
+        except Exception as e:
+            print(f"Ошибка при определении типа леса: {e}")
+            return self.address_data.get('forest_type', 'Бр В2')
+
     def get_breed_letter(self, breed_name):
         """Получаем букву для породы в формуле состава"""
         letters = {
@@ -165,47 +211,140 @@ class WordDocumentFiller:
         try:
             doc = Document(self.document_path)
 
+            # Получаем данные из дополнительных функций
+            care_queue = self.total_data.get('care_queue', 'первая')
+            characteristics = self.total_data.get('characteristics', {})
+            care_date = self.total_data.get('care_date', 'сент 2025 года')
+            technology = self.total_data.get('technology', 'Равномерное изреживание молодняка. Срубленные деревья необходимо приземлить на месте. По пространственному размещению по площади лесного участка вырубаемых и оставляемых деревьев должна применяться равномерная рубка, в том числе при групповом или куртином размещении деревьев целевых древесных пород. Отбор деревьев производиться так, чтобы обеспечить равномерность размещения по площади оставляемых на выращивание деревьев целевых пород.')
+            forest_purpose = self.total_data.get('forest_purpose', 'Эксплуатационные леса')
+
+            # Формируем мероприятие с очередью
+            activity_name = self.total_data.get('activity_name', 'осветление')
+            care_activity_text = f"{activity_name}, {care_queue} очередь"
+
+            # Формируем характеристики молодняков
+            best_text = characteristics.get('best', 'здоровая, хорошо укорененная сосна, с хорошо сформированной кроной')
+            auxiliary_text = characteristics.get('auxiliary', 'деревья всех пород обеспечивающие сохранение целостности и устойчивости насаждения')
+            undesirable_text = characteristics.get('undesirable', 'деревья мешающие росту и формированию крон отобранных лучших и вспомогательных деревьев; деревья неудовлетворительного состояния')
+
+            # Функция для округления чисел до одной запятой
+            def format_number(value, default='Н/Д'):
+                if value is None or value == 'Н/Д':
+                    return default
+                try:
+                    num = float(value)
+                    return f"{num:.1f}"
+                except (ValueError, TypeError):
+                    return str(value)
+
+            # Определяем тип леса как среднее по площадкам
+            forest_type = self.calculate_forest_type()
+
+            # Рассчитываем параметры площадок
+            current_radius = float(self.address_data.get('radius', 1.78))
+            plot_area_m2 = 3.14159 * current_radius ** 2
+
             # Словарь замен для различных плейсхолдеров в документе
             replacements = {
-                # Старые плейсхолдеры в фигурных скобках
-                '{quarter}': self.address_data.get('quarter', ''),
-                '{plot}': self.address_data.get('plot', ''),
-                '{section}': self.address_data.get('section', ''),
-                '{forestry}': self.address_data.get('forestry', ''),
-                '{target_purpose}': self.address_data.get('target_purpose', ''),
-                '{plot_area}': self.address_data.get('plot_area', ''),
-                '{forest_type}': self.address_data.get('forest_type', ''),
-                '{filename}': self.total_data.get('section_name', 'Молодняки'),
-                '{plot_info}': f'Обследовано {self.total_data.get("total_plots", len(self.total_data.get("breeds", [])))} площадок',
-                '{composition}': self.total_data.get('composition', 'Не определен'),
-                '{care_subject}': self.total_data.get('care_subject', 'Не определен'),
-                '{avg_age}': str(self.total_data.get('avg_age', 'Н/Д')),
-                '{avg_diameter}': str(self.total_data.get('avg_diameter', 'Н/Д')),
-                '{avg_height}': str(self.total_data.get('avg_height', 'Н/Д')),
-                '{avg_density}': str(self.total_data.get('avg_density', 'Н/Д')),
-                '{intensity}': self.total_data.get('intensity', '25%'),
+                # Название мероприятия и очередь рубки
+                '__ прочистка первой очереди__________________________': care_activity_text,
 
-                # Новые плейсхолдеры из текста документа
-                '( подставляем данные из адресной строки)': f"{self.address_data.get('section', '')} участковом лесничестве",
-                '(ПОДСТАВЛЯЕМ ДАННЫЕ ИЗ АДРЕСНОЙ СТРОКИ)': self.address_data.get('forestry', ''),
-                '( подставляем данные из адресной строки)': self.address_data.get('target_purpose', ''),
-                'Выдел( подставляем данные из адресной строки)': self.address_data.get('plot', ''),
-                'площадь( подставляем данные из адресной строки)': self.address_data.get('plot_area', ''),
-                'квартал  ( подставляем данные из адресной строки)': self.address_data.get('quarter', ''),
-                '( подставляем данные по среднему показателю по типу леса по всем площадкам)': self.address_data.get('forest_type', ''),
+                # Лесничество - используем forestry_info из address_data
+                'в __ _Сегежском                      лесничестве,     ': f"в {self.address_data.get('forestry', '')},",
+                'Сегежском_ участковом лесничестве Волдозерском лесничестве по лесоустройству,': f"{self.address_data.get('district_forestry', '')} участковом лесничестве {self.address_data.get('section', '')} лесничестве по лесоустройству",
 
-                # Данные из Итого
-                '(подставляем данные из Итого по информации о площадке)': f'Обследовано {self.total_data.get("total_plots", len(self.total_data.get("breeds", [])))} площадок',
-                '(подставляем данные из Итого, коэффициент состава)': self.total_data.get('composition', 'Не определен'),
-                'подставляем данные из Итого, Прдмет ухода среднее по площадкам': self.total_data.get('care_subject', 'Не определен'),
-                'подставляем данные из Итого,средние показатели возраста по породам': str(self.total_data.get('avg_age', 'Н/Д')),
-                'подставляем данные из Итого,средние показатели диаметра по породам': str(self.total_data.get('avg_diameter', 'Н/Д')),
-                'подставляем данные из Итого,средние показатели высоты по породам': str(self.total_data.get('avg_height', 'Н/Д')),
-                'подставляем данные из Итого,средние показатели густоты по породам': str(self.total_data.get('avg_density', 'Н/Д')),
-                'подставляем данные из Итого,средние показатели предмета ухода по породам': self.total_data.get('care_subject', 'Не определен'),
-                '(подставляем данные из Итого)': self.total_data.get('intensity', '25%'),
-                '(подставляем данные из Итого,средние показатели предмета ухода по породам)': self.total_data.get('care_subject', 'Не определен')
+                # Назначение лесов
+                'целевое назначение лесов __эксплуатационное______________,  ': f"целевое назначение лесов {forest_purpose},",
+
+                # Выдел, площадь, квартал - используем plot_info из address_data
+                'Выдел, площадь квартал 225 выдел 33 площадь общ-24 га площадь экс-24 га.': self.address_data.get('plot_info', f"Выдел, площадь квартал {self.address_data.get('quarter', '')} выдел {self.address_data.get('plot', '')} площадь общ-{self.address_data.get('plot_area', '')} га площадь экс-{self.address_data.get('plot_area', '')} га."),
+
+                # Тип леса - используем forest_type из address_data или рассчитанный
+                'Тип (группа типов) леса и тип лесорастительных условий Бр В2': f"Тип (группа типов) леса и тип лесорастительных условий {self.address_data.get('forest_type', forest_type)}",
+
+                # Очередь рубки
+                'в первую': f"в {care_queue}",
+
+                # Количество площадок
+                '50 шт. 10м2(R-1,78м)': f'{self.total_data.get("total_plots", 0)} шт. {plot_area_m2:.0f}м2(R-{current_radius:.2f}м)',
+
+                # Коэффициент состава
+                '5С5БДр': self.total_data.get('composition', 'Не определен'),
+
+                # Возраст, высота, густота
+                '10.666666666666666': format_number(self.total_data.get('avg_age')),
+                '2.3333333333333335': format_number(self.total_data.get('avg_height')),
+                '3683.680201929093': format_number(self.total_data.get('avg_density')),
+
+                # Предмет ухода
+                'Подставляем данные из Итого(Предмет ухода)': self.total_data.get('care_subject', 'Не определен'),
+
+                # Характеристика молодняков
+                'Лучшие: здоровая, хорошо укорененная  , с  хорошо сформированной кроной.( подставляем название породы из меню Дополнительные функции характеристика молодняков) )': f"Лучшие: {best_text}",
+                'Вспомогательные: деревья всех пород  обеспечивающие сохранение целостности и устойчивости насаждения. .( подставляем название породы из меню Дополнительные функции характеристика молодняков) )': f"Вспомогательные: {auxiliary_text}",
+                'Нежелательные (подлежащие вырубке): деревья  мешающие росту и формированию крон отобранных лучших и вспомогательных деревьев; деревья неудовлетворительного состояния. .( подставляем название породы из меню Дополнительные функции характеристика молодняков) )': f"Нежелательные (подлежащие вырубке): {undesirable_text}",
+
+                # Дата
+                '( Подставляем дату из меню дополнительные функции)': care_date,
+
+                # Интенсивность
+                'Подставляем интенсивность рассчитанную в Итого': self.total_data.get('intensity', '25%'),
+
+                # Технология ухода
+                '(Подставляем данные из Дополнительные функции – Технология ухода)': technology,
             }
+
+            # Дополнительные замены для различных вариантов плейсхолдеров
+            additional_replacements = {
+                # Альтернативные плейсхолдеры для лесничества
+                'в __ _Сегежском лесничестве': f"в {self.address_data.get('forestry', '')} лесничестве",
+                'Сегежском участковом лесничестве': f"{self.address_data.get('district_forestry', '')} участковом лесничестве",
+
+                # Альтернативные плейсхолдеры для выдела и площади
+                'квартал 225 выдел 33': f"квартал {self.address_data.get('quarter', '')} выдел {self.address_data.get('plot', '')}",
+                'площадь общ-24 га': f"площадь общ-{self.address_data.get('plot_area', '')} га",
+                'площадь экс-24 га': f"площадь экс-{self.address_data.get('plot_area', '')} га",
+
+                # Альтернативные плейсхолдеры для типа леса
+                'Бр В2': self.address_data.get('forest_type', forest_type),
+
+                # Альтернативные плейсхолдеры для коэффициента состава
+                '5С5БДр': self.total_data.get('composition', 'Не определен'),
+
+                # Альтернативные плейсхолдеры для возраста, высоты, густоты
+                '10.666666666666666': format_number(self.total_data.get('avg_age')),
+                '2.3333333333333335': format_number(self.total_data.get('avg_height')),
+                '3683.680201929093': format_number(self.total_data.get('avg_density')),
+
+                # Альтернативные плейсхолдеры для предмета ухода
+                'Подставляем данные из Итого': self.total_data.get('care_subject', 'Не определен'),
+
+                # Альтернативные плейсхолдеры для интенсивности
+                '25%': self.total_data.get('intensity', '25%'),
+
+                # Дополнительные плейсхолдеры для адресной строки
+                'Сегежское лесничество': self.address_data.get('forestry', ''),
+                'Володозерское': self.address_data.get('section', ''),
+                'участковое лесничество': f"{self.address_data.get('district_forestry', '')} участковое лесничество",
+
+                # Дополнительные плейсхолдеры для итогов
+                'Предмет ухода': self.total_data.get('care_subject', 'Не определен'),
+                'Интенсивность': self.total_data.get('intensity', '25%'),
+
+                # Дополнительные плейсхолдеры для дополнительных функций
+                'очередь ухода': care_queue,
+                'характеристика молодняков': f"Лучшие: {best_text}\nВспомогательные: {auxiliary_text}\nНежелательные: {undesirable_text}",
+                'дата ухода': care_date,
+                'технология ухода': technology,
+
+                # Плейсхолдеры для характеристик молодняков по отдельности
+                'Лучшие:': f"Лучшие: {best_text}",
+                'Вспомогательные:': f"Вспомогательные: {auxiliary_text}",
+                'Нежелательные:': f"Нежелательные: {undesirable_text}",
+            }
+
+            # Объединяем словари замен
+            replacements.update(additional_replacements)
 
             # Проходим по всем параграфам и заменяем текст
             for paragraph in doc.paragraphs:
