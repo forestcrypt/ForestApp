@@ -1006,7 +1006,7 @@ class ExtendedMolodnikiTableScreen(Screen):
 
         # Адресная строка (текстовое поле для отображения адреса)
         self.address_label = Label(
-            text=f"Адрес: {self.current_quarter} кв. {self.current_plot} выд. {self.current_forestry}",
+            text="",
             font_name='Roboto',
             size_hint=(1, None),
             height=40,
@@ -1016,9 +1016,9 @@ class ExtendedMolodnikiTableScreen(Screen):
         )
         self.address_label.bind(size=self.address_label.setter('text_size'))
 
-        # Заголовок участка
+        # Заголовок участка (убираем текст "Молодняки - Участок")
         self.section_label = Label(
-            text=f"Молодняки - Участок: {self.current_section}",
+            text=f"Участок: {self.current_section}",
             font_name='Roboto',
             size_hint=(1, None),
             height=40,
@@ -1035,40 +1035,74 @@ class ExtendedMolodnikiTableScreen(Screen):
 
         table_panel.add_widget(header_layout)
 
-        # Кнопки "Итого", "Проект ухода" и "Дополнительные функции" - равномерное распределение
-        button_container = BoxLayout(orientation='horizontal', size_hint_y=None, height=50, size_hint_x=1, spacing=20, padding=(20, 0))
+        # Кнопки в вертикальном порядке: Файл, Адрес, Функции, Итого, Проект, Меню
+        button_container = BoxLayout(orientation='vertical', size_hint_y=None, height=360, size_hint_x=1, spacing=10, padding=(20, 0))
+
+        self.file_button = ModernButton(
+            text='Файл',
+            bg_color=get_color_from_hex('#FFD700'),
+            size_hint=(1, None),
+            height=50,
+            font_size='16sp',
+            bold=True
+        )
+        self.file_button.bind(on_press=self.show_file_popup)
+        button_container.add_widget(self.file_button)
+
+        self.address_button = ModernButton(
+            text='Адрес',
+            bg_color=get_color_from_hex('#87CEEB'),
+            size_hint=(1, None),
+            height=50,
+            font_size='16sp',
+            bold=True
+        )
+        self.address_button.bind(on_press=self.show_address_popup)
+        button_container.add_widget(self.address_button)
+
+        self.additional_functions_button = ModernButton(
+            text='Функции',
+            bg_color=get_color_from_hex('#9370DB'),  # Фиолетовый цвет
+            size_hint=(1, None),
+            height=50,
+            font_size='16sp',
+            bold=True
+        )
+        self.additional_functions_button.bind(on_press=self.show_additional_functions_popup)
+        button_container.add_widget(self.additional_functions_button)
 
         self.total_summary_button = ModernButton(
             text='Итого',
             bg_color=get_color_from_hex('#00FF00'),  # Зеленый цвет
-            size_hint=(0.3, 1),
-            font_size='18sp',
+            size_hint=(1, None),
+            height=50,
+            font_size='16sp',
             bold=True
         )
         self.total_summary_button.bind(on_press=self.show_total_summary_popup)
         button_container.add_widget(self.total_summary_button)
 
-        # Кнопка "Проект ухода"
         self.care_project_button = ModernButton(
-            text='Проект ухода',
+            text='Проект',
             bg_color=get_color_from_hex('#FF8C00'),  # Оранжевый цвет
-            size_hint=(0.35, 1),
+            size_hint=(1, None),
+            height=50,
             font_size='16sp',
             bold=True
         )
         self.care_project_button.bind(on_press=self.generate_care_project)
         button_container.add_widget(self.care_project_button)
 
-        # Кнопка "Дополнительные функции"
-        self.additional_functions_button = ModernButton(
-            text='Дополнительные функции',
-            bg_color=get_color_from_hex('#9370DB'),  # Фиолетовый цвет
-            size_hint=(0.35, 1),
+        self.menu_button = ModernButton(
+            text='Меню',
+            bg_color=get_color_from_hex('#FF0000'),
+            size_hint=(1, None),
+            height=50,
             font_size='16sp',
             bold=True
         )
-        self.additional_functions_button.bind(on_press=self.show_additional_functions_popup)
-        button_container.add_widget(self.additional_functions_button)
+        self.menu_button.bind(on_press=self.go_back)
+        button_container.add_widget(self.menu_button)
 
         table_panel.add_widget(button_container)
         main_layout.add_widget(table_panel)
@@ -1091,7 +1125,7 @@ class ExtendedMolodnikiTableScreen(Screen):
 
         # Оставляем только кнопку "В меню"
         go_back_btn = ModernButton(
-            text='В меню',
+            text='Меню',
             bg_color=get_color_from_hex('#FF0000'),
             size_hint=(None, None),
             size=(220, 45),
@@ -1128,7 +1162,7 @@ class ExtendedMolodnikiTableScreen(Screen):
             return get_color_from_hex(theme['text_color'])
 
     def update_section_label(self):
-        self.section_label.text = f"Молодняки - Участок: {self.current_section}"
+        self.section_label.text = ""
 
     def toggle_edit_mode(self, instance):
         self.edit_mode = not self.edit_mode
@@ -5143,7 +5177,7 @@ class ExtendedMolodnikiTableScreen(Screen):
         if getattr(self, 'current_district_forestry', ''):
             address_parts.append(f"участковое: {self.current_district_forestry}")
 
-        address_text = "Адрес: " + " ".join(address_parts) if address_parts else "Адрес: не указан"
+        address_text = ""  # Убираем текст адреса для удаления нежелательного текста
         self.address_label.text = address_text
 
     def load_existing_data(self):
