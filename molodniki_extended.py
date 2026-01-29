@@ -479,12 +479,6 @@ class MolodnikiTreeDataInputPopup(Popup):
 
         # Список существующих пород в этой строке
         existing_breeds = self.table_screen.parse_breeds_data(instance.text)
-        if not existing_breeds:
-            # Пытаемся получить данные из сохраненных данных страницы
-            row_idx = self.table_screen.inputs.index([inp for inp in self.table_screen.inputs if inp[3] == instance][0]) if instance in [inp for row in self.table_screen.inputs for inp in row] else -1
-            if row_idx >= 0 and self.table_screen.current_page in self.table_screen.page_data and row_idx < len(self.table_screen.page_data[self.table_screen.current_page]):
-                saved_text = self.table_screen.page_data[self.table_screen.current_page][row_idx][3]  # Столбец "Порода"
-                existing_breeds = self.table_screen.parse_breeds_data(saved_text)
 
         # Отображаем список существующих пород
         if existing_breeds:
@@ -683,16 +677,13 @@ class MolodnikiTreeDataInputPopup(Popup):
                 existing_breeds = []
             instance.text = json.dumps(existing_breeds, ensure_ascii=False, indent=2)
 
-            # Update the main table input to reflect the changes immediately
-            self.table_screen.inputs[self.row_index][3].text = instance.text
-
             # Update page_data
             if self.table_screen.current_page not in self.table_screen.page_data:
                 self.table_screen.page_data[self.table_screen.current_page] = [['', '', '', '', '', ''] for _ in range(self.table_screen.rows_per_page)]
             if self.row_index < len(self.table_screen.page_data[self.table_screen.current_page]):
                 self.table_screen.page_data[self.table_screen.current_page][self.row_index][3] = instance.text
 
-            self.table_screen.update_plot_total(instance, instance.text)
+            self.table_screen.update_plot_total(self.row_index, instance.text)
             self.table_screen.show_success("Все данные по площадке сохранены!")
             popup.dismiss()
 
@@ -846,16 +837,17 @@ class MolodnikiTreeDataInputPopup(Popup):
                 pass
 
     def save_data(self, instance):
-        # Fill the row in the table
-        # First, set the NN (row_index + 1)
-        self.table_screen.inputs[self.row_index][0].text = str(self.row_index + 1)
-
+        # Save to page_data
         for i, (field_name, col_index) in enumerate(self.fields):
             value = self.input_fields[i].text.strip()
             if value:
-                self.table_screen.inputs[self.row_index][col_index].text = value
+                if self.table_screen.current_page not in self.table_screen.page_data:
+                    self.table_screen.page_data[self.table_screen.current_page] = []
+                while len(self.table_screen.page_data[self.table_screen.current_page]) <= self.row_index:
+                    self.table_screen.page_data[self.table_screen.current_page].append(['', '', '', '', '', ''])
+                self.table_screen.page_data[self.table_screen.current_page][self.row_index][col_index] = value
 
-        # Save to page_data
+        # Save to database
         self.table_screen.save_current_page()
 
         # Show success
@@ -986,193 +978,70 @@ class ExtendedMolodnikiTableScreen(Screen):
         # Табличная часть (левая панель) - уменьшаем для видимости кнопок
         table_panel = BoxLayout(orientation='vertical', size_hint_x=0.75)
 
-        # Заголовок участка и адресная строка
-        header_layout = BoxLayout(orientation='vertical', size_hint=(1, None), height=80, spacing=5)
+        # Кнопки в верхней части
+        top_buttons_layout = BoxLayout(orientation='horizontal', size_hint=(1, None), height=50, spacing=20, padding=(20, 0))
 
-        # Адресная строка с кнопками
-        address_layout = BoxLayout(orientation='horizontal', size_hint=(1, None), height=35, spacing=5)
-
-        # Кнопки Квартал, Выдел, Лесничество, Радиус, Площадь участка
-        quarter_btn = ModernButton(
-            text='Квартал',
+        # Кнопка Адрес
+        address_btn = ModernButton(
+            text='Адрес',
             bg_color=get_color_from_hex('#87CEEB'),
             size_hint=(None, None),
-            size=(100, 35),
-            font_size='14sp'
+            size=(120, 50),
+            font_size='18sp'
         )
-        quarter_btn.bind(on_press=self.show_quarter_popup)
+        address_btn.bind(on_press=self.show_address_popup)
 
-        plot_btn = ModernButton(
-            text='Выдел',
-            bg_color=get_color_from_hex('#87CEEB'),
+        # Кнопка Файл
+        file_btn = ModernButton(
+            text='Файл',
+            bg_color=get_color_from_hex('#FFD700'),
             size_hint=(None, None),
-            size=(80, 35),
-            font_size='14sp'
+            size=(120, 50),
+            font_size='18sp'
         )
-        plot_btn.bind(on_press=self.show_plot_popup)
+        file_btn.bind(on_press=self.show_file_popup)
 
-        forestry_btn = ModernButton(
-            text='Лесничество',
-            bg_color=get_color_from_hex('#87CEEB'),
-            size_hint=(None, None),
-            size=(180, 35),
-            font_size='14sp'
-        )
-        forestry_btn.bind(on_press=self.show_forestry_popup)
-
-        radius_btn = ModernButton(
-            text='Радиус',
-            bg_color=get_color_from_hex('#FF8C00'),
-            size_hint=(None, None),
-            size=(90, 35),
-            font_size='14sp'
-        )
-        radius_btn.bind(on_press=self.show_radius_popup)
-
-        plot_area_combined_btn = ModernButton(
-            text='Площадь участка',
-            bg_color=get_color_from_hex('#32CD32'),
-            size_hint=(None, None),
-            size=(180, 35),
-            font_size='14sp'
-        )
-        plot_area_combined_btn.bind(on_press=self.show_plot_area_input_popup)
-
-        address_layout.add_widget(quarter_btn)
-        address_layout.add_widget(plot_btn)
-        address_layout.add_widget(forestry_btn)
-        address_layout.add_widget(radius_btn)
-        address_layout.add_widget(plot_area_combined_btn)
+        top_buttons_layout.add_widget(address_btn)
+        top_buttons_layout.add_widget(file_btn)
 
         # Адресная строка (текстовое поле для отображения адреса)
         self.address_label = Label(
             text=f"Адрес: {self.current_quarter} кв. {self.current_plot} выд. {self.current_forestry}",
             font_name='Roboto',
             size_hint=(1, None),
-            height=35,
+            height=40,
             color=self._get_text_color(),
-            halign='left',
+            halign='center',
             valign='middle'
         )
         self.address_label.bind(size=self.address_label.setter('text_size'))
-        address_layout.add_widget(self.address_label)
-
-        header_layout.add_widget(address_layout)
 
         # Заголовок участка
         self.section_label = Label(
             text=f"Молодняки - Участок: {self.current_section}",
             font_name='Roboto',
             size_hint=(1, None),
-            height=30,
-            color=self._get_text_color()
+            height=40,
+            color=self._get_text_color(),
+            halign='center',
+            valign='middle'
         )
+
+        # Заголовок участка и адресная строка
+        header_layout = BoxLayout(orientation='vertical', size_hint=(1, None), height=130, spacing=5)
+        header_layout.add_widget(top_buttons_layout)
+        header_layout.add_widget(self.address_label)
         header_layout.add_widget(self.section_label)
 
         table_panel.add_widget(header_layout)
 
-        # Пагинация
-        pagination = BoxLayout(size_hint_y=None, height=40, spacing=5)
-        self.page_label = Label(
-            text=f'Страница {self.current_page+1} из {self.total_pages}',
-            size_hint_x=0.4,
-            font_name='Roboto',
-            color=self._get_text_color()
-        )
-        prev_btn = ModernButton(
-            text='← Предыдущая',
-            size_hint_x=0.3,
-            bg_color=get_color_from_hex('#00FF00'),
-            color=self._get_text_color()
-        )
-        prev_btn.bind(on_press=lambda x: self.change_page(-1))
-        next_btn = ModernButton(
-            text='Следующая →',
-            size_hint_x=0.3,
-            bg_color=get_color_from_hex('#00FF00'),
-            color=self._get_text_color()
-        )
-        next_btn.bind(on_press=lambda x: self.change_page(1))
-        pagination.add_widget(prev_btn)
-        pagination.add_widget(self.page_label)
-        pagination.add_widget(next_btn)
-        table_panel.add_widget(pagination)
-
-        # Основная таблица (6 столбцов: основные данные)
-        scroll = ScrollView(do_scroll_x=True, do_scroll_y=True, bar_width=10)
-        self.table = GridLayout(cols=6, size_hint=(None, None), spacing=1)
-        self.table.bind(minimum_height=self.table.setter('height'),
-                       minimum_width=self.table.setter('width'))
-
-        # Заголовки столбцов (6 столбцов: основные данные)
-        headers = [
-            '№ППР', 'GPS точка', 'Предмет ухода', 'Порода', 'Примечания', 'Тип Леса'
-        ]
-
-        self.header_bgs = []
-        for i, header in enumerate(headers):
-            lbl = Label(
-                text=header,
-                size_hint_y=None,
-                height=30,
-                font_name='Roboto',
-                bold=True,
-                halign='center',
-                size_hint_x=None,
-                width=120,  # Стандартная ширина для всех столбцов
-                color=(0, 0, 0, 1)  # Черный цвет для заголовков
-            )
-            with lbl.canvas.before:
-                Color(rgba=get_color_from_hex('#00FF00'))
-                bg = Rectangle(pos=lbl.pos, size=lbl.size)
-                self.header_bgs.append(bg)
-            lbl.bind(pos=lambda i,v, b=bg: setattr(b, 'pos', i.pos), size=lambda i,v, b=bg: setattr(b, 'size', i.size))
-            self.table.add_widget(lbl)
-
-        # Создаем строки таблицы (6 столбцов: основные данные)
-        self.inputs = []
-        for row_idx in range(self.rows_per_page):
-            row = []
-            for col_idx in range(6):
-                inp = AutoCompleteTextInput(multiline=False, size_hint_y=None, height=30)
-                inp.row_index = row_idx
-                inp.col_index = col_idx
-                inp.bind(focus=self.update_focus)
-                inp.bind(text=self.update_row_total)
-                inp.font_name='Roboto'
-                inp.size_hint_x = None
-                # Устанавливаем ширину столбцов: столбец "Порода" шире
-                inp.width = 200 if col_idx == 3 else 120
-
-                # Настройка фильтров ввода для числовых полей
-                if col_idx == 0:  # №ППР
-                    inp.input_filter = 'int'
-                    inp.bind(focus=self.show_tree_popup)
-                elif col_idx == 3:  # Порода - открываем popup выбора типа
-                    inp.bind(focus=self.show_breed_popup)
-
-                row.append(inp)
-                self.table.add_widget(inp)
-
-            self.inputs.append(row)
-
-
-
-        # Добавляем кнопки "Итого" и "Проект ухода" по середине после строки итогов
-        # Пустая строка для разделения
-        spacer = BoxLayout(orientation='horizontal', size_hint_y=None, height=10)
-        self.table.add_widget(spacer)
-
-        # Кнопки "Итого", "Проект ухода" и "Дополнительные функции" по середине
-        button_container = BoxLayout(orientation='horizontal', size_hint_y=None, height=50, size_hint_x=1, spacing=10)
-        button_spacer = BoxLayout(size_hint_x=0.15)  # Спейсер слева
-        button_container.add_widget(button_spacer)
+        # Кнопки "Итого", "Проект ухода" и "Дополнительные функции" - равномерное распределение
+        button_container = BoxLayout(orientation='horizontal', size_hint_y=None, height=50, size_hint_x=1, spacing=20, padding=(20, 0))
 
         self.total_summary_button = ModernButton(
             text='Итого',
             bg_color=get_color_from_hex('#00FF00'),  # Зеленый цвет
-            size_hint=(None, None),
-            size=(200, 50),
+            size_hint=(0.3, 1),
             font_size='18sp',
             bold=True
         )
@@ -1183,8 +1052,7 @@ class ExtendedMolodnikiTableScreen(Screen):
         self.care_project_button = ModernButton(
             text='Проект ухода',
             bg_color=get_color_from_hex('#FF8C00'),  # Оранжевый цвет
-            size_hint=(None, None),
-            size=(200, 50),
+            size_hint=(0.35, 1),
             font_size='16sp',
             bold=True
         )
@@ -1195,21 +1063,14 @@ class ExtendedMolodnikiTableScreen(Screen):
         self.additional_functions_button = ModernButton(
             text='Дополнительные функции',
             bg_color=get_color_from_hex('#9370DB'),  # Фиолетовый цвет
-            size_hint=(None, None),
-            size=(300, 50),
+            size_hint=(0.35, 1),
             font_size='16sp',
             bold=True
         )
         self.additional_functions_button.bind(on_press=self.show_additional_functions_popup)
         button_container.add_widget(self.additional_functions_button)
 
-        button_spacer2 = BoxLayout(size_hint_x=0.15)  # Спейсер справа
-        button_container.add_widget(button_spacer2)
-
-        self.table.add_widget(button_container)
-
-        scroll.add_widget(self.table)
-        table_panel.add_widget(scroll)
+        table_panel.add_widget(button_container)
         main_layout.add_widget(table_panel)
 
         # Правая панель управления (увеличиваем для видимости кнопок)
@@ -1228,41 +1089,16 @@ class ExtendedMolodnikiTableScreen(Screen):
             pos_hint={'top': 1}
         )
 
-        button_handlers = {
-            'Создать площадку': self.create_new_plot,
-            'Таблица (Рум молодняки)': self.show_molodniki_table,
-            'Сохранить': self.save_all_formats,
-            'Сохранить страницу': self.save_current_page,
-            'Загрузить': self.load_section,
-            'Редактировать': self.show_edit_plots_popup,
-            'Открыть папку': self.open_excel_file,
-            'Очистить': self.clear_table_data,
-            'В меню': self.go_back
-        }
-
-        button_colors = {
-            'Создать площадку': '#32CD32',
-            'Таблица (Рум молодняки)': '#87CEEB',
-            'Сохранить': '#FFD700',
-            'Сохранить страницу': '#00FFFF',
-            'Загрузить': '#006400',
-            'Редактировать': '#FF6347',
-            'Открыть папку': '#0000FF',
-            'Очистить': '#800000',
-            'В меню': '#FF0000'
-        }
-
-        for text in ['Создать площадку', 'Таблица (Рум молодняки)', 'Сохранить', 'Сохранить страницу', 'Загрузить', 'Редактировать', 'Открыть папку', 'Очистить', 'В меню']:
-            color = button_colors.get(text, '#808080')
-            btn = ModernButton(
-                text=text,
-                bg_color=get_color_from_hex(color),
-                size_hint=(None, None),
-                size=(220, 45),
-                pos_hint={'center_x': 0.5}
-            )
-            btn.bind(on_press=button_handlers[text])
-            controls.add_widget(btn)
+        # Оставляем только кнопку "В меню"
+        go_back_btn = ModernButton(
+            text='В меню',
+            bg_color=get_color_from_hex('#FF0000'),
+            size_hint=(None, None),
+            size=(220, 45),
+            pos_hint={'center_x': 0.5}
+        )
+        go_back_btn.bind(on_press=self.go_back)
+        controls.add_widget(go_back_btn)
 
         control_panel.add_widget(controls)
 
@@ -4727,13 +4563,14 @@ class ExtendedMolodnikiTableScreen(Screen):
 
     def show_edit_plots_popup(self, instance):
         """Показать popup с списком номеров площадок для редактирования"""
-        # Собираем список номеров площадок, где есть данные
+        # Собираем список номеров площадок из page_data
         plot_numbers = []
-        for row_idx in range(self.rows_per_page):
-            # Проверяем, есть ли данные в основных столбцах (кроме №ППР)
-            if any(self.inputs[row_idx][col].text.strip() for col in range(1, 6)):
-                nn = row_idx + 1  # Номер от 1
-                plot_numbers.append(nn)
+        if self.current_page in self.page_data:
+            for row_idx, row in enumerate(self.page_data[self.current_page]):
+                # Проверяем, есть ли данные в основных столбцах (кроме №ППР)
+                if any(row[col].strip() for col in range(1, 6)):
+                    nn = row_idx + 1  # Номер от 1
+                    plot_numbers.append(nn)
 
         if not plot_numbers:
             self.show_error("Нет площадок для редактирования!")
@@ -5300,8 +5137,9 @@ class ExtendedMolodnikiTableScreen(Screen):
             address_parts.append(f"{self.current_quarter} кв.")
         if self.current_plot:
             address_parts.append(f"{self.current_plot} выд.")
-        if self.current_forestry:
-            address_parts.append(self.current_forestry)
+        # Убрали отображение current_forestry для удаления текста "Молодняки участок 1"
+        # if self.current_forestry:
+        #     address_parts.append(self.current_forestry)
         if getattr(self, 'current_district_forestry', ''):
             address_parts.append(f"участковое: {self.current_district_forestry}")
 
@@ -5362,30 +5200,11 @@ class ExtendedMolodnikiTableScreen(Screen):
             conn.close()
 
     def load_page_data(self):
-        for row in self.inputs:
-            for inp in row:
-                inp.text = ''
-
-        if self.current_page in self.page_data:
-            for i, row_data in enumerate(self.page_data[self.current_page]):
-                if i >= len(self.inputs):
-                    break
-                for j, text in enumerate(row_data):
-                    if j < len(self.inputs[i]):
-                        self.inputs[i][j].text = str(text) if not pd.isna(text) else ''
-
-        # Обновляем итоги по каждой строке
-        for row_idx in range(len(self.inputs)):
-            self.update_row_total(self.inputs[row_idx][3], self.inputs[row_idx][3].text)
-
-        self.update_totals()
+        # Данные загружаются напрямую из page_data, таблица не используется
+        pass
 
     def clear_table_data(self, instance=None):
-        for row in self.inputs:
-            for inp in row:
-                inp.text = ''
         self.page_data.clear()
-        self.update_totals()
         self.show_success("Данные очищены!")
 
     def open_excel_file(self, instance):
@@ -6744,7 +6563,7 @@ class ExtendedMolodnikiTableScreen(Screen):
         return totals
 
     def save_current_page(self, instance=None):
-        """Сохраняем текущую страницу в базу данных с поддержкой множественных пород"""
+        """Сохраняем текущую страницу в базу данных"""
         conn = sqlite3.connect(self.db_name)
         cursor = conn.cursor()
 
@@ -6754,86 +6573,73 @@ class ExtendedMolodnikiTableScreen(Screen):
                 WHERE page_number = ? AND section_name = ?
             ''', (self.current_page, self.current_section))
 
-            for row_idx, row in enumerate(self.inputs):
-                row_data = [inp.text.strip() for inp in row]
-                if any(row_data[:5]):
-                    radius = 5.64
-                    try:
-                        if row_data[5]:
-                            radius = float(row_data[5])
-                    except (ValueError, IndexError):
-                        pass
+            # Сохраняем данные из page_data
+            if self.current_page in self.page_data:
+                for row_idx, row_data in enumerate(self.page_data[self.current_page]):
+                    if any(row_data[:5]):
+                        radius = 5.64
+                        try:
+                            if row_data[5]:
+                                radius = float(row_data[5])
+                        except (ValueError, IndexError):
+                            pass
 
-                    cursor.execute('''
-                        INSERT INTO molodniki_data
-                        (page_number, row_index, nn, gps_point, predmet_uhoda, primechanie, section_name)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
-                    ''', (
-                        self.current_page,
-                        row_idx,
-                        row_data[0] or None,
-                        row_data[1] or None,
-                        row_data[2] or None,
-                        row_data[4] or None,
-                        self.current_section
-                    ))
+                        cursor.execute('''
+                            INSERT INTO molodniki_data
+                            (page_number, row_index, nn, gps_point, predmet_uhoda, primechanie, section_name)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                        ''', (
+                            self.current_page,
+                            row_idx,
+                            row_data[0] or None,
+                            row_data[1] or None,
+                            row_data[2] or None,
+                            row_data[4] or None,
+                            self.current_section
+                        ))
 
-                    molodniki_data_id = cursor.lastrowid
+                        molodniki_data_id = cursor.lastrowid
 
-                    if row_data[3]:
-                        breeds_data = self.parse_breeds_data(row_data[3])
-                        for breed_info in breeds_data:
-                            try:
-                                # Validate and convert data types
-                                density = int(breed_info.get('density', 0) or 0)
-                                height = float(breed_info.get('height', 0.0) or 0.0)
-                                age = int(breed_info.get('age', 0) or 0)
-                                do_05 = int(breed_info.get('do_05', 0) or 0)
-                                _05_15 = int(breed_info.get('05_15', 0) or 0)
-                                bolee_15 = int(breed_info.get('bolee_15', 0) or 0)
+                        if row_data[3]:
+                            breeds_data = self.parse_breeds_data(row_data[3])
+                            for breed_info in breeds_data:
+                                try:
+                                    # Validate and convert data types
+                                    density = int(breed_info.get('density', 0) or 0)
+                                    height = float(breed_info.get('height', 0.0) or 0.0)
+                                    age = int(breed_info.get('age', 0) or 0)
+                                    do_05 = int(breed_info.get('do_05', 0) or 0)
+                                    _05_15 = int(breed_info.get('05_15', 0) or 0)
+                                    bolee_15 = int(breed_info.get('bolee_15', 0) or 0)
 
-                                composition_coeff = 0.0
-                                if density and radius:
-                                    area = 3.14159 * (radius ** 2)
-                                    composition_coeff = (density * area) / 10000
+                                    composition_coeff = 0.0
+                                    if density and radius:
+                                        area = 3.14159 * (radius ** 2)
+                                        composition_coeff = (density * area) / 10000
 
-                                diameter = float(breed_info.get('diameter', 0.0) or 0.0)
+                                    diameter = float(breed_info.get('diameter', 0.0) or 0.0)
 
-                                cursor.execute('''
-                                    INSERT INTO molodniki_breeds
-                                    (molodniki_data_id, breed_name, breed_type, do_05, _05_15, bolee_15,
-                                     density, height, diameter, age, composition_coefficient)
-                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                                ''', (
-                                    molodniki_data_id,
-                                    breed_info.get('name', ''),
-                                    breed_info.get('type', 'deciduous'),
-                                    do_05,
-                                    _05_15,
-                                    bolee_15,
-                                    density,
-                                    height,
-                                    diameter,
-                                    age,
-                                    composition_coeff
-                                ))
-                            except Exception as e:
-                                print(f"Error inserting breed: {e}, skipping this breed")
-                                continue
-
-            totals = self.calculate_page_totals()
-            cursor.execute('''
-                INSERT OR REPLACE INTO molodniki_totals
-                (page_number, section_name, total_composition, avg_age, avg_density, avg_height)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (
-                self.current_page,
-                self.current_section,
-                totals['composition'],
-                totals['avg_age'],
-                totals['avg_density'],
-                totals['avg_height']
-            ))
+                                    cursor.execute('''
+                                        INSERT INTO molodniki_breeds
+                                        (molodniki_data_id, breed_name, breed_type, do_05, _05_15, bolee_15,
+                                         density, height, diameter, age, composition_coefficient)
+                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                    ''', (
+                                        molodniki_data_id,
+                                        breed_info.get('name', ''),
+                                        breed_info.get('type', 'deciduous'),
+                                        do_05,
+                                        _05_15,
+                                        bolee_15,
+                                        density,
+                                        height,
+                                        diameter,
+                                        age,
+                                        composition_coeff
+                                    ))
+                                except Exception as e:
+                                    print(f"Error inserting breed: {e}, skipping this breed")
+                                    continue
 
             conn.commit()
             self.show_success("Страница сохранена в базу данных!")
@@ -6845,11 +6651,6 @@ class ExtendedMolodnikiTableScreen(Screen):
             success = False
         finally:
             conn.close()
-
-        page_data = []
-        for row in self.inputs:
-            page_data.append([inp.text for inp in row])
-        self.page_data[self.current_page] = page_data
 
         return success
 
@@ -7623,11 +7424,9 @@ class ExtendedMolodnikiTableScreen(Screen):
         # Обновляем общие итоги страницы при изменении данных
         self.update_totals()
 
-    def update_plot_total(self, instance, value):
+    def update_plot_total(self, row_idx, value):
         """Обновляем итог по площадке при изменении данных"""
-        row_idx = instance.row_index
-
-        breeds_text = self.inputs[row_idx][3].text
+        breeds_text = value
         breeds_data = self.parse_breeds_data(breeds_text)
 
         if not breeds_data:
@@ -7662,184 +7461,217 @@ class ExtendedMolodnikiTableScreen(Screen):
 
     def create_new_plot(self, instance=None):
         """Создать новую площадку с помощью всплывающего окна"""
-        # Найдем первую пустую строку для новой площадки
-        empty_row_idx = None
-        for row_idx in range(self.rows_per_page):
-            if not any(self.inputs[row_idx][col].text.strip() for col in [1, 2, 3]):  # GPS, Предмет ухода, Порода
-                empty_row_idx = row_idx
-                break
+        # Создаем новую страницу если текущая полная
+        if self.current_page not in self.page_data:
+            self.page_data[self.current_page] = []
 
-        if empty_row_idx is None:
-            self.show_error("Все строки таблицы заняты. Перейдите на новую страницу.")
-            return
+        # Находим следующий доступный индекс
+        row_idx = len(self.page_data[self.current_page])
+
+        # Расширяем page_data если нужно
+        while len(self.page_data[self.current_page]) <= row_idx:
+            self.page_data[self.current_page].append(['', '', '', '', '', ''])
 
         # Открываем popup для ввода данных площадки
-        MolodnikiTreeDataInputPopup(self, empty_row_idx).open()
+        MolodnikiTreeDataInputPopup(self, row_idx).open()
 
-    def show_molodniki_table(self, instance=None):
-        """Показать таблицу с данными молодняков"""
+
+
+    def show_address_popup(self, instance):
+        """Показать popup с настройками адреса"""
         content = BoxLayout(orientation='vertical', spacing=10, padding=10)
 
         title_label = Label(
-            text=f"Таблица данных молодняков\nУчасток: {self.current_section}",
+            text="Настройки адреса",
             font_name='Roboto',
             font_size='18sp',
             bold=True,
             color=(0, 0.5, 0, 1),
             size_hint=(1, None),
-            height=50,
-            halign='center'
+            height=40
         )
         content.add_widget(title_label)
 
-        # Сбор всех данных из всех страниц
-        all_records = []
-        total_records = 0
+        # Кнопки для настройки адреса
+        buttons_layout = GridLayout(cols=2, spacing=15, size_hint=(1, None), height=200)
 
-        # Собираем данные со всех страниц
-        for page_num in sorted(self.page_data.keys()):
-            page_rows = self.page_data[page_num]
-            for row_idx, row in enumerate(page_rows):
-                # Проверяем, что строка не пустая (есть хоть какие-то данные)
-                if any(cell.strip() for cell in row[:6] if cell):
-                    total_records += 1
-                    record = [
-                        f"{total_records}",  # Номер записи
-                        f"Стр.{page_num}",    # Страница
-                        row[0] or "",         # №ППР
-                        row[1] or "",         # GPS точка
-                        row[2] or "",         # Предмет ухода
-                        self.format_breeds_cell(row[3]),  # Порода (форматированная)
-                        row[4] or "",         # Примечания
-                        row[5] or ""          # Тип Леса
-                    ]
-                    all_records.append(record)
-
-        info_label = Label(
-            text=f"Всего страниц: {len(self.page_data)}\nВсего записей: {total_records}",
-            font_name='Roboto',
-            font_size='12sp',
-            color=(0, 0, 0, 1),
-            size_hint=(1, None),
-            height=40,
-            halign='left',
-            valign='top'
-        )
-        info_label.bind(size=lambda *args: setattr(info_label, 'text_size', (info_label.width, None)))
-        content.add_widget(info_label)
-
-        # Прокрутка таблицы данных
-        scroll = ScrollView(size_hint=(1, None), height=500)
-        if all_records:
-            # Создаем таблицу
-            table = GridLayout(cols=8, spacing=2, size_hint_y=None, size_hint_x=None, width=1600)
-            table.bind(minimum_height=table.setter('height'))
-
-            # Заголовки
-            headers = ['№', 'Стр.', '№ППР', 'GPS точка', 'Предмет ухода', 'Порода', 'Примечания', 'Тип Леса']
-            for header in headers:
-                hdr_label = Label(
-                    text=header,
-                    font_name='Roboto',
-                    bold=True,
-                    color=(1, 1, 1, 1),
-                    size_hint=(None, None),
-                    height=40,
-                    halign='center',
-                    valign='middle',
-                    padding=(5, 5)
-                )
-                hdr_label.bind(size=lambda *args: setattr(hdr_label, 'text_size', (120 if hdr_label.text != 'Порода' else 500, None)))
-                table.add_widget(hdr_label)
-
-            # Данные
-            for record in all_records:
-                for i, cell_value in enumerate(record):
-                    cell_label = Label(
-                        text=str(cell_value),
-                        font_name='Roboto',
-                        color=(0, 0, 0, 1),
-                        size_hint=(None, None),
-                        height=35,
-                        halign='left' if i == 5 else 'center',  # Порода - слева, остальное - по центру
-                        valign='top',
-                        padding=(5, 2),
-                        text_size=(120 if i != 5 else 400, None)
-                    )
-                    if i == 5:  # Столбец "Порода" гораздо шире
-                        cell_label.size_hint_x = None
-                        cell_label.width = 400
-                    else:
-                        cell_label.size_hint_x = None
-                        cell_label.width = 120
-                    table.add_widget(cell_label)
-
-            scroll.add_widget(table)
-        else:
-            # Нет данных
-            no_data_label = Label(
-                text="Нет данных для отображения\nДобавьте данные в таблице",
-                font_name='Roboto',
-                color=(0.5, 0.5, 0.5, 1),
-                size_hint=(1, 1),
-                halign='center',
-                valign='middle'
-            )
-            scroll.add_widget(no_data_label)
-
-        content.add_widget(scroll)
-
-        # Кнопки управления
-        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
-        refresh_btn = ModernButton(
-            text='Обновить',
-            bg_color=get_color_from_hex('#87CEEB'),
-            size_hint=(0.3, 1),
-            height=50
-        )
-        export_btn = ModernButton(
-            text='Экспорт',
+        # Кнопка Квартал
+        quarter_btn = ModernButton(
+            text='Квартал',
             bg_color=get_color_from_hex('#32CD32'),
-            size_hint=(0.3, 1),
-            height=50
+            size_hint=(1, None),
+            height=50,
+            font_size='16sp'
         )
+        quarter_btn.bind(on_press=self.show_quarter_popup)
+        buttons_layout.add_widget(quarter_btn)
+
+        # Кнопка Выдел
+        plot_btn = ModernButton(
+            text='Выдел',
+            bg_color=get_color_from_hex('#32CD32'),
+            size_hint=(1, None),
+            height=50,
+            font_size='16sp'
+        )
+        plot_btn.bind(on_press=self.show_plot_popup)
+        buttons_layout.add_widget(plot_btn)
+
+        # Кнопка Лесничество
+        forestry_btn = ModernButton(
+            text='Лесничество',
+            bg_color=get_color_from_hex('#32CD32'),
+            size_hint=(1, None),
+            height=50,
+            font_size='16sp'
+        )
+        forestry_btn.bind(on_press=self.show_forestry_popup)
+        buttons_layout.add_widget(forestry_btn)
+
+        # Кнопка Радиус
+        radius_btn = ModernButton(
+            text='Радиус',
+            bg_color=get_color_from_hex('#32CD32'),
+            size_hint=(1, None),
+            height=50,
+            font_size='16sp'
+        )
+        radius_btn.bind(on_press=self.show_radius_popup)
+        buttons_layout.add_widget(radius_btn)
+
+        # Кнопка Площадь участка
+        plot_area_btn = ModernButton(
+            text='Площадь участка',
+            bg_color=get_color_from_hex('#32CD32'),
+            size_hint=(1, None),
+            height=50,
+            font_size='16sp'
+        )
+        plot_area_btn.bind(on_press=self.show_plot_area_input_popup)
+        buttons_layout.add_widget(plot_area_btn)
+
+        content.add_widget(buttons_layout)
+
+        # Кнопка закрытия
         close_btn = ModernButton(
             text='Закрыть',
             bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(0.3, 1),
+            size_hint=(1, None),
             height=50
         )
-        btn_layout.add_widget(refresh_btn)
-        btn_layout.add_widget(export_btn)
-        btn_layout.add_widget(close_btn)
-        content.add_widget(btn_layout)
+        content.add_widget(close_btn)
 
         popup = Popup(
-            title="Таблица данных (Рум молодняки)",
+            title="Настройки адреса",
             content=content,
-            size_hint=(0.95, 0.9)
+            size_hint=(0.8, 0.8)
         )
 
-        def refresh_table(btn):
-            popup.dismiss()
-            self.show_molodniki_table()
-
-        def export_table(btn):
-            # Экспортируем данные в окно сообщений
-            if all_records:
-                export_text = "Таблица данных молодняков:\n\n"
-                for record in all_records[:50]:  # Ограничиваем первыми 50 записями для читаемости
-                    export_text += f"{' | '.join(str(x) for x in record)}\n"
-                if len(all_records) > 50:
-                    export_text += f"\n... и ещё {len(all_records) - 50} записей"
-                self.show_success(f"Экспорт завершен:\n{export_text}")
-            else:
-                self.show_error("Нет данных для экспорта")
-
-        refresh_btn.bind(on_press=refresh_table)
-        export_btn.bind(on_press=export_table)
         close_btn.bind(on_press=popup.dismiss)
+        popup.open()
 
+    def show_file_popup(self, instance):
+        """Показать popup с операциями над файлами"""
+        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+
+        title_label = Label(
+            text="Операции с файлами",
+            font_name='Roboto',
+            font_size='18sp',
+            bold=True,
+            color=(0, 0.5, 0, 1),
+            size_hint=(1, None),
+            height=40
+        )
+        content.add_widget(title_label)
+
+        # Кнопки для операций с файлами
+        buttons_layout = GridLayout(cols=2, spacing=10, size_hint=(1, None), height=200)
+
+        # Кнопка Создать площадку
+        create_plot_btn = ModernButton(
+            text='Создать площадку',
+            bg_color=get_color_from_hex('#32CD32'),
+            size_hint=(1, None),
+            height=50,
+            font_size='14sp'
+        )
+        create_plot_btn.bind(on_press=self.create_new_plot)
+        buttons_layout.add_widget(create_plot_btn)
+
+        # Кнопка Сохранить
+        save_btn = ModernButton(
+            text='Сохранить',
+            bg_color=get_color_from_hex('#FFD700'),
+            size_hint=(1, None),
+            height=50,
+            font_size='14sp'
+        )
+        save_btn.bind(on_press=self.save_all_formats)
+        buttons_layout.add_widget(save_btn)
+
+        # Кнопка Загрузить
+        load_btn = ModernButton(
+            text='Загрузить',
+            bg_color=get_color_from_hex('#006400'),
+            size_hint=(1, None),
+            height=50,
+            font_size='14sp'
+        )
+        load_btn.bind(on_press=self.load_section)
+        buttons_layout.add_widget(load_btn)
+
+        # Кнопка Редактировать
+        edit_btn = ModernButton(
+            text='Редактировать',
+            bg_color=get_color_from_hex('#FF6347'),
+            size_hint=(1, None),
+            height=50,
+            font_size='14sp'
+        )
+        edit_btn.bind(on_press=self.show_edit_plots_popup)
+        buttons_layout.add_widget(edit_btn)
+
+        # Кнопка Открыть папку
+        open_folder_btn = ModernButton(
+            text='Открыть папку',
+            bg_color=get_color_from_hex('#0000FF'),
+            size_hint=(1, None),
+            height=50,
+            font_size='14sp'
+        )
+        open_folder_btn.bind(on_press=self.open_excel_file)
+        buttons_layout.add_widget(open_folder_btn)
+
+        # Кнопка Очистить
+        clear_btn = ModernButton(
+            text='Очистить',
+            bg_color=get_color_from_hex('#800000'),
+            size_hint=(1, None),
+            height=50,
+            font_size='14sp'
+        )
+        clear_btn.bind(on_press=self.clear_table_data)
+        buttons_layout.add_widget(clear_btn)
+
+        content.add_widget(buttons_layout)
+
+        # Кнопка закрытия
+        close_btn = ModernButton(
+            text='Закрыть',
+            bg_color=get_color_from_hex('#FF6347'),
+            size_hint=(1, None),
+            height=50
+        )
+        content.add_widget(close_btn)
+
+        popup = Popup(
+            title="Файловые операции",
+            content=content,
+            size_hint=(0.8, 0.9)
+        )
+
+        close_btn.bind(on_press=popup.dismiss)
         popup.open()
 
     def format_breeds_cell(self, breeds_text):

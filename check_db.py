@@ -1,36 +1,60 @@
-# Script to check database contents
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Скрипт для проверки базы данных
+"""
+
 import sqlite3
+import json
 
 def check_database():
-    conn = sqlite3.connect('forest_data.db')
-    cursor = conn.cursor()
-
+    """Проверяем содержимое базы данных"""
     try:
-        # Check molodniki_data table
-        print("=== MOLODNIKI_DATA TABLE ===")
-        cursor.execute('SELECT * FROM molodniki_data LIMIT 10')
+        conn = sqlite3.connect('forest_data.db')
+        cursor = conn.cursor()
+
+        # Получаем список таблиц
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+        tables = cursor.fetchall()
+        print("=== TABLES ===")
+        for table in tables:
+            print(table[0])
+
+        # Проверяем таблицу molodniki_data
+        print("\n=== MOLODNIKI_DATA ===")
+        cursor.execute("SELECT * FROM molodniki_data LIMIT 10")
         rows = cursor.fetchall()
         for row in rows:
             print(row)
 
-        # Check molodniki_breeds table
-        print("\n=== MOLODNIKI_BREEDS TABLE ===")
-        cursor.execute('SELECT * FROM molodniki_breeds LIMIT 10')
-        rows = cursor.fetchall()
-        for row in rows:
+        # Ищем записи с "Молодняки" в section_name
+        print("\n=== RECORDS WITH MOLODNIKI ===")
+        cursor.execute("SELECT * FROM molodniki_data WHERE section_name LIKE ?", ('%олодняки%',))
+        molodniki_rows = cursor.fetchall()
+        for row in molodniki_rows:
             print(row)
 
-        # Check suggestions
-        print("\n=== MOLODNIKI_SUGGESTIONS TABLE ===")
-        cursor.execute('SELECT * FROM molodniki_suggestions LIMIT 10')
-        rows = cursor.fetchall()
-        for row in rows:
+        # Проверяем таблицу molodniki_breeds
+        print("\n=== MOLODNIKI_BREEDS ===")
+        cursor.execute("SELECT * FROM molodniki_breeds LIMIT 5")
+        breed_rows = cursor.fetchall()
+        for row in breed_rows:
             print(row)
+
+        # Ищем "Молодняки участок 1" в любых текстовых полях
+        print("\n=== SEARCHING FOR 'Молодняки участок 1' ===")
+        cursor.execute("SELECT * FROM molodniki_data WHERE nn LIKE ? OR gps_point LIKE ? OR predmet_uhoda LIKE ? OR section_name LIKE ?",
+                      ('%Молодняки участок 1%', '%Молодняки участок 1%', '%Молодняки участок 1%', '%Молодняки участок 1%'))
+        found_rows = cursor.fetchall()
+        for row in found_rows:
+            print("FOUND:", row)
+
+        conn.close()
 
     except Exception as e:
         print(f"Error: {e}")
-    finally:
-        conn.close()
+        import traceback
+        traceback.print_exc()
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     check_database()
