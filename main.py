@@ -651,6 +651,17 @@ class MainMenu(Screen):
             conn.close()
 
     def show_add_molodniki_section(self, instance):
+        # Сначала создаем новую запись в таблице
+        try:
+            conn = sqlite3.connect('forest_data.db')
+            cursor = conn.cursor()
+            cursor.execute('INSERT INTO molodniki_sections DEFAULT VALUES')
+            conn.commit()
+        except Exception as e:
+            pass  # Игнорируем ошибку, если таблица не существует
+        finally:
+            conn.close()
+
         content = FloatLayout()
 
         close_btn = ModernButton(
@@ -747,19 +758,19 @@ class MainMenu(Screen):
         if not section_number:
             self.show_error("Введите номер участка!")
             return
-            
+
         try:
             conn = sqlite3.connect('forest_data.db')
             cursor = conn.cursor()
+            # Используем INSERT OR REPLACE, чтобы создать или обновить запись с данным номером участка
             cursor.execute('''
-                UPDATE molodniki_sections 
-                SET section_number = ? 
-                WHERE id = (SELECT MAX(id) FROM molodniki_sections)
-            ''', (section_number,))
+                INSERT OR REPLACE INTO molodniki_sections (id, section_number, created_at)
+                VALUES ((SELECT id FROM molodniki_sections WHERE section_number = ?), ?, CURRENT_TIMESTAMP)
+            ''', (section_number, section_number))
             conn.commit()
             self.molodniki_popup.dismiss()
             App.get_running_app().root.get_screen('molodniki').current_section = section_number
-            App.get_running_app().root.get_screen('molodniki').update_section_label()
+            # Убираем вызов update_section_label, так как section_label больше не существует
             App.get_running_app().root.current = 'molodniki'
         except Exception as e:
             self.show_error(f"Ошибка сохранения: {str(e)}")

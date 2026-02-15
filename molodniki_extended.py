@@ -883,6 +883,8 @@ class ExtendedMolodnikiTableScreen(Screen):
         self.load_existing_data()
         Window.bind(on_key_down=self.key_action)
 
+        # Убираем вызов update_section_label, так как section_label больше не существует
+
     def key_action(self, window, key, scancode, codepoint, modifier):
         if key == 115 and 'ctrl' in modifier:
             self.save_current_page()
@@ -978,35 +980,9 @@ class ExtendedMolodnikiTableScreen(Screen):
         # Табличная часть (левая панель) - уменьшаем для видимости кнопок
         table_panel = BoxLayout(orientation='vertical', size_hint_x=0.75)
 
-        # Кнопки в верхней части
-        top_buttons_layout = BoxLayout(orientation='horizontal', size_hint=(1, None), height=50, spacing=20, padding=(20, 0))
-
-        # Кнопка Адрес
-        address_btn = ModernButton(
-            text='Адрес',
-            bg_color=get_color_from_hex('#87CEEB'),
-            size_hint=(None, None),
-            size=(120, 50),
-            font_size='18sp'
-        )
-        address_btn.bind(on_press=self.show_address_popup)
-
-        # Кнопка Файл
-        file_btn = ModernButton(
-            text='Файл',
-            bg_color=get_color_from_hex('#FFD700'),
-            size_hint=(None, None),
-            size=(120, 50),
-            font_size='18sp'
-        )
-        file_btn.bind(on_press=self.show_file_popup)
-
-        top_buttons_layout.add_widget(address_btn)
-        top_buttons_layout.add_widget(file_btn)
-
         # Адресная строка (текстовое поле для отображения адреса)
         self.address_label = Label(
-            text="",
+            text=f"{self.current_quarter} {self.current_plot} {self.current_forestry}",
             font_name='Roboto',
             size_hint=(1, None),
             height=40,
@@ -1016,127 +992,92 @@ class ExtendedMolodnikiTableScreen(Screen):
         )
         self.address_label.bind(size=self.address_label.setter('text_size'))
 
-        # Заголовок участка (убираем текст "Молодняки - Участок")
-        self.section_label = Label(
-            text=f"Участок: {self.current_section}",
-            font_name='Roboto',
-            size_hint=(1, None),
-            height=40,
-            color=self._get_text_color(),
-            halign='center',
-            valign='middle'
-        )
+        # Левая панель с кнопками и адресом
+        left_panel = BoxLayout(orientation='horizontal', size_hint=(1, None), height=400, spacing=20)
 
-        # Заголовок участка и адресная строка
-        header_layout = BoxLayout(orientation='vertical', size_hint=(1, None), height=130, spacing=5)
-        header_layout.add_widget(top_buttons_layout)
-        header_layout.add_widget(self.address_label)
-        header_layout.add_widget(self.section_label)
+        # Кнопки слева вертикально
+        buttons_layout = BoxLayout(orientation='vertical', size_hint=(None, 1), width=150, spacing=10)
 
-        table_panel.add_widget(header_layout)
-
-        # Кнопки в вертикальном порядке: Файл, Адрес, Функции, Итого, Проект, Меню
-        button_container = BoxLayout(orientation='vertical', size_hint_y=None, height=360, size_hint_x=1, spacing=10, padding=(20, 0))
-
-        self.file_button = ModernButton(
-            text='Файл',
-            bg_color=get_color_from_hex('#FFD700'),
-            size_hint=(1, None),
-            height=50,
-            font_size='16sp',
-            bold=True
-        )
-        self.file_button.bind(on_press=self.show_file_popup)
-        button_container.add_widget(self.file_button)
-
-        self.address_button = ModernButton(
+        # Кнопка Адрес
+        address_btn = ModernButton(
             text='Адрес',
             bg_color=get_color_from_hex('#87CEEB'),
             size_hint=(1, None),
-            height=50,
-            font_size='16sp',
-            bold=True
+            height=45,
+            font_size='16sp'
         )
-        self.address_button.bind(on_press=self.show_address_popup)
-        button_container.add_widget(self.address_button)
+        address_btn.bind(on_press=self.show_address_popup)
+        buttons_layout.add_widget(address_btn)
 
-        self.additional_functions_button = ModernButton(
-            text='Функции',
-            bg_color=get_color_from_hex('#9370DB'),  # Фиолетовый цвет
+        # Кнопка Файл
+        file_btn = ModernButton(
+            text='Файл',
+            bg_color=get_color_from_hex('#FFD700'),
             size_hint=(1, None),
-            height=50,
-            font_size='16sp',
-            bold=True
+            height=45,
+            font_size='16sp'
         )
-        self.additional_functions_button.bind(on_press=self.show_additional_functions_popup)
-        button_container.add_widget(self.additional_functions_button)
+        file_btn.bind(on_press=self.show_file_popup)
+        buttons_layout.add_widget(file_btn)
 
-        self.total_summary_button = ModernButton(
+        # Кнопка Детали
+        additional_functions_btn = ModernButton(
+            text='Детали',
+            bg_color=get_color_from_hex('#9370DB'),
+            size_hint=(1, None),
+            height=45,
+            font_size='16sp'
+        )
+        additional_functions_btn.bind(on_press=self.show_additional_functions_popup)
+        buttons_layout.add_widget(additional_functions_btn)
+
+        # Кнопка Итого
+        total_summary_btn = ModernButton(
             text='Итого',
-            bg_color=get_color_from_hex('#00FF00'),  # Зеленый цвет
+            bg_color=get_color_from_hex('#00FF00'),
             size_hint=(1, None),
-            height=50,
+            height=45,
             font_size='16sp',
             bold=True
         )
-        self.total_summary_button.bind(on_press=self.show_total_summary_popup)
-        button_container.add_widget(self.total_summary_button)
+        total_summary_btn.bind(on_press=self.show_total_summary_popup)
+        buttons_layout.add_widget(total_summary_btn)
 
-        self.care_project_button = ModernButton(
+        # Кнопка Проект
+        care_project_btn = ModernButton(
             text='Проект',
-            bg_color=get_color_from_hex('#FF8C00'),  # Оранжевый цвет
+            bg_color=get_color_from_hex('#FF8C00'),
             size_hint=(1, None),
-            height=50,
+            height=45,
             font_size='16sp',
             bold=True
         )
-        self.care_project_button.bind(on_press=self.generate_care_project)
-        button_container.add_widget(self.care_project_button)
+        care_project_btn.bind(on_press=self.generate_care_project)
+        buttons_layout.add_widget(care_project_btn)
 
-        self.menu_button = ModernButton(
-            text='Меню',
-            bg_color=get_color_from_hex('#FF0000'),
-            size_hint=(1, None),
-            height=50,
-            font_size='16sp',
-            bold=True
-        )
-        self.menu_button.bind(on_press=self.go_back)
-        button_container.add_widget(self.menu_button)
-
-        table_panel.add_widget(button_container)
-        main_layout.add_widget(table_panel)
-
-        # Правая панель управления (увеличиваем для видимости кнопок)
-        control_panel = BoxLayout(
-            orientation='vertical',
-            size_hint_x=0.25,
-            spacing=10,
-            padding=[0, 10, 0, 0]
-        )
-
-        controls = BoxLayout(
-            orientation='vertical',
-            size_hint_y=None,
-            height=540,  # Увеличиваем высоту для дополнительных кнопок
-            spacing=10,
-            pos_hint={'top': 1}
-        )
-
-        # Оставляем только кнопку "В меню"
+        # Кнопка Меню
         go_back_btn = ModernButton(
             text='Меню',
             bg_color=get_color_from_hex('#FF0000'),
-            size_hint=(None, None),
-            size=(220, 45),
-            pos_hint={'center_x': 0.5}
+            size_hint=(1, None),
+            height=45,
+            font_size='16sp'
         )
         go_back_btn.bind(on_press=self.go_back)
-        controls.add_widget(go_back_btn)
+        buttons_layout.add_widget(go_back_btn)
 
-        control_panel.add_widget(controls)
+        left_panel.add_widget(buttons_layout)
 
-        main_layout.add_widget(control_panel)
+        # Адресная строка справа от кнопок
+        address_container = BoxLayout(orientation='vertical', size_hint=(1, 1), spacing=5)
+        address_container.add_widget(self.address_label)
+
+        left_panel.add_widget(address_container)
+
+        table_panel.add_widget(left_panel)
+        main_layout.add_widget(table_panel)
+
+        # Правая панель управления (убрана, кнопка "Меню" теперь в левой панели)
         self.add_widget(main_layout)
 
     def _update_bg(self, instance, value):
@@ -1162,7 +1103,7 @@ class ExtendedMolodnikiTableScreen(Screen):
             return get_color_from_hex(theme['text_color'])
 
     def update_section_label(self):
-        self.section_label.text = ""
+        self.section_label.text = f"{self.current_section}"
 
     def toggle_edit_mode(self, instance):
         self.edit_mode = not self.edit_mode
@@ -4551,26 +4492,6 @@ class ExtendedMolodnikiTableScreen(Screen):
         if hasattr(self, 'plot_area_input') and self.plot_area_input:
             return self.plot_area_input
         return ''
-        if total_density > 0:
-            summary_parts.append(f"Общая густота: {total_density}")
-        if total_height > 0:
-            avg_height = total_height / breed_count if breed_count > 0 else 0
-            summary_parts.append(f"Средняя высота: {avg_height:.1f}м")
-        if total_age > 0:
-            avg_age = total_age / breed_count if breed_count > 0 else 0
-            summary_parts.append(f"Средний возраст: {avg_age:.1f} лет")
-
-        self.update_totals()
-        if total_density > 0:
-            summary_parts.append(f"Общая густота: {total_density}")
-        if total_height > 0:
-            avg_height = total_height / breed_count if breed_count > 0 else 0
-            summary_parts.append(f"Средняя высота: {avg_height:.1f}м")
-        if total_age > 0:
-            avg_age = total_age / breed_count if breed_count > 0 else 0
-            summary_parts.append(f"Средний возраст: {avg_age:.1f} лет")
-
-        self.update_totals()
 
     def get_breed_letter(self, breed_name):
         """Получение первой буквы для коэффициента состава породы"""
@@ -5168,16 +5089,16 @@ class ExtendedMolodnikiTableScreen(Screen):
         """Обновить текст адресной строки"""
         address_parts = []
         if self.current_quarter:
-            address_parts.append(f"{self.current_quarter} кв.")
+            address_parts.append(f"{self.current_quarter}")
         if self.current_plot:
-            address_parts.append(f"{self.current_plot} выд.")
+            address_parts.append(f"{self.current_plot}")
         # Убрали отображение current_forestry для удаления текста "Молодняки участок 1"
         # if self.current_forestry:
         #     address_parts.append(self.current_forestry)
         if getattr(self, 'current_district_forestry', ''):
-            address_parts.append(f"участковое: {self.current_district_forestry}")
+            address_parts.append(f"{self.current_district_forestry}")
 
-        address_text = ""  # Убираем текст адреса для удаления нежелательного текста
+        address_text = " ".join(address_parts) if address_parts else ""
         self.address_label.text = address_text
 
     def load_existing_data(self):
@@ -7258,7 +7179,6 @@ class ExtendedMolodnikiTableScreen(Screen):
                 data = json.load(f)
 
             self.current_section = os.path.splitext(os.path.basename(file_path))[0].replace('.json', '').replace('_приложение', '')
-            self.update_section_label()
             self.page_data.clear()
 
             # Ожидаем, что JSON содержит page_data как словарь
