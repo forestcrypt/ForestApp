@@ -3557,13 +3557,18 @@ class ExtendedMolodnikiTableScreen(Screen):
                     # Средний диаметр
                     avg_diameter = sum(data['diameters']) / len(data['diameters']) if data['diameters'] else 0
 
+                    # Средний возраст
+                    avg_ages = [p['age'] for p in data['plots'] if p['age'] > 0]
+                    avg_age = sum(avg_ages) / len(avg_ages) if avg_ages else 0
+
                     coniferous_result = Label(
                         text=f"{breed_name}:\n"
                              f"• до 0.5м: {avg_do_05:.1f} шт/га\n"
                              f"• 0.5-1.5м: {avg_05_15:.1f} шт/га\n"
                              f"• >1.5м: {avg_bolee_15:.1f} шт/га\n"
                              f"• средняя высота (>1.5м): {avg_height_total:.1f}м\n"
-                             f"• средний диаметр: {avg_diameter:.1f} см",
+                             f"• средний диаметр: {avg_diameter:.1f} см\n"
+                             f"• средний возраст: {avg_age:.1f} лет",
                         font_name='Roboto',
                         font_size='14sp',
                         color=(0, 0.5, 0, 1),
@@ -3644,6 +3649,54 @@ class ExtendedMolodnikiTableScreen(Screen):
                     halign='center'
                 )
                 results_layout.add_widget(no_deciduous)
+
+            # Общие средние по лиственным породам
+            if has_deciduous:
+                deciduous_overall_label = Label(
+                    text='\nОБЩИЕ СРЕДНИЕ ПО ЛИСТВЕННЫМ ПОРОДАМ',
+                    font_name='Roboto',
+                    font_size='16sp',
+                    bold=True,
+                    color=(0, 0.5, 0.7, 1),
+                    size_hint=(1, None),
+                    height=50,
+                    halign='center'
+                )
+                results_layout.add_widget(deciduous_overall_label)
+
+                # Рассчитываем общие средние по всем лиственным породам
+                deciduous_all_densities = []
+                deciduous_all_heights = []
+                deciduous_all_ages = []
+                deciduous_all_diameters = []
+
+                for breed_name, data in breeds_data.items():
+                    if data['type'] == 'deciduous' and data['plots']:
+                        deciduous_all_densities.extend([p['density'] for p in data['plots'] if p['density'] > 0])
+                        deciduous_all_heights.extend([p['height'] for p in data['plots'] if p['height'] > 0])
+                        deciduous_all_ages.extend([p['age'] for p in data['plots'] if p['age'] > 0])
+                        deciduous_all_diameters.extend([d for d in data['diameters'] if d > 0])
+
+                avg_deciduous_overall_density = sum(deciduous_all_densities) / len(deciduous_all_densities) if deciduous_all_densities else 0
+                avg_deciduous_overall_height = sum(deciduous_all_heights) / len(deciduous_all_heights) if deciduous_all_heights else 0
+                avg_deciduous_overall_age = sum(deciduous_all_ages) / len(deciduous_all_ages) if deciduous_all_ages else 0
+                avg_deciduous_overall_diameter = sum(deciduous_all_diameters) / len(deciduous_all_diameters) if deciduous_all_diameters else 0
+
+                deciduous_overall_result = Label(
+                    text=f"Средняя густота лиственных пород: {avg_deciduous_overall_density:.1f} шт/га\n"
+                         f"Средняя высота лиственных пород: {avg_deciduous_overall_height:.1f} м\n"
+                         f"Средний возраст лиственных пород: {avg_deciduous_overall_age:.1f} лет\n"
+                         f"Средний диаметр лиственных пород: {avg_deciduous_overall_diameter:.1f} см",
+                    font_name='Roboto',
+                    font_size='14sp',
+                    color=(0.2, 0.4, 0.8, 1),
+                    size_hint=(1, None),
+                    height=100,
+                    halign='left',
+                    valign='top'
+                )
+                deciduous_overall_result.bind(size=lambda *args: setattr(deciduous_overall_result, 'text_size', (deciduous_overall_result.width, None)))
+                results_layout.add_widget(deciduous_overall_result)
 
             # Средние данные в целом по участку
             overall_label = Label(
@@ -4021,7 +4074,7 @@ class ExtendedMolodnikiTableScreen(Screen):
             popup = Popup(
                 title="Таксационные показатели молодняков",
                 content=content,
-                size_hint=(0.95, 0.95)
+                size_hint=(0.98, 0.98)
             )
 
             close_btn.bind(on_press=popup.dismiss)
@@ -4998,8 +5051,6 @@ class ExtendedMolodnikiTableScreen(Screen):
                 instance.text = json.dumps(breeds_data, ensure_ascii=False, indent=2)
                 self.update_totals()
                 self.show_success("Порода обновлена!")
-                if hasattr(self.table_screen, 'popup') and self.table_screen.popup:
-                    self.table_screen.popup.dismiss()
                 popup.dismiss()
 
         save_btn.bind(on_press=save_edit)
@@ -5147,7 +5198,6 @@ class ExtendedMolodnikiTableScreen(Screen):
 
                 self.current_page = min(page_numbers)
                 self.load_page_data()
-                self.update_pagination()
 
         except Exception as e:
             print(f"Error loading existing data: {e}")
@@ -5168,20 +5218,11 @@ class ExtendedMolodnikiTableScreen(Screen):
         else:
             self.show_error("Папка reports не найдена!")
 
-    def change_page(self, delta):
-        new_page = self.current_page + delta
-        if 0 <= new_page < self.MAX_PAGES:
-            self.current_page = new_page
-            self.load_page_data()
-            self.update_page_label()
+    def go_back(self, instance):
+        App.get_running_app().root.current = 'main'
 
-    def update_pagination(self):
-        self.total_pages = len(self.page_data) if self.page_data else 1
-        self.total_pages = min(self.total_pages, self.MAX_PAGES)
-        self.update_page_label()
-
-    def update_page_label(self):
-        self.page_label.text = f'Страница {self.current_page+1} из {self.total_pages}'
+    def go_back(self, instance):
+        App.get_running_app().root.current = 'main'
 
     def go_back(self, instance):
         App.get_running_app().root.current = 'main'
@@ -7175,8 +7216,25 @@ class ExtendedMolodnikiTableScreen(Screen):
         """Загрузка данных из JSON файла"""
         print(f"DEBUG: Loading JSON file: {file_path}")
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
+            # Попытка загрузить с UTF-8
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+            except UnicodeDecodeError:
+                # Если UTF-8 не работает, пробуем Windows-1251
+                try:
+                    with open(file_path, 'r', encoding='cp1251') as f:
+                        data = json.load(f)
+                except UnicodeDecodeError:
+                    # Если и это не работает, пробуем автоопределение
+                    import chardet
+                    with open(file_path, 'rb') as f:
+                        raw_data = f.read()
+                        detected_encoding = chardet.detect(raw_data)['encoding']
+                        if detected_encoding:
+                            data = json.loads(raw_data.decode(detected_encoding))
+                        else:
+                            raise UnicodeDecodeError("Не удалось определить кодировку файла")
 
             self.current_section = os.path.splitext(os.path.basename(file_path))[0].replace('.json', '').replace('_приложение', '')
             self.page_data.clear()
@@ -7225,7 +7283,6 @@ class ExtendedMolodnikiTableScreen(Screen):
                 self.current_page = 0
 
             self.load_page_data()
-            self.update_pagination()
 
             total_plots = sum(len(rows) for rows in self.page_data.values())
             self.show_success(f"Данные приложения успешно загружены! Найдено {total_plots} площадок в {len(self.page_data)} страницах.")
