@@ -955,6 +955,17 @@ class ExtendedMolodnikiTableScreen(Screen):
 
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_molodniki_totals_page ON molodniki_totals (page_number, section_name)')
 
+        # Создаем таблицу для хранения настроек участка
+        cursor.execute('''CREATE TABLE IF NOT EXISTS molodniki_settings (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        section_name TEXT UNIQUE,
+                        radius REAL DEFAULT 5.64,
+                        plot_area REAL DEFAULT 0.0,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_molodniki_settings_section ON molodniki_settings (section_name)')
+
         # Создаем таблицу для хранения данных пород (JSON)
         cursor.execute('''CREATE TABLE IF NOT EXISTS molodniki_suggestions (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -5158,6 +5169,17 @@ class ExtendedMolodnikiTableScreen(Screen):
         cursor = conn.cursor()
 
         try:
+            # Загружаем настройки участка
+            cursor.execute('''
+                SELECT radius, plot_area FROM molodniki_settings
+                WHERE section_name = ?
+            ''', (self.current_section,))
+
+            settings_row = cursor.fetchone()
+            if settings_row:
+                self.current_radius = str(settings_row[0]) if settings_row[0] else "5.64"
+                self.plot_area_input = str(settings_row[1]) if settings_row[1] else ""
+
             cursor.execute('''
                 SELECT DISTINCT page_number FROM molodniki_data
                 WHERE section_name = ?
@@ -5201,6 +5223,7 @@ class ExtendedMolodnikiTableScreen(Screen):
 
         except Exception as e:
             print(f"Error loading existing data: {e}")
+            self.show_error(f"Ошибка загрузки данных из базы: {str(e)}")
         finally:
             conn.close()
 
@@ -7239,6 +7262,13 @@ class ExtendedMolodnikiTableScreen(Screen):
             self.current_section = os.path.splitext(os.path.basename(file_path))[0].replace('.json', '').replace('_приложение', '')
             self.page_data.clear()
 
+            # Загружаем настройки адреса
+            if isinstance(data, dict):
+                if 'radius' in data:
+                    self.current_radius = str(data['radius']) if data['radius'] else "5.64"
+                if 'plot_area' in data:
+                    self.plot_area_input = str(data['plot_area']) if data['plot_area'] else ""
+
             # Ожидаем, что JSON содержит page_data как словарь
             if isinstance(data, dict) and 'page_data' in data:
                 self.page_data = data['page_data']
@@ -7290,6 +7320,19 @@ class ExtendedMolodnikiTableScreen(Screen):
             import traceback
             error_details = traceback.format_exc()
             self.show_error(f"Ошибка загрузки JSON файла: {str(e)}\n{error_details}")
+
+    def save_settings_to_db(self):
+        """Сохранить настройки участка в базу данных"""
+        conn = sqlite3.connect(self.db_name)
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            INSERT OR REPLACE INTO molodniki_settings (section_name, radius, plot_area, updated_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        ''', (self.current_section, self.current_radius, self.plot_area_input))
+
+        conn.commit()
+        conn.close()
 
     def show_radius_popup(self, instance):
         """Показать popup для установки радиуса"""
@@ -7358,6 +7401,8 @@ class ExtendedMolodnikiTableScreen(Screen):
                     return
 
                 self.current_radius = str(radius)
+                # Сохраняем настройки в базу данных
+                self.save_settings_to_db()
                 self.update_totals()
                 self.show_success(f"Радиус {radius} м сохранен для всех расчетов")
                 popup.dismiss()
