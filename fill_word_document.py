@@ -19,7 +19,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 class WordDocumentFiller:
     def __init__(self, db_name='forest_data.db', data_file=None, address_data=None, total_data=None):
         self.db_name = db_name
-        self.document_path = 'reports/проект 224-56-38га Волдозерское.docx'
+        self.document_path = 'reports/Шаблон проект.docx'
         self.data_file = data_file
 
         # Данные адресной строки (можно настроить)
@@ -106,6 +106,9 @@ class WordDocumentFiller:
                     'bolee_15': breed[7]
                 })
 
+            # Прописываем данные адреса в итого для доступа к ним
+            self.total_data['address_data'] = self.address_data
+
             conn.close()
             print("Данные успешно загружены из базы данных")
             return True
@@ -132,6 +135,9 @@ class WordDocumentFiller:
     def calculate_forest_type(self):
         """Определяем тип леса как среднее по площадкам из данных таблицы"""
         try:
+            # Получаем данные адреса из итого
+            address_data = self.total_data.get('address_data', self.address_data)
+
             # Получаем данные из базы данных о типах леса по площадкам
             conn = sqlite3.connect(self.db_name)
             cursor = conn.cursor()
@@ -143,7 +149,7 @@ class WordDocumentFiller:
             if 'tip_lesa' not in columns:
                 print("Столбец tip_lesa не найден, используем значение по умолчанию")
                 conn.close()
-                return self.address_data.get('forest_type', 'Бр В2')
+                return address_data.get('forest_type', 'Бр В2')
 
             # Получаем все типы леса из таблицы molodniki_data
             cursor.execute('''
@@ -162,11 +168,12 @@ class WordDocumentFiller:
                 predominant_type = forest_types[0][0]
                 return predominant_type
             else:
-                return self.address_data.get('forest_type', 'Бр В2')
+                return address_data.get('forest_type', 'Бр В2')
 
         except Exception as e:
             print(f"Ошибка при определении типа леса: {e}")
-            return self.address_data.get('forest_type', 'Бр В2')
+            address_data = self.total_data.get('address_data', self.address_data)
+            return address_data.get('forest_type', 'Бр В2')
 
     def get_breed_letter(self, breed_name):
         """Получаем букву для породы в формуле состава"""
@@ -237,76 +244,82 @@ class WordDocumentFiller:
                 except (ValueError, TypeError):
                     return str(value)
 
+            # Получаем данные адреса из итого (если не хранятся отдельно)
+            address_data = self.total_data.get('address_data', self.address_data)
+
             # Определяем тип леса как среднее по площадкам
             forest_type = self.calculate_forest_type()
 
             # Рассчитываем параметры площадок
-            current_radius = float(self.address_data.get('radius', 1.78))
+            current_radius = float(address_data.get('radius', 1.78))
             plot_area_m2 = 3.14159 * current_radius ** 2
 
             # Словарь замен для различных плейсхолдеров в документе
             replacements = {
-                # Название мероприятия и очередь рубки
-                '__ прочистка первой очереди__________________________': care_activity_text,
+                # Вид рубки - из Детали (очередь рубки - тип мероприятий)
+                '(Детали- очередь рубки-тип мероприятий)': care_activity_text,
 
-                # Лесничество - используем forestry_info из address_data
-                'в __ _Сегежском                      лесничестве,     ': f"в {self.address_data.get('forestry', '')},",
-                'Сегежском_ участковом лесничестве Волдозерском лесничестве по лесоустройству,': f"{self.address_data.get('district_forestry', '')} участковом лесничестве {self.address_data.get('section', '')} лесничестве по лесоустройству",
+                # Лесничество и участковое лесничество - из Адрес
+                '(Адрес- лесничество)': address_data.get('forestry', ''),
+                '(Адрес-участковое лесничество)': address_data.get('district_forestry', ''),
 
-                # Назначение лесов
-                'целевое назначение лесов __эксплуатационное______________,  ': f"целевое назначение лесов {forest_purpose},",
+                # Целевое назначение лесов - из Детали
+                '(Детали-назначение лесов)': forest_purpose,
 
-                # Выдел, площадь, квартал - используем plot_info из address_data
-                'Выдел, площадь квартал 225 выдел 33 площадь общ-24 га площадь экс-24 га.': self.address_data.get('plot_info', f"Выдел, площадь квартал {self.address_data.get('quarter', '')} выдел {self.address_data.get('plot', '')} площадь общ-{self.address_data.get('plot_area', '')} га площадь экс-{self.address_data.get('plot_area', '')} га."),
+                # Квартал, Выдел, Площадь - из Адрес
+                'Квартал (Адрес)': address_data.get('quarter', ''),
+                'Выдел (Адрес)': address_data.get('plot', ''),
+                'площадь (Адрес-площадь)': address_data.get('plot_area', ''),
 
-                # Тип леса - используем forest_type из address_data или рассчитанный
-                'Тип (группа типов) леса и тип лесорастительных условий Бр В2': f"Тип (группа типов) леса и тип лесорастительных условий {self.address_data.get('forest_type', forest_type)}",
+                # Тип леса - из Данных по площадкам
+                '(Данных по площадкам)': address_data.get('forest_type', forest_type),
 
-                # Очередь рубки
-                'в первую': f"в {care_queue}",
+                # Очередь рубки - из Функции
+                '(Функции)': care_queue,
 
-                # Количество площадок
-                '50 шт. 10м2(R-1,78м)': f'{self.total_data.get("total_plots", 0)} шт. {plot_area_m2:.0f}м2(R-{current_radius:.2f}м)',
+                # Количество площадок и радиус - из Итого и Адрес
+                '(Итого и Адрес-радиус)': f"{self.total_data.get('total_plots', 0)} шт. {plot_area_m2:.0f}м²(R-{current_radius:.2f}м)",
 
-                # Коэффициент состава
-                '5С5БДр': self.total_data.get('composition', 'Не определен'),
+                # Коэффициент состава - из Итого (оставляем для совместимости, но не заменяем "Итого" в таблице)
+                # '5С5БДр': self.total_data.get('composition', 'Не определен'),
 
-                # Возраст, высота, густота
-                '10.666666666666666': format_number(self.total_data.get('avg_age')),
-                '2.3333333333333335': format_number(self.total_data.get('avg_height')),
-                '3683.680201929093': format_number(self.total_data.get('avg_density')),
+                # Возраст по породам - из таблицы Итого
+                'Возраст по породам': format_number(self.total_data.get('avg_age')),
+                'Диаметр по породам': 'Н/Д',  # Пока не определено
+                'Высота по породам': format_number(self.total_data.get('avg_height')),
+                'Кол-во деревьев по породам тыс. шт/га': format_number(self.total_data.get('avg_density')),
+                'Сомкнутость (полнота С)': 'Н/Д',  # Пока не определено
+                'Подрост: Состав, возраст Высота Кол-во': 'Н/Д',  # Пока не определено
 
-                # Предмет ухода
-                'Подставляем данные из Итого(Предмет ухода)': self.total_data.get('care_subject', 'Не определен'),
+                # Характеристика деревьев - из Детали (Характеристика молодняков)
+                '(Детали - Характеристика молодняков)': f"Лучшие: {best_text}\nВспомогательные: {auxiliary_text}\nНежелательные: {undesirable_text}",
 
-                # Характеристика молодняков
-                'Лучшие: здоровая, хорошо укорененная  , с  хорошо сформированной кроной.( подставляем название породы из меню Дополнительные функции характеристика молодняков) )': f"Лучшие: {best_text}",
-                'Вспомогательные: деревья всех пород  обеспечивающие сохранение целостности и устойчивости насаждения. .( подставляем название породы из меню Дополнительные функции характеристика молодняков) )': f"Вспомогательные: {auxiliary_text}",
-                'Нежелательные (подлежащие вырубке): деревья  мешающие росту и формированию крон отобранных лучших и вспомогательных деревьев; деревья неудовлетворительного состояния. .( подставляем название породы из меню Дополнительные функции характеристика молодняков) )': f"Нежелательные (подлежащие вырубке): {undesirable_text}",
+                # Дата рубки - из Детали
+                '(Детали-Дата рубки)': care_date,
 
-                # Дата
-                '( Подставляем дату из меню дополнительные функции)': care_date,
+                # Интенсивность - из Итого
+                '(Итого)': self.total_data.get('intensity', '25%'),
 
-                # Интенсивность
-                'Подставляем интенсивность рассчитанную в Итого': self.total_data.get('intensity', '25%'),
+                # Технология ухода - из Детали
+                '(Детали-Технология ухода)': technology,
 
-                # Технология ухода
-                '(Подставляем данные из Дополнительные функции – Технология ухода)': technology,
+                # Планируемые затраты - пустое поле
+                'Пусто': '',
             }
 
             # Дополнительные замены для различных вариантов плейсхолдеров
             additional_replacements = {
                 # Альтернативные плейсхолдеры для лесничества
-                'в __ _Сегежском лесничестве': f"в {self.address_data.get('forestry', '')} лесничестве",
-                'Сегежском участковом лесничестве': f"{self.address_data.get('district_forestry', '')} участковом лесничестве",
+                'в __ _Сегежском лесничестве': f"в {address_data.get('forestry', '')} лесничестве",
+                'Сегежском участковом лесничестве': f"{address_data.get('district_forestry', '')} участковом лесничестве",
 
                 # Альтернативные плейсхолдеры для выдела и площади
-                'квартал 225 выдел 33': f"квартал {self.address_data.get('quarter', '')} выдел {self.address_data.get('plot', '')}",
-                'площадь общ-24 га': f"площадь общ-{self.address_data.get('plot_area', '')} га",
-                'площадь экс-24 га': f"площадь экс-{self.address_data.get('plot_area', '')} га",
+                'квартал 225 выдел 33': f"квартал {address_data.get('quarter', '')} выдел {address_data.get('plot', '')}",
+                'площадь общ-24 га': f"площадь общ-{address_data.get('plot_area', '')} га",
+                'площадь экс-24 га': f"площадь экс-{address_data.get('plot_area', '')} га",
 
                 # Альтернативные плейсхолдеры для типа леса
-                'Бр В2': self.address_data.get('forest_type', forest_type),
+                'Бр В2': address_data.get('forest_type', forest_type),
 
                 # Альтернативные плейсхолдеры для коэффициента состава
                 '5С5БДр': self.total_data.get('composition', 'Не определен'),
@@ -323,9 +336,9 @@ class WordDocumentFiller:
                 '25%': self.total_data.get('intensity', '25%'),
 
                 # Дополнительные плейсхолдеры для адресной строки
-                'Сегежское лесничество': self.address_data.get('forestry', ''),
-                'Володозерское': self.address_data.get('section', ''),
-                'участковое лесничество': f"{self.address_data.get('district_forestry', '')} участковое лесничество",
+                'Сегежское лесничество': address_data.get('forestry', ''),
+                'Володозерское': address_data.get('section', ''),
+                'участковое лесничество': f"{address_data.get('district_forestry', '')} участковое лесничество",
 
                 # Дополнительные плейсхолдеры для итогов
                 'Предмет ухода': self.total_data.get('care_subject', 'Не определен'),
@@ -346,16 +359,35 @@ class WordDocumentFiller:
             # Объединяем словари замен
             replacements.update(additional_replacements)
 
+            # Сначала обрабатываем таблицы (специальная обработка характеристик)
+            for table in doc.tables:
+                for row_idx, row in enumerate(table.rows):
+                    # Специальная обработка для таблицы характеристик насаждения
+                    # Ищем таблицу с заголовками характеристик
+                    if row_idx == 0 and len(row.cells) >= 8:  # Заголовок таблицы
+                        headers = []
+                        for cell in row.cells:
+                            try:
+                                text = str(cell.text).strip() if cell.text is not None else ""
+                                headers.append(text)
+                            except (AttributeError, TypeError):
+                                headers.append("")
+
+                        if len(headers) > 0 and 'Выдел' in headers[0] and 'Состав' in ''.join(headers):
+                            # Это таблица характеристик насаждения
+                            self.fill_characteristics_table(table, headers)
+                            break  # Прерываем цикл после обработки таблицы
+
             # Проходим по всем параграфам и заменяем текст
             for paragraph in doc.paragraphs:
                 for old_text, new_text in replacements.items():
                     if old_text in paragraph.text:
                         paragraph.text = paragraph.text.replace(old_text, str(new_text))
 
-            # Также проверяем таблицы
+            # Также проверяем таблицы (общие замены)
             for table in doc.tables:
-                for row in table.rows:
-                    for cell in row.cells:
+                for row_idx, row in enumerate(table.rows):
+                    for cell_idx, cell in enumerate(row.cells):
                         for paragraph in cell.paragraphs:
                             for old_text, new_text in replacements.items():
                                 if old_text in paragraph.text:
@@ -372,6 +404,119 @@ class WordDocumentFiller:
         except Exception as e:
             print(f"Ошибка при заполнении документа: {e}")
             return False
+
+    def fill_characteristics_table(self, table, headers):
+        """Заполняет таблицу характеристик насаждения"""
+        try:
+            # Определяем индексы колонок
+            col_indices = {}
+            for i, header in enumerate(headers):
+                header_lower = header.lower()
+                if 'выдел' in header_lower and 'площадь' in header_lower:
+                    col_indices['plot_area'] = i
+                elif 'состав древостоя' in header_lower:
+                    col_indices['composition'] = i
+                elif 'возраст' in header_lower and 'породам' in header_lower:
+                    col_indices['age_by_breeds'] = i
+                elif 'диаметр' in header_lower and 'породам' in header_lower:
+                    col_indices['diameter_by_breeds'] = i
+                elif 'высота' in header_lower and 'породам' in header_lower:
+                    col_indices['height_by_breeds'] = i
+                elif 'кол-во деревьев' in header_lower or 'тыс. шт/га' in header_lower:
+                    col_indices['density_by_breeds'] = i
+                elif 'сомкнутость' in header_lower or 'полнота' in header_lower:
+                    col_indices['crown_density'] = i
+                elif 'подрост' in header_lower:
+                    col_indices['undergrowth'] = i
+
+            # Функция для форматирования чисел
+            def format_number(value, default=''):
+                if value is None or value == 'Н/Д':
+                    return default
+                try:
+                    num = float(value)
+                    return f"{num:.1f}"
+                except (ValueError, TypeError):
+                    return str(value)
+
+            # Данные для заполнения
+            address_data = self.total_data.get('address_data', self.address_data)
+            plot_info = f"{address_data.get('quarter', '')} {address_data.get('plot', '')}, {address_data.get('plot_area', '')}"
+            composition = self.total_data.get('composition', 'Не определен')
+
+            # Заполняем строки таблицы
+            # Строка 3 (индекс 2) - исходное состояние, Строка 4 (индекс 3) - проектируемое состояние
+            for row_idx in [2, 3]:  # Только эти две строки содержат данные для заполнения
+                if row_idx >= len(table.rows):
+                    continue
+
+                row = table.rows[row_idx]
+                row_type = 'исх' if row_idx == 2 else 'проект'
+
+                # Заполняем данные в зависимости от типа колонки
+                # Колонки 0-1: Выдел/Площадь
+                if 0 < len(row.cells):
+                    row.cells[0].text = plot_info  # Выдел
+                if 1 < len(row.cells):
+                    row.cells[1].text = plot_info  # Площадь
+
+                # Колонки 2-3: Состав древостоя
+                if 2 < len(row.cells):
+                    row.cells[2].text = composition  # исходный
+                if 3 < len(row.cells):
+                    row.cells[3].text = composition  # проектируемый
+
+                # Колонки 4-5: Возраст по породам
+                age_value = format_number(self.total_data.get('avg_age'))
+                if 4 < len(row.cells):
+                    row.cells[4].text = age_value  # исходный
+                if 5 < len(row.cells):
+                    row.cells[5].text = age_value  # проектируемый
+
+                # Колонки 6-7: Диаметр по породам
+                if 6 < len(row.cells):
+                    row.cells[6].text = 'Н/Д'  # исходный
+                if 7 < len(row.cells):
+                    row.cells[7].text = 'Н/Д'  # проектируемый
+
+                # Колонки 8-9: Высота по породам
+                height_value = format_number(self.total_data.get('avg_height'))
+                if 8 < len(row.cells):
+                    row.cells[8].text = height_value  # исходный
+                if 9 < len(row.cells):
+                    row.cells[9].text = height_value  # проектируемый
+
+                # Колонки 10-11: Кол-во деревьев по породам тыс. шт/га
+                density_value = format_number(self.total_data.get('avg_density'))
+                if row_type == 'проект':
+                    intensity = self.total_data.get('intensity', '25%')
+                    try:
+                        intensity_value = float(str(intensity).strip('%')) / 100
+                        original_density = self.total_data.get('avg_density', 0)
+                        projected_density = original_density * (1 - intensity_value)
+                        density_value = format_number(projected_density)
+                    except (ValueError, TypeError):
+                        pass
+
+                if 10 < len(row.cells):
+                    row.cells[10].text = density_value  # исходный или проектируемый
+                if 11 < len(row.cells):
+                    row.cells[11].text = density_value  # исходный или проектируемый
+
+                # Колонки 12-13: Сомкнутость (полнота С)
+                if 12 < len(row.cells):
+                    row.cells[12].text = 'Н/Д'  # исходный
+                if 13 < len(row.cells):
+                    row.cells[13].text = 'Н/Д'  # проектируемый
+
+                # Колонки 14-15: Подрост
+                if 14 < len(row.cells):
+                    row.cells[14].text = 'Н/Д'  # исходный
+                if 15 < len(row.cells):
+                    row.cells[15].text = 'Н/Д'  # проектируемый
+
+        except Exception as e:
+            print(f"Ошибка при заполнении таблицы характеристик: {e}")
 
     def run(self):
         """Основной метод выполнения"""
