@@ -869,6 +869,13 @@ class ExtendedMolodnikiTableScreen(Screen):
     plot_area_input = StringProperty("")
     MAX_PAGES = 200
 
+    # Данные проекта ухода
+    care_queue = StringProperty("")
+    characteristics = StringProperty("")
+    care_date = StringProperty("")
+    technology = StringProperty("")
+    forest_purpose = StringProperty("")
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         print("DEBUG: ExtendedMolodnikiTableScreen __init__ started")
@@ -882,6 +889,25 @@ class ExtendedMolodnikiTableScreen(Screen):
         self.create_ui()
         self.load_existing_data()
         Window.bind(on_key_down=self.key_action)
+
+        # Инициализация данных проекта
+        self.project_data = {
+            'address': {
+                'quarter': '',
+                'plot': '',
+                'forestry': '',
+                'district_forestry': '',
+                'radius': '5.64',
+                'plot_area': ''
+            },
+            'details': {
+                'care_queue': '',
+                'characteristics': '',
+                'care_date': '',
+                'technology': '',
+                'forest_purpose': ''
+            }
+        }
 
         # Убираем вызов update_section_label, так как section_label больше не существует
 
@@ -2408,6 +2434,13 @@ class ExtendedMolodnikiTableScreen(Screen):
                 self.show_error("Выберите очередь!")
                 return
 
+            # Сохраняем в переменные класса
+            self.care_queue = selected_queue
+            if activity_text:
+                self.care_queue += f" - {activity_text}"
+            if selected_activities:
+                self.care_queue += f" ({', '.join(selected_activities)})"
+
             result_parts = []
             if activity_text:
                 result_parts.append(f"Мероприятие: {activity_text}")
@@ -2728,6 +2761,7 @@ class ExtendedMolodnikiTableScreen(Screen):
 
             if selected_purpose:
                 self.selected_forest_purpose = selected_purpose
+                self.project_data['details']['forest_purpose'] = selected_purpose
                 self.show_success(f"Назначение лесов установлено: {selected_purpose}")
                 popup.dismiss()
             else:
@@ -2760,6 +2794,45 @@ class ExtendedMolodnikiTableScreen(Screen):
             halign='center'
         )
         content.add_widget(title_label)
+
+        # Отображение текущих значений деталей проекта
+        current_values = BoxLayout(orientation='vertical', spacing=5, size_hint=(1, None), height=120, padding=[10, 10])
+        with current_values.canvas.before:
+            Color(rgba=get_color_from_hex('#E8F4FD'))
+            current_values.bg = RoundedRectangle(pos=current_values.pos, size=current_values.size, radius=[10])
+            current_values.bind(pos=lambda *args: setattr(current_values.bg, 'pos', current_values.pos),
+                               size=lambda *args: setattr(current_values.bg, 'size', current_values.size))
+
+        current_title = Label(
+            text='Текущие значения проекта:',
+            font_name='Roboto',
+            font_size='16sp',
+            bold=True,
+            color=(0, 0, 0, 1),
+            size_hint=(1, None),
+            height=30,
+            halign='center'
+        )
+        current_values.add_widget(current_title)
+
+        current_info = Label(
+            text=f"Очередь рубки: {self.project_data['details'].get('care_queue', 'Не указана')}\n"
+                 f"Характеристика молодняков: {self.project_data['details'].get('characteristics', 'Не указана')}\n"
+                 f"Дата рубки: {self.project_data['details'].get('care_date', 'Не указана')}\n"
+                 f"Технология ухода: {self.project_data['details'].get('technology', 'Не указана')}\n"
+                 f"Назначение лесов: {self.project_data['details'].get('forest_purpose', 'Не указано')}",
+            font_name='Roboto',
+            font_size='14sp',
+            color=(0, 0, 0, 1),
+            size_hint=(1, None),
+            height=90,
+            halign='left',
+            valign='top'
+        )
+        current_info.bind(size=lambda *args: setattr(current_info, 'text_size', (current_info.width, None)))
+        current_values.add_widget(current_info)
+
+        content.add_widget(current_values)
 
         # Кнопки дополнительных функций
         buttons_layout = GridLayout(cols=2, spacing=10, size_hint=(1, None), height=400)
@@ -2824,7 +2897,7 @@ class ExtendedMolodnikiTableScreen(Screen):
         # Кнопка закрытия
         close_btn = ModernButton(
             text='Закрыть',
-            bg_color=get_color_from_hex('#808080'),
+            bg_color=get_color_from_hex('#FF6347'),
             size_hint=(1, None),
             height=50
         )
@@ -2950,6 +3023,7 @@ class ExtendedMolodnikiTableScreen(Screen):
             quarter = self.quarter_input.text.strip()
             if quarter:
                 self.current_quarter = quarter
+                self.project_data['address']['quarter'] = quarter
                 self.update_address_label()
                 self.show_success(f"Квартал установлен: {quarter}")
                 popup.dismiss()
@@ -3012,6 +3086,7 @@ class ExtendedMolodnikiTableScreen(Screen):
             plot = self.plot_input.text.strip()
             if plot:
                 self.current_plot = plot
+                self.project_data['address']['plot'] = plot
                 self.update_address_label()
                 self.show_success(f"Выдел установлен: {plot}")
                 popup.dismiss()
@@ -3105,6 +3180,8 @@ class ExtendedMolodnikiTableScreen(Screen):
             if forestry:
                 self.current_forestry = forestry
                 self.current_district_forestry = district_forestry
+                self.project_data['address']['forestry'] = forestry
+                self.project_data['address']['district_forestry'] = district_forestry
                 self.update_address_label()
                 self.show_success(f"Лесничество установлено: {forestry}" + (f", участковое: {district_forestry}" if district_forestry else ""))
                 popup.dismiss()
@@ -3441,6 +3518,44 @@ class ExtendedMolodnikiTableScreen(Screen):
             header_label.bind(size=lambda *args: setattr(header_label, 'text_size', (header_label.width, None)))
             content.add_widget(header_label)
 
+            # Адресный блок
+            address_block = BoxLayout(orientation='vertical', spacing=5, size_hint=(1, None), height=120, padding=[10, 10])
+            with address_block.canvas.before:
+                Color(rgba=get_color_from_hex('#E8F4FD'))
+                address_block.bg = RoundedRectangle(pos=address_block.pos, size=address_block.size, radius=[10])
+                address_block.bind(pos=lambda *args: setattr(address_block.bg, 'pos', address_block.pos),
+                                 size=lambda *args: setattr(address_block.bg, 'size', address_block.size))
+
+            address_title = Label(
+                text='АДРЕС УЧАСТКА',
+                font_name='Roboto',
+                font_size='16sp',
+                bold=True,
+                color=(0, 0, 0, 1),
+                size_hint=(1, None),
+                height=30,
+                halign='center'
+            )
+            address_block.add_widget(address_title)
+
+            address_info = Label(
+                text=f"Квартал: {self.current_quarter or 'Не указан'}\n"
+                     f"Выдел: {self.current_plot or 'Не указан'}\n"
+                     f"Лесничество: {self.current_forestry or 'Не указано'}\n"
+                     f"Участковое лесничество: {getattr(self, 'current_district_forestry', '') or 'Не указано'}",
+                font_name='Roboto',
+                font_size='14sp',
+                color=(0, 0, 0, 1),
+                size_hint=(1, None),
+                height=80,
+                halign='left',
+                valign='top'
+            )
+            address_info.bind(size=lambda *args: setattr(address_info, 'text_size', (address_info.width, None)))
+            address_block.add_widget(address_info)
+
+            content.add_widget(address_block)
+
             scroll = ScrollView(size_hint=(1, None), height=600)
             results_layout = GridLayout(cols=1, spacing=10, size_hint_y=None)
             results_layout.bind(minimum_height=results_layout.setter('height'))
@@ -3602,6 +3717,53 @@ class ExtendedMolodnikiTableScreen(Screen):
                     halign='center'
                 )
                 results_layout.add_widget(no_coniferous)
+            else:
+                # Общие средние по хвойным породам
+                coniferous_overall_label = Label(
+                    text='\nОБЩИЕ СРЕДНИЕ ПО ХВОЙНЫМ ПОРОДАМ',
+                    font_name='Roboto',
+                    font_size='16sp',
+                    bold=True,
+                    color=(0.0, 0.5, 0.7, 1),
+                    size_hint=(1, None),
+                    height=50,
+                    halign='center'
+                )
+                results_layout.add_widget(coniferous_overall_label)
+
+                # Рассчитываем общие средние по всем хвойным породам
+                coniferous_all_densities = []
+                coniferous_all_heights = []
+                coniferous_all_ages = []
+                coniferous_all_diameters = []
+
+                for breed_name, data in breeds_data.items():
+                    if data['type'] == 'coniferous' and data['plots']:
+                        coniferous_all_densities.extend([p['density'] for p in data['plots'] if p['density'] > 0])
+                        coniferous_all_heights.extend([p['height'] for p in data['plots'] if p['height'] > 0])
+                        coniferous_all_ages.extend([p['age'] for p in data['plots'] if p['age'] > 0])
+                        coniferous_all_diameters.extend([d for d in data['diameters'] if d > 0])
+
+                avg_coniferous_overall_density = sum(coniferous_all_densities) / len(coniferous_all_densities) if coniferous_all_densities else 0
+                avg_coniferous_overall_height = sum(coniferous_all_heights) / len(coniferous_all_heights) if coniferous_all_heights else 0
+                avg_coniferous_overall_age = sum(coniferous_all_ages) / len(coniferous_all_ages) if coniferous_all_ages else 0
+                avg_coniferous_overall_diameter = sum(coniferous_all_diameters) / len(coniferous_all_diameters) if coniferous_all_diameters else 0
+
+                coniferous_overall_result = Label(
+                    text=f"Средняя густота хвойных пород: {avg_coniferous_overall_density:.1f} шт/га\n"
+                         f"Средняя высота хвойных пород: {avg_coniferous_overall_height:.1f} м\n"
+                         f"Средний возраст хвойных пород: {avg_coniferous_overall_age:.1f} лет\n"
+                         f"Средний диаметр хвойных пород: {avg_coniferous_overall_diameter:.1f} см",
+                    font_name='Roboto',
+                    font_size='14sp',
+                    color=(0.0, 0.4, 0.8, 1),
+                    size_hint=(1, None),
+                    height=100,
+                    halign='left',
+                    valign='top'
+                )
+                coniferous_overall_result.bind(size=lambda *args: setattr(coniferous_overall_result, 'text_size', (coniferous_overall_result.width, None)))
+                results_layout.add_widget(coniferous_overall_result)
 
             # Лиственные породы - средние высоты и возраст
             deciduous_label = Label(
@@ -4082,10 +4244,60 @@ class ExtendedMolodnikiTableScreen(Screen):
             )
             content.add_widget(close_btn)
 
+            # Блок ПРОЕКТ УХОДА
+            project_block = BoxLayout(orientation='vertical', spacing=5, size_hint=(1, None), height=200, padding=[10, 10])
+            with project_block.canvas.before:
+                Color(rgba=get_color_from_hex('#FFFACD'))
+                project_block.bg = RoundedRectangle(pos=project_block.pos, size=project_block.size, radius=[10])
+                project_block.bind(pos=lambda *args: setattr(project_block.bg, 'pos', project_block.pos),
+                                 size=lambda *args: setattr(project_block.bg, 'size', project_block.size))
+
+            project_title = Label(
+                text='ПРОЕКТ УХОДА',
+                font_name='Roboto',
+                font_size='16sp',
+                bold=True,
+                color=(0, 0, 0, 1),
+                size_hint=(1, None),
+                height=30,
+                halign='center'
+            )
+            project_block.add_widget(project_title)
+
+            project_info = Label(
+                text=f"Очередь рубки: {self.care_queue or 'Не указано'}\n"
+                     f"Характеристика молодняков: {self.characteristics or 'Не указано'}\n"
+                     f"Дата рубки: {self.care_date or 'Не указано'}\n"
+                     f"Технология ухода: {self.technology or 'Не указано'}\n"
+                     f"Назначение лесов: {self.forest_purpose or 'Не указано'}",
+                font_name='Roboto',
+                font_size='14sp',
+                color=(0, 0, 0, 1),
+                size_hint=(1, None),
+                height=150,
+                halign='left',
+                valign='top'
+            )
+            project_info.bind(size=lambda *args: setattr(project_info, 'text_size', (project_info.width, None)))
+            project_block.add_widget(project_info)
+
+            results_layout.add_widget(project_block)
+
+            scroll.add_widget(results_layout)
+            content.add_widget(scroll)
+
+            close_btn = ModernButton(
+                text='Закрыть',
+                bg_color=get_color_from_hex('#808080'),
+                size_hint=(1, None),
+                height=50
+            )
+            content.add_widget(close_btn)
+
             popup = Popup(
                 title="Таксационные показатели молодняков",
                 content=content,
-                size_hint=(0.98, 0.98)
+                size_hint=(1, 0.98)
             )
 
             close_btn.bind(on_press=popup.dismiss)
@@ -4094,6 +4306,8 @@ class ExtendedMolodnikiTableScreen(Screen):
         except Exception as e:
             import traceback
             self.show_error(f"Ошибка расчета таксационных показателей: {str(e)}\n{traceback.format_exc()}")
+        finally:
+            pass
 
     def update_totals(self, update_global=True):
         """Обновление строки итогов с поддержкой множественных пород"""
@@ -4117,15 +4331,26 @@ class ExtendedMolodnikiTableScreen(Screen):
                 self.show_error("Не удалось сохранить текущую страницу!")
                 return
 
-            # Собираем данные из адресной строки
+            # Собираем данные из адресной строки и project_data
             address_data = {
-                'quarter': str(self.current_quarter or ''),
-                'plot': str(self.current_plot or ''),
+                'quarter': str(self.project_data['address'].get('quarter', '')),
+                'plot': str(self.project_data['address'].get('plot', '')),
                 'section': str(self.current_section or ''),
-                'forestry': str(self.current_forestry or ''),
-                'plot_area': str(self.plot_area_input or ''),
+                'forestry': str(self.project_data['address'].get('forestry', '')),
+                'district_forestry': str(self.project_data['address'].get('district_forestry', '')),
+                'plot_area': str(self.project_data['address'].get('plot_area', '')),
+                'radius': str(self.project_data['address'].get('radius', '5.64')),
                 'target_purpose': 'Эксплуатационные леса',  # Можно настроить
                 'forest_type': 'Смешанный лес'  # Можно настроить
+            }
+
+            # Добавляем данные деталей проекта
+            details_data = {
+                'care_queue': str(self.project_data['details'].get('care_queue', '')),
+                'characteristics': str(self.project_data['details'].get('characteristics', '')),
+                'care_date': str(self.project_data['details'].get('care_date', '')),
+                'technology': str(self.project_data['details'].get('technology', '')),
+                'forest_purpose': str(self.project_data['details'].get('forest_purpose', ''))
             }
 
             # Получаем итоговые данные из текущих данных приложения
@@ -4654,6 +4879,7 @@ class ExtendedMolodnikiTableScreen(Screen):
             'plot': self.current_plot,
             'forestry': self.current_forestry,
             'radius': self.current_radius,
+            'project_data': self.project_data,  # Данные проекта
             'export_date': datetime.datetime.now().isoformat()
         }
 
@@ -5377,6 +5603,7 @@ class ExtendedMolodnikiTableScreen(Screen):
             plot = self.plot_input.text.strip()
             if plot:
                 self.current_plot = plot
+                self.project_data['address']['plot'] = plot
                 self.update_address_label()
                 self.show_success(f"Выдел установлен: {plot}")
                 popup.dismiss()
@@ -6311,7 +6538,7 @@ class ExtendedMolodnikiTableScreen(Screen):
             popup = Popup(
                 title="Таксационные показатели молодняков",
                 content=content,
-                size_hint=(0.95, 0.95)
+                size_hint=(0.98, 0.98)
             )
 
             close_btn.bind(on_press=popup.dismiss)
@@ -7269,6 +7496,31 @@ class ExtendedMolodnikiTableScreen(Screen):
                 if 'plot_area' in data:
                     self.plot_area_input = str(data['plot_area']) if data['plot_area'] else ""
 
+            # Загружаем данные проекта
+            if isinstance(data, dict) and 'project_data' in data:
+                loaded_project_data = data['project_data']
+                if isinstance(loaded_project_data, dict):
+                    # Обновляем адресные данные
+                    if 'address' in loaded_project_data and isinstance(loaded_project_data['address'], dict):
+                        for key, value in loaded_project_data['address'].items():
+                            if key in self.project_data['address']:
+                                self.project_data['address'][key] = str(value) if value else ''
+                                # Также обновляем текущие переменные
+                                if key == 'quarter':
+                                    self.current_quarter = str(value) if value else ''
+                                elif key == 'plot':
+                                    self.current_plot = str(value) if value else ''
+                                elif key == 'forestry':
+                                    self.current_forestry = str(value) if value else ''
+                                elif key == 'radius':
+                                    self.current_radius = str(value) if value else '5.64'
+
+                    # Обновляем данные деталей проекта
+                    if 'details' in loaded_project_data and isinstance(loaded_project_data['details'], dict):
+                        for key, value in loaded_project_data['details'].items():
+                            if key in self.project_data['details']:
+                                self.project_data['details'][key] = str(value) if value else ''
+
             # Ожидаем, что JSON содержит page_data как словарь
             if isinstance(data, dict) and 'page_data' in data:
                 self.page_data = data['page_data']
@@ -7401,6 +7653,7 @@ class ExtendedMolodnikiTableScreen(Screen):
                     return
 
                 self.current_radius = str(radius)
+                self.project_data['address']['radius'] = str(radius)
                 # Сохраняем настройки в базу данных
                 self.save_settings_to_db()
                 self.update_totals()
@@ -7547,6 +7800,46 @@ class ExtendedMolodnikiTableScreen(Screen):
             height=40
         )
         content.add_widget(title_label)
+
+        # Отображение текущих значений
+        current_values = BoxLayout(orientation='vertical', spacing=5, size_hint=(1, None), height=120, padding=[10, 10])
+        with current_values.canvas.before:
+            Color(rgba=get_color_from_hex('#E8F4FD'))
+            current_values.bg = RoundedRectangle(pos=current_values.pos, size=current_values.size, radius=[10])
+            current_values.bind(pos=lambda *args: setattr(current_values.bg, 'pos', current_values.pos),
+                               size=lambda *args: setattr(current_values.bg, 'size', current_values.size))
+
+        current_title = Label(
+            text='Текущие значения:',
+            font_name='Roboto',
+            font_size='16sp',
+            bold=True,
+            color=(0, 0, 0, 1),
+            size_hint=(1, None),
+            height=30,
+            halign='center'
+        )
+        current_values.add_widget(current_title)
+
+        current_info = Label(
+            text=f"Квартал: {self.project_data['address'].get('quarter', 'Не указан')}\n"
+                 f"Выдел: {self.project_data['address'].get('plot', 'Не указан')}\n"
+                 f"Лесничество: {self.project_data['address'].get('forestry', 'Не указано')}\n"
+                 f"Участковое лесничество: {self.project_data['address'].get('district_forestry', 'Не указано')}\n"
+                 f"Радиус: {self.project_data['address'].get('radius', 'Не указан')} м\n"
+                 f"Площадь участка: {self.project_data['address'].get('plot_area', 'Не указана')} га",
+            font_name='Roboto',
+            font_size='14sp',
+            color=(0, 0, 0, 1),
+            size_hint=(1, None),
+            height=90,
+            halign='left',
+            valign='top'
+        )
+        current_info.bind(size=lambda *args: setattr(current_info, 'text_size', (current_info.width, None)))
+        current_values.add_widget(current_info)
+
+        content.add_widget(current_values)
 
         # Кнопки для настройки адреса
         buttons_layout = GridLayout(cols=2, spacing=15, size_hint=(1, None), height=200)

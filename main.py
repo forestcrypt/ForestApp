@@ -556,31 +556,129 @@ class MainMenu(Screen):
         )
         close_btn.bind(on_press=lambda x: self.section_popup.dismiss())
 
-        label = Label(
-            text='Введите номер участка:',
-            font_name='Roboto',
-            font_size='18sp',
-            color=(0.2, 0.2, 0.2, 1),
-            pos_hint={'center_x': 0.5, 'center_y': 0.7},
-            size_hint=(None, None),
-            size=(200, 50)
-        )
+        # Поля для адреса
+        scroll = ScrollView(size_hint=(0.9, 0.8), pos_hint={'center_x': 0.5, 'center_y': 0.5})
+        layout = BoxLayout(orientation='vertical', spacing=10, size_hint_y=None, padding=[10, 10])
+        layout.bind(minimum_height=layout.setter('height'))
 
+        # Номер участка
+        section_layout = BoxLayout(orientation='vertical', size_hint_y=None, height=70, spacing=5)
+        section_label = Label(
+            text='Номер участка:',
+            font_name='Roboto',
+            font_size='16sp',
+            color=(0.2, 0.2, 0.2, 1),
+            size_hint_y=None,
+            height=25
+        )
         self.section_number_input = TextInput(
             hint_text="Введите номер участка",
             multiline=False,
-            size_hint=(None, None),
-            size=(250, 40),
-            pos_hint={'center_x': 0.5, 'center_y': 0.55},
-            background_color=(1, 1, 1, 0.8)
+            size_hint_y=None,
+            height=40,
+            background_color=(1, 1, 1, 0.8),
+            font_name='Roboto'
         )
+        section_layout.add_widget(section_label)
+        section_layout.add_widget(self.section_number_input)
+        layout.add_widget(section_layout)
+
+        # Квартал
+        quarter_layout = BoxLayout(orientation='vertical', size_hint_y=None, height=70, spacing=5)
+        quarter_label = Label(
+            text='Квартал:',
+            font_name='Roboto',
+            font_size='16sp',
+            color=(0.2, 0.2, 0.2, 1),
+            size_hint_y=None,
+            height=25
+        )
+        self.quarter_input = TextInput(
+            hint_text="Введите номер квартала",
+            multiline=False,
+            size_hint_y=None,
+            height=40,
+            background_color=(1, 1, 1, 0.8),
+            font_name='Roboto'
+        )
+        quarter_layout.add_widget(quarter_label)
+        quarter_layout.add_widget(self.quarter_input)
+        layout.add_widget(quarter_layout)
+
+        # Выдел
+        plot_layout = BoxLayout(orientation='vertical', size_hint_y=None, height=70, spacing=5)
+        plot_label = Label(
+            text='Выдел:',
+            font_name='Roboto',
+            font_size='16sp',
+            color=(0.2, 0.2, 0.2, 1),
+            size_hint_y=None,
+            height=25
+        )
+        self.plot_input = TextInput(
+            hint_text="Введите номер выдела",
+            multiline=False,
+            size_hint_y=None,
+            height=40,
+            background_color=(1, 1, 1, 0.8),
+            font_name='Roboto'
+        )
+        plot_layout.add_widget(plot_label)
+        plot_layout.add_widget(self.plot_input)
+        layout.add_widget(plot_layout)
+
+        # Лесничество
+        forestry_layout = BoxLayout(orientation='vertical', size_hint_y=None, height=70, spacing=5)
+        forestry_label = Label(
+            text='Лесничество:',
+            font_name='Roboto',
+            font_size='16sp',
+            color=(0.2, 0.2, 0.2, 1),
+            size_hint_y=None,
+            height=25
+        )
+        self.forestry_input = TextInput(
+            hint_text="Введите название лесничества",
+            multiline=False,
+            size_hint_y=None,
+            height=40,
+            background_color=(1, 1, 1, 0.8),
+            font_name='Roboto'
+        )
+        forestry_layout.add_widget(forestry_label)
+        forestry_layout.add_widget(self.forestry_input)
+        layout.add_widget(forestry_layout)
+
+        # Участковое лесничество
+        district_forestry_layout = BoxLayout(orientation='vertical', size_hint_y=None, height=70, spacing=5)
+        district_forestry_label = Label(
+            text='Участковое лесничество:',
+            font_name='Roboto',
+            font_size='16sp',
+            color=(0.2, 0.2, 0.2, 1),
+            size_hint_y=None,
+            height=25
+        )
+        self.district_forestry_input = TextInput(
+            hint_text="Введите название участкового лесничества",
+            multiline=False,
+            size_hint_y=None,
+            height=40,
+            background_color=(1, 1, 1, 0.8),
+            font_name='Roboto'
+        )
+        district_forestry_layout.add_widget(district_forestry_label)
+        district_forestry_layout.add_widget(self.district_forestry_input)
+        layout.add_widget(district_forestry_layout)
+
+        scroll.add_widget(layout)
 
         btn_box = BoxLayout(
             orientation='horizontal',
             spacing=10,
-            size_hint=(None, None),
-            size=(250, 50),
-            pos_hint={'center_x': 0.5, 'center_y': 0.3}
+            size_hint=(1, None),
+            height=50,
+            pos_hint={'center_x': 0.5, 'center_y': 0.1}
         )
         buttons = [
             ('Сохранить', '#00FF00', self.save_section),
@@ -600,14 +698,13 @@ class MainMenu(Screen):
             btn_box.add_widget(btn)
 
         content.add_widget(close_btn)
-        content.add_widget(label)
-        content.add_widget(self.section_number_input)
+        content.add_widget(scroll)
         content.add_widget(btn_box)
 
         self.section_popup = Popup(
             title="Управление участками",
             content=content,
-            size_hint=(0.6, 0.5),
+            size_hint=(0.7, 0.8),
             separator_height=0,
             background='atlas://data/images/defaulttheme/modalview-background',
             overlay_color=(0, 0, 0, 0.5)
@@ -628,22 +725,29 @@ class MainMenu(Screen):
 
     def save_section(self, instance):
         section_number = self.section_number_input.text.strip()
+        quarter = self.quarter_input.text.strip()
+        plot = self.plot_input.text.strip()
+        forestry = self.forestry_input.text.strip()
+        district_forestry = self.district_forestry_input.text.strip()
+
         if not section_number:
             self.show_error("Введите номер участка!")
             return
-            
+
         try:
             conn = sqlite3.connect('forest_data.db')
             cursor = conn.cursor()
             cursor.execute('''
-                UPDATE sections 
-                SET section_number = ? 
+                UPDATE sections
+                SET section_number = ?, quarter = ?, plot = ?, forestry = ?, district_forestry = ?
                 WHERE id = (SELECT MAX(id) FROM sections)
-            ''', (section_number,))
+            ''', (section_number, quarter, plot, forestry, district_forestry))
             conn.commit()
             self.section_popup.dismiss()
-            App.get_running_app().root.get_screen('table').current_section = section_number
-            App.get_running_app().root.get_screen('table').update_section_label()
+            table_screen = App.get_running_app().root.get_screen('table')
+            table_screen.current_section = section_number
+            # Можно добавить хранение адреса в table_screen если нужно
+            table_screen.update_section_label()
             App.get_running_app().root.current = 'table'
         except Exception as e:
             self.show_error(f"Ошибка сохранения: {str(e)}")
@@ -1047,6 +1151,10 @@ class TableScreen(Screen):
         cursor.execute('''CREATE TABLE IF NOT EXISTS sections (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         section_number TEXT UNIQUE,
+                        quarter TEXT,
+                        plot TEXT,
+                        forestry TEXT,
+                        district_forestry TEXT,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
         
         cursor.execute('''CREATE TABLE IF NOT EXISTS suggestions (
@@ -2062,6 +2170,19 @@ class TableScreen(Screen):
             # Словарь для группировки по породам
             species_summary = {}
 
+            # Определение хвойных и лиственных пород
+            coniferous_breeds = ['Сосна', 'Ель', 'Пихта', 'Кедр', 'Лиственница']
+            deciduous_breeds = ['Берёза', 'Осина', 'Ольха чёрная', 'Ольха серая', 'Ива', 'Ива кустарниковая']
+
+            def get_breed_type(species):
+                for conif in coniferous_breeds:
+                    if conif.lower() in species.lower():
+                        return 'coniferous'
+                for decid in deciduous_breeds:
+                    if decid.lower() in species.lower():
+                        return 'deciduous'
+                return 'unknown'
+
             total_trees = 0
             total_diameter = 0.0
             total_height = 0.0
@@ -2085,7 +2206,8 @@ class TableScreen(Screen):
                                 'count': 0,
                                 'diameters': [],
                                 'heights': [],
-                                'ages': []
+                                'ages': [],
+                                'type': get_breed_type(species)
                             }
 
                         species_summary[species]['count'] += 1
@@ -2154,6 +2276,129 @@ class TableScreen(Screen):
             )
             content.add_widget(title_label)
 
+            # Блок адрес участка
+            address_block = BoxLayout(
+                orientation='vertical',
+                size_hint=(1, None),
+                height=100,
+                padding=[10, 10],
+                spacing=5
+            )
+            with address_block.canvas.before:
+                Color(rgba=get_color_from_hex('#E8F4FD'))
+                address_block.bg = RoundedRectangle(pos=address_block.pos, size=address_block.size, radius=[10])
+                address_block.bind(pos=lambda *args: setattr(address_block.bg, 'pos', address_block.pos),
+                                 size=lambda *args: setattr(address_block.bg, 'size', address_block.size))
+
+            address_title = Label(
+                text='АДРЕС УЧАСТКА',
+                font_name='Roboto',
+                font_size='16sp',
+                bold=True,
+                color=(0, 0, 0, 1),
+                size_hint=(1, None),
+                height=25,
+                halign='center'
+            )
+            address_block.add_widget(address_title)
+
+            # Получаем адресные данные из базы данных
+            address_info = "Адрес не указан"
+            try:
+                conn = sqlite3.connect(self.db_name)
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT quarter, plot, forestry, district_forestry
+                    FROM sections
+                    WHERE section_number = ?
+                    ORDER BY id DESC LIMIT 1
+                ''', (self.current_section,))
+                address_row = cursor.fetchone()
+                if address_row:
+                    quarter, plot, forestry, district_forestry = address_row
+                    address_parts = []
+                    if quarter: address_parts.append(f"Квартал: {quarter}")
+                    if plot: address_parts.append(f"Выдел: {plot}")
+                    if forestry: address_parts.append(f"Лесничество: {forestry}")
+                    if district_forestry: address_parts.append(f"Участковое лесничество: {district_forestry}")
+                    if address_parts:
+                        address_info = "\n".join(address_parts)
+                conn.close()
+            except Exception as e:
+                print(f"Error loading address: {e}")
+
+            address_label = Label(
+                text=address_info,
+                font_name='Roboto',
+                font_size='14sp',
+                color=(0, 0, 0, 1),
+                size_hint=(1, None),
+                height=60,
+                halign='left',
+                valign='top'
+            )
+            address_label.bind(size=lambda *args: setattr(address_label, 'text_size', (address_label.width, None)))
+            address_block.add_widget(address_label)
+            content.add_widget(address_block)
+
+            # Блок Проект
+            project_block = BoxLayout(
+                orientation='vertical',
+                size_hint=(1, None),
+                height=120,
+                padding=[10, 10],
+                spacing=5
+            )
+            with project_block.canvas.before:
+                Color(rgba=get_color_from_hex('#FFF8E1'))
+                project_block.bg = RoundedRectangle(pos=project_block.pos, size=project_block.size, radius=[10])
+                project_block.bind(pos=lambda *args: setattr(project_block.bg, 'pos', project_block.pos),
+                                 size=lambda *args: setattr(project_block.bg, 'size', project_block.size))
+
+            project_title = Label(
+                text='ПРОЕКТ',
+                font_name='Roboto',
+                font_size='16sp',
+                bold=True,
+                color=(0, 0, 0, 1),
+                size_hint=(1, None),
+                height=25,
+                halign='center'
+            )
+            project_block.add_widget(project_title)
+
+            # Получаем данные проекта из меню Действия (таксационные показатели)
+            project_info = "Проект не создан"
+            try:
+                # Попытка получить данные из последнего расчета таксационных показателей
+                molodniki_screen = App.get_running_app().root.get_screen('molodniki')
+                if hasattr(molodniki_screen, 'current_section') and molodniki_screen.current_section:
+                    total_data = molodniki_screen.get_total_data_from_db()
+                    if total_data and total_data.get('care_subject'):
+                        care_subject = total_data.get('care_subject', '')
+                        intensity = total_data.get('intensity', 0)
+                        project_info = f"Предмет ухода: {care_subject}\nИнтенсивность рубки: {intensity:.1f}%"
+                    else:
+                        project_info = "Данные проекта отсутствуют"
+                else:
+                    project_info = "Молодняки не загружены"
+            except Exception as e:
+                print(f"Error loading project data: {e}")
+
+            project_label = Label(
+                text=project_info,
+                font_name='Roboto',
+                font_size='14sp',
+                color=(0, 0, 0, 1),
+                size_hint=(1, None),
+                height=80,
+                halign='left',
+                valign='top'
+            )
+            project_label.bind(size=lambda *args: setattr(project_label, 'text_size', (project_label.width, None)))
+            project_block.add_widget(project_label)
+            content.add_widget(project_block)
+
             # Общие итоги
             summary_text = f"""
 Общие показатели:
@@ -2174,6 +2419,60 @@ class TableScreen(Screen):
             )
             summary_label.bind(size=lambda *args: setattr(summary_label, 'text_size', (summary_label.width, None)))
             content.add_widget(summary_label)
+
+            # Блок хвойных пород
+            coniferous_summary = totals_data.get('species_summary', {})
+            coniferous_data = {species: data for species, data in coniferous_summary.items() if data.get('type') == 'coniferous'}
+
+            if coniferous_data:
+                coniferous_block = BoxLayout(
+                    orientation='vertical',
+                    size_hint=(1, None),
+                    height=150,
+                    padding=[10, 10],
+                    spacing=5
+                )
+                with coniferous_block.canvas.before:
+                    Color(rgba=get_color_from_hex('#F0F8FF'))
+                    coniferous_block.bg = RoundedRectangle(pos=coniferous_block.pos, size=coniferous_block.size, radius=[10])
+                    coniferous_block.bind(pos=lambda *args: setattr(coniferous_block.bg, 'pos', coniferous_block.pos),
+                                         size=lambda *args: setattr(coniferous_block.bg, 'size', coniferous_block.size))
+
+                coniferous_title = Label(
+                    text='ХВОЙНЫЕ ПОРОДЫ - СРЕДНИЕ ПОКАЗАТЕЛИ',
+                    font_name='Roboto',
+                    font_size='16sp',
+                    bold=True,
+                    color=(0, 0, 0, 1),
+                    size_hint=(1, None),
+                    height=25,
+                    halign='center'
+                )
+                coniferous_block.add_widget(coniferous_title)
+
+                coniferous_info = []
+                for species, data in sorted(coniferous_data.items()):
+                    count = data['count']
+                    diameters = data['diameters']
+                    heights = data['heights']
+                    avg_diameter = sum(diameters) / len(diameters) if diameters else 0
+                    avg_height = sum(heights) / len(heights) if heights else 0
+                    coniferous_info.append(f"{species}: {count} шт, ср. D={avg_diameter:.1f}см, ср. H={avg_height:.1f}м")
+
+                coniferous_text = "\n".join(coniferous_info)
+                coniferous_label = Label(
+                    text=coniferous_text,
+                    font_name='Roboto',
+                    font_size='14sp',
+                    color=(0, 0.4, 0, 1),
+                    size_hint=(1, None),
+                    height=100,
+                    halign='left',
+                    valign='top'
+                )
+                coniferous_label.bind(size=lambda *args: setattr(coniferous_label, 'text_size', (coniferous_label.width, None)))
+                coniferous_block.add_widget(coniferous_label)
+                content.add_widget(coniferous_block)
 
             # ScrollView для детального отчета по породам
             scroll = ScrollView(size_hint=(1, None), height=400)
@@ -2240,7 +2539,7 @@ class TableScreen(Screen):
             popup = Popup(
                 title="Итоги перечетной ведомости",
                 content=content,
-                size_hint=(0.9, 0.9)
+                size_hint=(0.95, 0.95)
             )
 
             close_btn.bind(on_press=popup.dismiss)
