@@ -493,7 +493,7 @@ class MolodnikiTreeDataInputPopup(Popup):
             content.add_widget(breeds_list_label)
 
             # ScrollView для списка пород
-            breeds_scroll = ScrollView(size_hint=(1, None), height=80)
+            breeds_scroll = ScrollView(size_hint=(1, None), height=200)
             breeds_list_layout = BoxLayout(orientation='vertical', spacing=5, size_hint_y=None)
             breeds_list_layout.bind(minimum_height=breeds_list_layout.setter('height'))
 
@@ -649,6 +649,30 @@ class MolodnikiTreeDataInputPopup(Popup):
                     except ValueError:
                         breed_data[key] = 0 if key in ['density', 'age', 'do_05', '05_15', 'bolee_15'] else 0.0
 
+            # Рассчитать возраст для хвойных пород, если не введен
+            if breed_type == 'coniferous':
+                if 'age' not in breed_data or breed_data['age'] == 0:
+                    do_05 = breed_data.get('do_05', 0)
+                    _05_15 = breed_data.get('05_15', 0)
+                    bolee_15 = breed_data.get('bolee_15', 0)
+                    height = breed_data.get('height', 0)
+
+                    if bolee_15 > 0:
+                        breed_data['age'] = 20
+                    elif _05_15 > 0:
+                        breed_data['age'] = 10
+                    elif do_05 > 0:
+                        breed_data['age'] = 5
+                    elif height > 0:
+                        if height < 0.5:
+                            breed_data['age'] = 3
+                        elif height < 1.5:
+                            breed_data['age'] = 10
+                        else:
+                            breed_data['age'] = 20
+                    else:
+                        breed_data['age'] = 10  # default age
+
             existing_breeds = self.table_screen.parse_breeds_data(instance.text)
             existing_breeds.append(breed_data)
             instance.text = json.dumps(existing_breeds, ensure_ascii=False, indent=2)
@@ -675,6 +699,27 @@ class MolodnikiTreeDataInputPopup(Popup):
             existing_breeds = self.table_screen.parse_breeds_data(instance.text)
             if not existing_breeds:
                 existing_breeds = []
+            # Добавить текущую породу, если поля заполнены
+            breed_data = {
+                'name': getattr(self, 'selected_breed', 'Неизвестная'),
+                'type': getattr(self, 'breed_type', 'deciduous')
+            }
+            has_data = False
+            for key, inp in getattr(self, 'breed_inputs', {}).items():
+                value = inp.text.strip()
+                if value:
+                    has_data = True
+                    try:
+                        if key in ['density', 'age']:
+                            breed_data[key] = int(value)
+                        elif key == 'height':
+                            breed_data[key] = float(value)
+                        else:
+                            breed_data[key] = float(value)
+                    except ValueError:
+                        breed_data[key] = 0 if key in ['density', 'age', 'do_05', '05_15', 'bolee_15'] else 0.0
+            if has_data:
+                existing_breeds.append(breed_data)
             instance.text = json.dumps(existing_breeds, ensure_ascii=False, indent=2)
 
             # Update page_data
@@ -3420,7 +3465,7 @@ class ExtendedMolodnikiTableScreen(Screen):
                         if not breed_name:
                             continue
 
-                        breed_type = breed_info.get('type', 'deciduous')
+                        breed_type = breed_info.get('type', self.determine_breed_type(breed_name))
                         density = 0
                         height = None
                         age = None
@@ -3556,7 +3601,7 @@ class ExtendedMolodnikiTableScreen(Screen):
 
             content.add_widget(address_block)
 
-            scroll = ScrollView(size_hint=(1, None), height=600)
+            scroll = ScrollView(size_hint=(1, 1))
             results_layout = GridLayout(cols=1, spacing=10, size_hint_y=None)
             results_layout.bind(minimum_height=results_layout.setter('height'))
 
@@ -3636,9 +3681,12 @@ class ExtendedMolodnikiTableScreen(Screen):
                     font_size='14sp',
                     color=(0, 0, 0, 1),
                     size_hint=(1, None),
-                    height=30,
-                    halign='center'
+                    height=50,
+                    halign='center',
+                    text_size=(None, None),
+                    valign='middle'
                 )
+                composition_result.bind(size=lambda *args: setattr(composition_result, 'text_size', (composition_result.width, None)))
                 results_layout.add_widget(composition_result)
             else:
                 no_composition = Label(
@@ -3699,7 +3747,7 @@ class ExtendedMolodnikiTableScreen(Screen):
                         font_size='14sp',
                         color=(0, 0.5, 0, 1),
                         size_hint=(1, None),
-                        height=120,
+                        height=140,
                         halign='left',
                         valign='top'
                     )
@@ -3739,9 +3787,17 @@ class ExtendedMolodnikiTableScreen(Screen):
 
                 for breed_name, data in breeds_data.items():
                     if data['type'] == 'coniferous' and data['plots']:
-                        coniferous_all_densities.extend([p['density'] for p in data['plots'] if p['density'] > 0])
-                        coniferous_all_heights.extend([p['height'] for p in data['plots'] if p['height'] > 0])
-                        coniferous_all_ages.extend([p['age'] for p in data['plots'] if p['age'] > 0])
+                        for p in data['plots']:
+                            # Для густоты - используем сумму градаций
+                            if p['density'] > 0:
+                                coniferous_all_densities.append(p['density'])
+                            # Для высоты - только положительные значения
+                            if p['height'] is not None and p['height'] > 0:
+                                coniferous_all_heights.append(p['height'])
+                            # Для возраста - только положительные значения (включая 0, если age существует)
+                            # Добавляем возраст если ключ существует (включая 0)
+                            if p.get('age', 0) > 0:
+                                coniferous_all_ages.append(p['age'])
                         coniferous_all_diameters.extend([d for d in data['diameters'] if d > 0])
 
                 avg_coniferous_overall_density = sum(coniferous_all_densities) / len(coniferous_all_densities) if coniferous_all_densities else 0
@@ -3749,16 +3805,23 @@ class ExtendedMolodnikiTableScreen(Screen):
                 avg_coniferous_overall_age = sum(coniferous_all_ages) / len(coniferous_all_ages) if coniferous_all_ages else 0
                 avg_coniferous_overall_diameter = sum(coniferous_all_diameters) / len(coniferous_all_diameters) if coniferous_all_diameters else 0
 
+                # Формируем текст - ВСЕГДА показываем строку с возрастом, даже если 0
+                text_parts = []
+                text_parts.append(f"Средняя густота хвойных пород: {avg_coniferous_overall_density:.1f} шт/га")
+                if coniferous_all_heights:
+                    text_parts.append(f"Средняя высота хвойных пород: {avg_coniferous_overall_height:.1f} м")
+                if coniferous_all_diameters:
+                    text_parts.append(f"Средний диаметр хвойных пород: {avg_coniferous_overall_diameter:.1f} см")
+                # ВСЕГДА показываем возраст
+                text_parts.append(f"Средний возраст хвойных пород: {avg_coniferous_overall_age:.1f} лет")
+
                 coniferous_overall_result = Label(
-                    text=f"Средняя густота хвойных пород: {avg_coniferous_overall_density:.1f} шт/га\n"
-                         f"Средняя высота хвойных пород: {avg_coniferous_overall_height:.1f} м\n"
-                         f"Средний возраст хвойных пород: {avg_coniferous_overall_age:.1f} лет\n"
-                         f"Средний диаметр хвойных пород: {avg_coniferous_overall_diameter:.1f} см",
+                    text="\n".join(text_parts),
                     font_name='Roboto',
                     font_size='14sp',
-                    color=(0.0, 0.4, 0.8, 1),
+                    color=(0, 0.5, 0, 1),  # Зеленый цвет
                     size_hint=(1, None),
-                    height=100,
+                    height=len(text_parts) * 25,
                     halign='left',
                     valign='top'
                 )
@@ -3804,7 +3867,7 @@ class ExtendedMolodnikiTableScreen(Screen):
                         font_size='14sp',
                         color=(0, 0.3, 0.5, 1),
                         size_hint=(1, None),
-                        height=100,
+                        height=150,
                         halign='left',
                         valign='top'
                     )
@@ -3911,7 +3974,7 @@ class ExtendedMolodnikiTableScreen(Screen):
                 font_size='14sp',
                 color=(0.8, 0.4, 0, 1),
                 size_hint=(1, None),
-                height=100,
+                height=150,
                 halign='left',
                 valign='top'
             )
@@ -4037,7 +4100,7 @@ class ExtendedMolodnikiTableScreen(Screen):
                         font_size='14sp',
                         color=(0.2, 0.6, 0.2, 1),
                         size_hint=(1, None),
-                        height=40,
+                        height=80,
                         halign='left',
                         valign='top'
                     )
@@ -4224,7 +4287,7 @@ class ExtendedMolodnikiTableScreen(Screen):
                 font_size='12sp',
                 color=(0.5, 0.5, 0.5, 1),
                 size_hint=(1, None),
-                height=120,
+                height=200,
                 halign='left',
                 valign='top'
             )
@@ -4306,8 +4369,6 @@ class ExtendedMolodnikiTableScreen(Screen):
         except Exception as e:
             import traceback
             self.show_error(f"Ошибка расчета таксационных показателей: {str(e)}\n{traceback.format_exc()}")
-        finally:
-            pass
 
     def update_totals(self, update_global=True):
         """Обновление строки итогов с поддержкой множественных пород"""
@@ -6160,9 +6221,13 @@ class ExtendedMolodnikiTableScreen(Screen):
                     font_size='14sp',
                     color=(0, 0, 0, 1),
                     size_hint=(1, None),
-                    height=30,
-                    halign='center'
+                    size_hint_y=None,
+                    height=80,
+                    halign='center',
+                    text_size=(None, None),
+                    valign='middle'
                 )
+                composition_result.bind(size=lambda *args: setattr(composition_result, 'text_size', (composition_result.width, None)))
                 results_layout.add_widget(composition_result)
             else:
                 no_composition = Label(
@@ -6218,7 +6283,7 @@ class ExtendedMolodnikiTableScreen(Screen):
                         font_size='14sp',
                         color=(0, 0.5, 0, 1),
                         size_hint=(1, None),
-                        height=120,
+                        height=180,
                         halign='left',
                         valign='top'
                     )
@@ -6517,7 +6582,7 @@ class ExtendedMolodnikiTableScreen(Screen):
                 font_size='12sp',
                 color=(0.5, 0.5, 0.5, 1),
                 size_hint=(1, None),
-                height=120,
+                height=200,
                 halign='left',
                 valign='top'
             )
@@ -6709,7 +6774,6 @@ class ExtendedMolodnikiTableScreen(Screen):
             count = avg_composition[breed]
             if count > 0:
                 composition_text += f"{int(count)}{breed}"
-
 
     def parse_composition(self, text):
         """Парсит текстовое представление состава пород"""
