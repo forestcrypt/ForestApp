@@ -2830,66 +2830,31 @@ class ExtendedMolodnikiTableScreen(Screen):
         content = BoxLayout(orientation='vertical', spacing=15, padding=15)
 
         title_label = Label(
-            text="Дополнительные функции:",
+            text="Дополнительные функции",
             font_name='Roboto',
             font_size='20sp',
             bold=True,
             color=(0, 0.5, 0, 1),
             size_hint=(1, None),
-            height=50,
-            halign='center'
+            height=50
         )
         content.add_widget(title_label)
 
-        # Отображение текущих значений деталей проекта
-        current_values = BoxLayout(orientation='vertical', spacing=5, size_hint=(1, None), height=120, padding=[10, 10])
-        with current_values.canvas.before:
-            Color(rgba=get_color_from_hex('#E8F4FD'))
-            current_values.bg = RoundedRectangle(pos=current_values.pos, size=current_values.size, radius=[10])
-            current_values.bind(pos=lambda *args: setattr(current_values.bg, 'pos', current_values.pos),
-                               size=lambda *args: setattr(current_values.bg, 'size', current_values.size))
-
-        current_title = Label(
-            text='Текущие значения проекта:',
-            font_name='Roboto',
-            font_size='16sp',
-            bold=True,
-            color=(0, 0, 0, 1),
-            size_hint=(1, None),
-            height=30,
-            halign='center'
-        )
-        current_values.add_widget(current_title)
-
-        current_info = Label(
-            text=f"Очередь рубки: {self.project_data['details'].get('care_queue', 'Не указана')}\n"
-                 f"Характеристика молодняков: {self.project_data['details'].get('characteristics', 'Не указана')}\n"
-                 f"Дата рубки: {self.project_data['details'].get('care_date', 'Не указана')}\n"
-                 f"Технология ухода: {self.project_data['details'].get('technology', 'Не указана')}\n"
-                 f"Назначение лесов: {self.project_data['details'].get('forest_purpose', 'Не указано')}",
-            font_name='Roboto',
-            font_size='14sp',
-            color=(0, 0, 0, 1),
-            size_hint=(1, None),
-            height=90,
-            halign='left',
-            valign='top'
-        )
-        current_info.bind(size=lambda *args: setattr(current_info, 'text_size', (current_info.width, None)))
-        current_values.add_widget(current_info)
-
-        content.add_widget(current_values)
+        # ScrollView для всего содержимого
+        scroll = ScrollView(size_hint=(1, 1))
+        scroll_content = GridLayout(cols=1, spacing=15, size_hint_y=None)
+        scroll_content.bind(minimum_height=scroll_content.setter('height'))
 
         # Кнопки дополнительных функций
-        buttons_layout = GridLayout(cols=2, spacing=10, size_hint=(1, None), height=400)
+        buttons_layout = GridLayout(cols=2, spacing=15, size_hint=(1, None), height=340)
 
         # Кнопка Очередь рубки
         care_queue_btn = ModernButton(
             text='Очередь рубки',
             bg_color=get_color_from_hex('#FF8C00'),
             size_hint=(1, None),
-            height=60,
-            font_size='16sp'
+            height=70,
+            font_size='18sp'
         )
         care_queue_btn.bind(on_press=self.show_care_queue_popup)
         buttons_layout.add_widget(care_queue_btn)
@@ -2899,8 +2864,8 @@ class ExtendedMolodnikiTableScreen(Screen):
             text='Характеристика\nмолодняков',
             bg_color=get_color_from_hex('#32CD32'),
             size_hint=(1, None),
-            height=60,
-            font_size='14sp'
+            height=70,
+            font_size='16sp'
         )
         characteristics_btn.bind(on_press=self.show_characteristics_popup)
         buttons_layout.add_widget(characteristics_btn)
@@ -2910,8 +2875,8 @@ class ExtendedMolodnikiTableScreen(Screen):
             text='Дата рубки',
             bg_color=get_color_from_hex('#87CEEB'),
             size_hint=(1, None),
-            height=60,
-            font_size='16sp'
+            height=70,
+            font_size='18sp'
         )
         date_btn.bind(on_press=self.show_date_popup)
         buttons_layout.add_widget(date_btn)
@@ -2921,8 +2886,8 @@ class ExtendedMolodnikiTableScreen(Screen):
             text='Технология\nухода',
             bg_color=get_color_from_hex('#DDA0DD'),
             size_hint=(1, None),
-            height=60,
-            font_size='14sp'
+            height=70,
+            font_size='16sp'
         )
         technology_btn.bind(on_press=self.show_technology_popup)
         buttons_layout.add_widget(technology_btn)
@@ -2932,27 +2897,77 @@ class ExtendedMolodnikiTableScreen(Screen):
             text='Назначение\nлесов',
             bg_color=get_color_from_hex('#8B4513'),
             size_hint=(1, None),
-            height=60,
-            font_size='14sp'
+            height=70,
+            font_size='16sp'
         )
         forest_purpose_btn.bind(on_press=self.show_forest_purpose_popup)
         buttons_layout.add_widget(forest_purpose_btn)
 
-        content.add_widget(buttons_layout)
+        scroll_content.add_widget(buttons_layout)
+
+        # Отображение текущих значений деталей проекта
+        current_values = BoxLayout(orientation='vertical', spacing=8, size_hint=(1, None), height=220, padding=[15, 15])
+        with current_values.canvas.before:
+            Color(rgba=get_color_from_hex('#E8F4FD'))
+            current_values.bg = RoundedRectangle(pos=current_values.pos, size=current_values.size, radius=[10])
+            current_values.bind(pos=lambda *args: setattr(current_values.bg, 'pos', current_values.pos),
+                               size=lambda *args: setattr(current_values.bg, 'size', current_values.size))
+
+        current_title = Label(
+            text='Текущие значения проекта:',
+            font_name='Roboto',
+            font_size='18sp',
+            bold=True,
+            color=(0, 0, 0, 1),
+            size_hint=(1, None),
+            height=40,
+            halign='center'
+        )
+        current_values.add_widget(current_title)
+
+        # Формируем текст с текущими значениями
+        care_queue_val = self.project_data['details'].get('care_queue', '') or self.care_queue or 'Не указана'
+        characteristics_val = self.project_data['details'].get('characteristics', '') or self.characteristics or 'Не указана'
+        care_date_val = self.project_data['details'].get('care_date', '') or self.care_date or 'Не указана'
+        technology_val = self.project_data['details'].get('technology', '') or self.technology or 'Не указана'
+        forest_purpose_val = self.project_data['details'].get('forest_purpose', '') or self.forest_purpose or 'Не указано'
+
+        current_info = Label(
+            text=f"Очередь рубки: {care_queue_val}\n"
+                 f"Характеристика молодняков: {characteristics_val}\n"
+                 f"Дата рубки: {care_date_val}\n"
+                 f"Технология ухода: {technology_val}\n"
+                 f"Назначение лесов: {forest_purpose_val}",
+            font_name='Roboto',
+            font_size='16sp',
+            color=(0, 0, 0, 1),
+            size_hint=(1, None),
+            height=160,
+            halign='left',
+            valign='top'
+        )
+        current_info.bind(size=lambda *args: setattr(current_info, 'text_size', (current_info.width, None)))
+        current_values.add_widget(current_info)
+
+        scroll_content.add_widget(current_values)
+
+        scroll.add_widget(scroll_content)
+        content.add_widget(scroll)
 
         # Кнопка закрытия
         close_btn = ModernButton(
             text='Закрыть',
             bg_color=get_color_from_hex('#FF6347'),
             size_hint=(1, None),
-            height=50
+            height=60,
+            font_size='18sp'
         )
         content.add_widget(close_btn)
 
         popup = Popup(
             title="Дополнительные функции",
             content=content,
-            size_hint=(0.9, 0.9)
+            size_hint=(0.95, 0.95)
         )
 
         close_btn.bind(on_press=popup.dismiss)
@@ -7856,21 +7871,26 @@ class ExtendedMolodnikiTableScreen(Screen):
 
     def show_address_popup(self, instance):
         """Показать popup с настройками адреса"""
-        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        content = BoxLayout(orientation='vertical', spacing=15, padding=15)
 
         title_label = Label(
             text="Настройки адреса",
             font_name='Roboto',
-            font_size='18sp',
+            font_size='20sp',
             bold=True,
             color=(0, 0.5, 0, 1),
             size_hint=(1, None),
-            height=40
+            height=50
         )
         content.add_widget(title_label)
 
+        # ScrollView для всего содержимого
+        scroll = ScrollView(size_hint=(1, 1))
+        scroll_content = GridLayout(cols=1, spacing=15, size_hint_y=None)
+        scroll_content.bind(minimum_height=scroll_content.setter('height'))
+
         # Отображение текущих значений
-        current_values = BoxLayout(orientation='vertical', spacing=5, size_hint=(1, None), height=120, padding=[10, 10])
+        current_values = BoxLayout(orientation='vertical', spacing=8, size_hint=(1, None), height=200, padding=[15, 15])
         with current_values.canvas.before:
             Color(rgba=get_color_from_hex('#E8F4FD'))
             current_values.bg = RoundedRectangle(pos=current_values.pos, size=current_values.size, radius=[10])
@@ -7880,11 +7900,11 @@ class ExtendedMolodnikiTableScreen(Screen):
         current_title = Label(
             text='Текущие значения:',
             font_name='Roboto',
-            font_size='16sp',
+            font_size='18sp',
             bold=True,
             color=(0, 0, 0, 1),
             size_hint=(1, None),
-            height=30,
+            height=40,
             halign='center'
         )
         current_values.add_widget(current_title)
@@ -7897,28 +7917,28 @@ class ExtendedMolodnikiTableScreen(Screen):
                  f"Радиус: {self.project_data['address'].get('radius', 'Не указан')} м\n"
                  f"Площадь участка: {self.project_data['address'].get('plot_area', 'Не указана')} га",
             font_name='Roboto',
-            font_size='14sp',
+            font_size='16sp',
             color=(0, 0, 0, 1),
             size_hint=(1, None),
-            height=90,
+            height=150,
             halign='left',
             valign='top'
         )
         current_info.bind(size=lambda *args: setattr(current_info, 'text_size', (current_info.width, None)))
         current_values.add_widget(current_info)
 
-        content.add_widget(current_values)
+        scroll_content.add_widget(current_values)
 
         # Кнопки для настройки адреса
-        buttons_layout = GridLayout(cols=2, spacing=15, size_hint=(1, None), height=200)
+        buttons_layout = GridLayout(cols=2, spacing=15, size_hint=(1, None), height=280)
 
         # Кнопка Квартал
         quarter_btn = ModernButton(
             text='Квартал',
             bg_color=get_color_from_hex('#32CD32'),
             size_hint=(1, None),
-            height=50,
-            font_size='16sp'
+            height=60,
+            font_size='18sp'
         )
         quarter_btn.bind(on_press=self.show_quarter_popup)
         buttons_layout.add_widget(quarter_btn)
@@ -7928,8 +7948,8 @@ class ExtendedMolodnikiTableScreen(Screen):
             text='Выдел',
             bg_color=get_color_from_hex('#32CD32'),
             size_hint=(1, None),
-            height=50,
-            font_size='16sp'
+            height=60,
+            font_size='18sp'
         )
         plot_btn.bind(on_press=self.show_plot_popup)
         buttons_layout.add_widget(plot_btn)
@@ -7939,8 +7959,8 @@ class ExtendedMolodnikiTableScreen(Screen):
             text='Лесничество',
             bg_color=get_color_from_hex('#32CD32'),
             size_hint=(1, None),
-            height=50,
-            font_size='16sp'
+            height=60,
+            font_size='18sp'
         )
         forestry_btn.bind(on_press=self.show_forestry_popup)
         buttons_layout.add_widget(forestry_btn)
@@ -7950,8 +7970,8 @@ class ExtendedMolodnikiTableScreen(Screen):
             text='Радиус',
             bg_color=get_color_from_hex('#32CD32'),
             size_hint=(1, None),
-            height=50,
-            font_size='16sp'
+            height=60,
+            font_size='18sp'
         )
         radius_btn.bind(on_press=self.show_radius_popup)
         buttons_layout.add_widget(radius_btn)
@@ -7961,27 +7981,31 @@ class ExtendedMolodnikiTableScreen(Screen):
             text='Площадь участка',
             bg_color=get_color_from_hex('#32CD32'),
             size_hint=(1, None),
-            height=50,
-            font_size='16sp'
+            height=60,
+            font_size='18sp'
         )
         plot_area_btn.bind(on_press=self.show_plot_area_input_popup)
         buttons_layout.add_widget(plot_area_btn)
 
-        content.add_widget(buttons_layout)
+        scroll_content.add_widget(buttons_layout)
+
+        scroll.add_widget(scroll_content)
+        content.add_widget(scroll)
 
         # Кнопка закрытия
         close_btn = ModernButton(
             text='Закрыть',
             bg_color=get_color_from_hex('#FF6347'),
             size_hint=(1, None),
-            height=50
+            height=60,
+            font_size='18sp'
         )
         content.add_widget(close_btn)
 
         popup = Popup(
             title="Настройки адреса",
             content=content,
-            size_hint=(0.8, 0.8)
+            size_hint=(0.95, 0.95)
         )
 
         close_btn.bind(on_press=popup.dismiss)
