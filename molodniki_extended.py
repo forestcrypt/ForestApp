@@ -2487,6 +2487,9 @@ class ExtendedMolodnikiTableScreen(Screen):
             if selected_activities:
                 self.care_queue += f" ({', '.join(selected_activities)})"
 
+            # Сохраняем в project_data для отображения в текущих значениях
+            self.project_data['details']['care_queue'] = self.care_queue
+
             result_parts = []
             if activity_text:
                 result_parts.append(f"Мероприятие: {activity_text}")
@@ -2522,6 +2525,21 @@ class ExtendedMolodnikiTableScreen(Screen):
         self.characteristics_inputs = {}
         characteristics = ['Лучшие', 'Вспомогательные', 'Нежелательные']
 
+        # Загружаем существующие данные, если они есть
+        existing_characteristics = {}
+        if self.project_data['details'].get('characteristics'):
+            try:
+                existing_data = self.project_data['details']['characteristics']
+                for line in existing_data.split('\n'):
+                    if ':' in line:
+                        key, value = line.split(':', 1)
+                        key = key.strip()
+                        value = value.strip()
+                        if key in characteristics:
+                            existing_characteristics[key] = value
+            except:
+                pass
+
         for char in characteristics:
             char_layout = BoxLayout(orientation='vertical', size_hint=(1, None), height=80, spacing=5)
             char_label = Label(
@@ -2537,7 +2555,8 @@ class ExtendedMolodnikiTableScreen(Screen):
                 multiline=True,
                 size_hint=(1, None),
                 height=50,
-                font_name='Roboto'
+                font_name='Roboto',
+                text=existing_characteristics.get(char, '')
             )
             char_layout.add_widget(char_label)
             char_layout.add_widget(char_input)
@@ -2576,6 +2595,10 @@ class ExtendedMolodnikiTableScreen(Screen):
 
             if filled_characteristics:
                 characteristics_text = "\n".join([f"{k}: {v}" for k, v in filled_characteristics.items()])
+                # Сохраняем в project_data для отображения в текущих значениях
+                self.project_data['details']['characteristics'] = characteristics_text
+                # Также сохраняем в свойство класса
+                self.characteristics = characteristics_text
                 self.show_success(f"Характеристики сохранены:\n{characteristics_text}")
             else:
                 self.show_error("Заполните хотя бы одну характеристику!")
@@ -2655,6 +2678,9 @@ class ExtendedMolodnikiTableScreen(Screen):
                 # Простая валидация формата даты
                 import re
                 if re.match(r'^\d{2}\.\d{2}\.\d{4}$', date_text):
+                    # Сохраняем в свойство класса и project_data
+                    self.care_date = date_text
+                    self.project_data['details']['care_date'] = date_text
                     self.show_success(f"Дата рубки сохранена: {date_text}")
                 else:
                     self.show_error("Неверный формат даты! Используйте ДД.ММ.ГГГГ")
@@ -2720,6 +2746,9 @@ class ExtendedMolodnikiTableScreen(Screen):
         def save_technology(btn):
             technology_text = self.technology_input.text.strip()
             if technology_text:
+                # Сохраняем в свойство класса и project_data
+                self.technology = technology_text
+                self.project_data['details']['technology'] = technology_text
                 self.show_success(f"Технология ухода сохранена: {technology_text[:50]}...")
             else:
                 self.show_error("Введите технологию ухода!")
