@@ -546,6 +546,24 @@ class WordDocumentFiller:
 
         return success
 
+def fill_document_from_json(json_file_path):
+    """
+    Функция для заполнения Word-документа данными из JSON файла.
+    Эта функция создает экземпляр WordDocumentFiller и запускает процесс заполнения.
+    
+    Args:
+        json_file_path (str): Путь к JSON файлу с данными
+        
+    Returns:
+        bool: True если заполнение прошло успешно, False в случае ошибки
+    """
+    try:
+        filler = WordDocumentFiller(data_file=json_file_path)
+        return filler.run()
+    except Exception as e:
+        print(f"Ошибка при заполнении документа из JSON: {e}")
+        return False
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Заполнение Word-документа данными из приложения Молодняки')
     parser.add_argument('--data-file', type=str, help='Путь к JSON файлу с данными (address_data и total_data)')

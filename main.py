@@ -2455,9 +2455,11 @@ class TableScreen(Screen):
                     count = data['count']
                     diameters = data['diameters']
                     heights = data['heights']
+                    ages = data.get('ages', [])
                     avg_diameter = sum(diameters) / len(diameters) if diameters else 0
                     avg_height = sum(heights) / len(heights) if heights else 0
-                    coniferous_info.append(f"{species}: {count} шт, ср. D={avg_diameter:.1f}см, ср. H={avg_height:.1f}м")
+                    avg_age = sum(int(a) for a in ages if a.isdigit()) / len([a for a in ages if a.isdigit()]) if ages else 0
+                    coniferous_info.append(f"{species}: {count} шт, ср. D={avg_diameter:.1f}см, ср. H={avg_height:.1f}м, ср. возраст={avg_age:.1f}лет")
 
                 coniferous_text = "\n".join(coniferous_info)
                 coniferous_label = Label(

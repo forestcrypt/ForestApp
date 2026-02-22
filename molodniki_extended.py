@@ -2064,6 +2064,7 @@ class ExtendedMolodnikiTableScreen(Screen):
                     return
 
                 self.plot_area_input = str(plot_area)
+                self.project_data['address']['plot_area'] = str(plot_area)
                 self.show_success(f"Площадь участка {plot_area} га сохранена")
                 popup.dismiss()
 
@@ -5571,7 +5572,7 @@ class ExtendedMolodnikiTableScreen(Screen):
             height=40,
             font_name='Roboto',
             input_filter='int',
-            text=self.current_quarter
+            text=self.project_data['address'].get('quarter', self.current_quarter)
         )
         content.add_widget(self.quarter_input)
 
@@ -5602,6 +5603,7 @@ class ExtendedMolodnikiTableScreen(Screen):
             quarter = self.quarter_input.text.strip()
             if quarter:
                 self.current_quarter = quarter
+                self.project_data['address']['quarter'] = quarter
                 self.update_address_label()
                 self.show_success(f"Квартал установлен: {quarter}")
                 popup.dismiss()
@@ -5758,6 +5760,8 @@ class ExtendedMolodnikiTableScreen(Screen):
             if forestry:
                 self.current_forestry = forestry
                 self.current_district_forestry = district_forestry
+                self.project_data['address']['forestry'] = forestry
+                self.project_data['address']['district_forestry'] = district_forestry
                 self.update_address_label()
                 self.show_success(f"Лесничество установлено: {forestry}" + (f", участковое: {district_forestry}" if district_forestry else ""))
                 popup.dismiss()

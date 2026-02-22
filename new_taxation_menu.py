@@ -424,17 +424,22 @@ class TaxationPopup(Popup):
                 avg_heights = [p['height'] for p in data['plots'] if p['height'] > 0]
                 avg_height_total = sum(avg_heights) / len(avg_heights) if avg_heights else 0
 
+                # Средний возраст для хвойных пород
+                avg_ages = [p['age'] for p in data['plots'] if p['age'] > 0]
+                avg_age = sum(avg_ages) / len(avg_ages) if avg_ages else 0
+
                 coniferous_result = Label(
                     text=f"{breed_name}:\n"
                          f"• до 0.5м: {avg_do_05:.1f} шт/га\n"
                          f"• 0.5-1.5м: {avg_05_15:.1f} шт/га\n"
                          f"• >1.5м: {avg_bolee_15:.1f} шт/га\n"
-                         f"• средняя высота породы: {avg_height_total:.1f}м",
+                         f"• средняя высота породы: {avg_height_total:.1f}м\n"
+                         f"• средний возраст: {avg_age:.1f} лет",
                     font_name='Roboto',
                     font_size='14sp',
                     color=(0, 0.5, 0, 1),
                     size_hint=(1, None),
-                    height=100,
+                    height=120,
                     halign='left',
                     valign='top'
                 )
