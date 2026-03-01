@@ -1371,112 +1371,57 @@ class ExtendedMolodnikiTableScreen(Screen):
             self.show_breed_details_popup(instance, breed_type, selected_breed)
 
     def show_breed_details_popup(self, instance, breed_type, selected_breed=None):
-        """Показать popup для управления множественными породами"""
+        """Показать popup для ввода параметров породы (единый поток сохранения)"""
         content = BoxLayout(orientation='vertical', spacing=10, padding=10)
 
-        # Заголовок
+        # Заголовок с названием породы
         title_label = Label(
-            text=f"Управление породами - {selected_breed}",
+            text=f"Добавление породы: {selected_breed}",
             font_name='Roboto',
+            font_size='18sp',
             bold=True,
             size_hint=(1, None),
-            height=30
+            height=40,
+            color=(0, 0.5, 0, 1)
         )
         content.add_widget(title_label)
 
-        # Список существующих пород в этой строке
-        existing_breeds = self.parse_breeds_data(instance.text)
-        if not existing_breeds:
-            # Пытаемся получить данные из сохраненных данных страницы
-            row_idx = instance.row_index
-            if self.current_page in self.page_data and row_idx < len(self.page_data[self.current_page]):
-                saved_text = self.page_data[self.current_page][row_idx][3]  # Столбец "Порода"
-                existing_breeds = self.parse_breeds_data(saved_text)
-
-        # Отображаем список существующих пород
-        if existing_breeds:
-            breeds_list_label = Label(
-                text="Уже добавленные породы:",
-                font_name='Roboto',
-                bold=True,
-                size_hint=(1, None),
-                height=30,
-                color=(0.3, 0.3, 0.3, 1)
-            )
-            content.add_widget(breeds_list_label)
-
-            # ScrollView для списка пород
-            breeds_scroll = ScrollView(size_hint=(1, None), height=80)
-            breeds_list_layout = BoxLayout(orientation='vertical', spacing=5, size_hint_y=None)
-            breeds_list_layout.bind(minimum_height=breeds_list_layout.setter('height'))
-
-            for i, breed_info in enumerate(existing_breeds):
-                breed_name = breed_info.get('name', 'Неизвестная')
-                breed_type = breed_info.get('type', 'unknown')
-                params = []
-                if 'density' in breed_info and breed_info['density']:
-                    params.append(f"Густота: {breed_info['density']}")
-                if 'height' in breed_info and breed_info['height']:
-                    params.append(f"Высота: {breed_info['height']}м")
-                if 'age' in breed_info and breed_info['age']:
-                    params.append(f"Возраст: {breed_info['age']} лет")
-                if breed_type == 'coniferous':
-                    if 'do_05' in breed_info and breed_info['do_05']:
-                        params.append(f"До 0.5м: {breed_info['do_05']}")
-                    if '05_15' in breed_info and breed_info['05_15']:
-                        params.append(f"0.5-1.5м: {breed_info['05_15']}")
-                    if 'bolee_15' in breed_info and breed_info['bolee_15']:
-                        params.append(f">1.5м: {breed_info['bolee_15']}")
-
-                breed_text = f"{i+1}. {breed_name}: {'; '.join(params)}" if params else f"{i+1}. {breed_name}"
-                breed_label = Label(
-                    text=breed_text,
-                    font_name='Roboto',
-                    size_hint=(1, None),
-                    height=25,
-                    color=(0.2, 0.2, 0.2, 1),
-                    text_size=(None, None),
-                    halign='left',
-                    valign='top'
-                )
-                breed_label.bind(size=lambda *args: setattr(breed_label, 'text_size', (breed_label.width, None)))
-                breeds_list_layout.add_widget(breed_label)
-
-            breeds_scroll.add_widget(breeds_list_layout)
-            content.add_widget(breeds_scroll)
-        else:
-            breeds_list_label = Label(
-                text="Породы ещё не добавлены",
-                font_name='Roboto',
-                size_hint=(1, None),
-                height=30,
-                color=(0.5, 0.5, 0.5, 1)
-            )
-            content.add_widget(breeds_list_label)
+        # Информация о типе породы
+        type_text = "Хвойная порода" if breed_type == 'coniferous' else "Лиственная порода"
+        type_label = Label(
+            text=f"Тип: {type_text}",
+            font_name='Roboto',
+            font_size='14sp',
+            size_hint=(1, None),
+            height=25,
+            color=(0.3, 0.3, 0.3, 1)
+        )
+        content.add_widget(type_label)
 
         # Поля ввода для параметров породы
-        fields_layout = GridLayout(cols=2, spacing=5, size_hint=(1, None), height=200)
+        fields_layout = GridLayout(cols=2, spacing=10, size_hint=(1, None), height=200)
 
         if breed_type == 'coniferous':
             fields = [
-                ('До 0.5м:', 'do_05'),
-                ('0.5-1.5м:', '05_15'),
-                ('>1.5м:', 'bolee_15'),
+                ('До 0.5м (шт):', 'do_05'),
+                ('0.5-1.5м (шт):', '05_15'),
+                ('>1.5м (шт):', 'bolee_15'),
                 ('Высота (м):', 'height'),
-                ('Густота:', 'density'),
+                ('Густота (авто):', 'density'),
                 ('Возраст (лет):', 'age')
             ]
         else:
             fields = [
-                ('Густота:', 'density'),
+                ('Густота (шт):', 'density'),
                 ('Высота (м):', 'height'),
                 ('Возраст (лет):', 'age')
             ]
 
         self.breed_inputs = {}
         for label_text, field_key in fields:
-            lbl = Label(text=label_text, font_name='Roboto', size_hint=(None, None), size=(100, 30))
-            inp = TextInput(multiline=False, size_hint=(None, None), size=(100, 30))
+            lbl = Label(text=label_text, font_name='Roboto', size_hint=(None, None), size=(120, 40), halign='left', valign='middle')
+            lbl.bind(size=lambda *args: setattr(lbl, 'text_size', (lbl.width, None)))
+            inp = TextInput(multiline=False, size_hint=(None, None), size=(120, 40), font_name='Roboto')
             if field_key in ['density', 'age']:
                 inp.input_filter = 'int'
             elif field_key == 'height':
@@ -1485,40 +1430,60 @@ class ExtendedMolodnikiTableScreen(Screen):
                 inp.input_filter = 'int'
                 if breed_type == 'coniferous':
                     inp.bind(text=self.update_coniferous_density)
+            # Делаем поле густоты только для чтения для хвойных (рассчитывается автоматически)
+            if field_key == 'density' and breed_type == 'coniferous':
+                inp.readonly = True
+                inp.background_color = (0.9, 0.9, 0.9, 1)
             fields_layout.add_widget(lbl)
             fields_layout.add_widget(inp)
             self.breed_inputs[field_key] = inp
 
         content.add_widget(fields_layout)
 
-        # Кнопки управления
-        btn_layout = BoxLayout(orientation='horizontal', spacing=5, size_hint=(1, None), height=50)
-        add_btn = ModernButton(
-            text='Добавить породу',
+        # Подсказка для хвойных пород
+        if breed_type == 'coniferous':
+            hint_label = Label(
+                text="* Густота для хвойных рассчитывается автоматически как сумма градаций высот",
+                font_name='Roboto',
+                font_size='12sp',
+                size_hint=(1, None),
+                height=30,
+                color=(0.5, 0.5, 0.5, 1)
+            )
+            content.add_widget(hint_label)
+
+        # Кнопки управления - ЕДИНЫЙ ПОТОК
+        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
+        
+        # Главная кнопка - "Добавить и сохранить"
+        save_add_btn = ModernButton(
+            text='Добавить',
             bg_color=get_color_from_hex('#00FF00'),
-            size_hint=(0.25, 1),
-            height=50
+            size_hint=(0.35, 1),
+            height=50,
+            font_size='16sp',
+            bold=True
         )
-        save_btn = ModernButton(
-            text='Сохранить',
-            bg_color=get_color_from_hex('#32CD32'),
-            size_hint=(0.25, 1),
-            height=50
-        )
+        
+        # Кнопка просмотра списка пород
         view_btn = ModernButton(
-            text='Просмотр',
+            text='Список пород',
             bg_color=get_color_from_hex('#87CEEB'),
-            size_hint=(0.25, 1),
-            height=50
+            size_hint=(0.35, 1),
+            height=50,
+            font_size='14sp'
         )
+        
+        # Кнопка отмены
         cancel_btn = ModernButton(
             text='Отмена',
             bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(0.25, 1),
-            height=50
+            size_hint=(0.3, 1),
+            height=50,
+            font_size='14sp'
         )
-        btn_layout.add_widget(add_btn)
-        btn_layout.add_widget(save_btn)
+        
+        btn_layout.add_widget(save_add_btn)
         btn_layout.add_widget(view_btn)
         btn_layout.add_widget(cancel_btn)
         content.add_widget(btn_layout)
@@ -1526,17 +1491,21 @@ class ExtendedMolodnikiTableScreen(Screen):
         popup = Popup(
             title=f"Параметры породы: {selected_breed}",
             content=content,
-            size_hint=(0.9, 0.95)
+            size_hint=(0.85, 0.85)
         )
 
-        def add_breed(btn):
+        def save_and_add(btn):
+            """Единая функция: добавить породу и сохранить данные"""
+            # Собираем данные из полей ввода
             breed_data = {
                 'name': selected_breed,
                 'type': breed_type
             }
 
+            has_data = False
             for key, inp in self.breed_inputs.items():
                 if inp.text.strip():
+                    has_data = True
                     try:
                         if key in ['density', 'age']:
                             breed_data[key] = int(inp.text)
@@ -1545,41 +1514,112 @@ class ExtendedMolodnikiTableScreen(Screen):
                         else:
                             breed_data[key] = float(inp.text)
                     except ValueError:
-                        breed_data[key] = inp.text
+                        breed_data[key] = 0
 
+            # Для хвойных рассчитываем возраст, если не введен
+            if breed_type == 'coniferous':
+                if 'age' not in breed_data or breed_data['age'] == 0:
+                    do_05 = breed_data.get('do_05', 0)
+                    _05_15 = breed_data.get('05_15', 0)
+                    bolee_15 = breed_data.get('bolee_15', 0)
+                    
+                    if bolee_15 > 0:
+                        breed_data['age'] = 20
+                    elif _05_15 > 0:
+                        breed_data['age'] = 10
+                    elif do_05 > 0:
+                        breed_data['age'] = 5
+                    else:
+                        breed_data['age'] = 10  # default age
+
+            # Добавляем породу к существующим
             existing_breeds = self.parse_breeds_data(instance.text)
             existing_breeds.append(breed_data)
             instance.text = json.dumps(existing_breeds, ensure_ascii=False, indent=2)
 
+            # Обновляем page_data
+            if self.current_page not in self.page_data:
+                self.page_data[self.current_page] = [['', '', '', '', '', ''] for _ in range(self.rows_per_page)]
+            if hasattr(instance, 'row_index') and instance.row_index < len(self.page_data[self.current_page]):
+                self.page_data[self.current_page][instance.row_index][3] = instance.text
+
             self.update_plot_total(instance, instance.text)
 
-            for inp in self.breed_inputs.values():
-                inp.text = ''
-
-            # После добавления первой породы присваиваем номер 1 и предлагаем выбор
-            if len(existing_breeds) == 1:
-                self.show_breed_choice_popup(instance, selected_breed)
-            else:
-                self.show_breed_popup(instance, True)
-                self.show_success(f"Порода '{selected_breed}' добавлена! Выберите тип следующей породы.")
-
-        def save_breeds(btn):
-            existing_breeds = self.parse_breeds_data(instance.text)
-            if not existing_breeds:
-                existing_breeds = []
-            instance.text = json.dumps(existing_breeds, ensure_ascii=False, indent=2)
-            self.update_plot_total(instance, instance.text)
-            self.show_success("Все данные по площадке сохранены!")
+            # Показываем результат и предлагаем добавить еще породу
             popup.dismiss()
+            
+            # Показываем выбор следующего действия
+            self.show_after_add_popup(instance, selected_breed, len(existing_breeds))
 
-        def view_breeds(btn):
+        def view_breeds_list(btn):
+            """Просмотр списка добавленных пород"""
             popup.dismiss()
             self.show_breeds_list_popup(instance)
 
-        add_btn.bind(on_press=add_breed)
-        save_btn.bind(on_press=save_breeds)
-        view_btn.bind(on_press=view_breeds)
+        save_add_btn.bind(on_press=save_and_add)
+        view_btn.bind(on_press=view_breeds_list)
         cancel_btn.bind(on_press=popup.dismiss)
+
+        popup.open()
+        
+    def show_after_add_popup(self, instance, added_breed, total_breeds_count):
+        """Показать popup после добавления породы с выбором следующего действия"""
+        content = BoxLayout(orientation='vertical', spacing=15, padding=15)
+
+        # Заголовок с информацией
+        title_label = Label(
+            text=f"✓ Порода '{added_breed}' добавлена!\n\nВсего пород на площадке: {total_breeds_count}",
+            font_name='Roboto',
+            font_size='18sp',
+            bold=True,
+            color=(0, 0.5, 0, 1),
+            size_hint=(1, None),
+            height=80,
+            halign='center'
+        )
+        content.add_widget(title_label)
+
+        # Кнопки выбора
+        btn_layout = BoxLayout(orientation='vertical', spacing=10, size_hint=(1, None), height=150)
+        
+        add_more_btn = ModernButton(
+            text='+ Добавить ещё породу',
+            bg_color=get_color_from_hex('#32CD32'),
+            size_hint=(1, None),
+            height=50,
+            font_size='16sp'
+        )
+        
+        finish_btn = ModernButton(
+            text='✓ Завершить редактирование',
+            bg_color=get_color_from_hex('#228B22'),
+            size_hint=(1, None),
+            height=50,
+            font_size='16sp',
+            bold=True
+        )
+        
+        btn_layout.add_widget(add_more_btn)
+        btn_layout.add_widget(finish_btn)
+        content.add_widget(btn_layout)
+
+        popup = Popup(
+            title="Порода добавлена",
+            content=content,
+            size_hint=(0.8, 0.55)
+        )
+
+        def add_more(btn):
+            popup.dismiss()
+            # Возвращаемся к выбору типа породы
+            self.show_breed_popup(instance, True)
+
+        def finish(btn):
+            popup.dismiss()
+            self.show_success(f"Данные площадки сохранены! Всего пород: {total_breeds_count}")
+
+        add_more_btn.bind(on_press=add_more)
+        finish_btn.bind(on_press=finish)
 
         popup.open()
 
@@ -2877,10 +2917,10 @@ class ExtendedMolodnikiTableScreen(Screen):
         # Кнопки дополнительных функций
         buttons_layout = GridLayout(cols=2, spacing=15, size_hint=(1, None), height=340)
 
-        # Кнопка Очередь рубки
+        # Кнопка Вид рубки
         care_queue_btn = ModernButton(
-            text='Очередь рубки',
-            bg_color=get_color_from_hex('#FF8C00'),
+            text='Вид рубки',
+            bg_color=get_color_from_hex('#32CD32'),
             size_hint=(1, None),
             height=70,
             font_size='18sp'
@@ -2888,9 +2928,9 @@ class ExtendedMolodnikiTableScreen(Screen):
         care_queue_btn.bind(on_press=self.show_care_queue_popup)
         buttons_layout.add_widget(care_queue_btn)
 
-        # Кнопка Характеристика молодняков
+        # Кнопка ХарактерМ
         characteristics_btn = ModernButton(
-            text='Характеристика\nмолодняков',
+            text='ХарактерМ',
             bg_color=get_color_from_hex('#32CD32'),
             size_hint=(1, None),
             height=70,
@@ -2902,7 +2942,7 @@ class ExtendedMolodnikiTableScreen(Screen):
         # Кнопка Дата рубки
         date_btn = ModernButton(
             text='Дата рубки',
-            bg_color=get_color_from_hex('#87CEEB'),
+            bg_color=get_color_from_hex('#32CD32'),
             size_hint=(1, None),
             height=70,
             font_size='18sp'
@@ -2913,7 +2953,7 @@ class ExtendedMolodnikiTableScreen(Screen):
         # Кнопка Технология ухода
         technology_btn = ModernButton(
             text='Технология\nухода',
-            bg_color=get_color_from_hex('#DDA0DD'),
+            bg_color=get_color_from_hex('#32CD32'),
             size_hint=(1, None),
             height=70,
             font_size='16sp'
@@ -2924,7 +2964,7 @@ class ExtendedMolodnikiTableScreen(Screen):
         # Кнопка Назначение лесов
         forest_purpose_btn = ModernButton(
             text='Назначение\nлесов',
-            bg_color=get_color_from_hex('#8B4513'),
+            bg_color=get_color_from_hex('#32CD32'),
             size_hint=(1, None),
             height=70,
             font_size='16sp'
@@ -3391,14 +3431,7 @@ class ExtendedMolodnikiTableScreen(Screen):
             if count > 0:
                 composition_text += f"{int(count)}{breed}"
 
-        # Обновляем итоговую строку или возвращаем данные
-        # В зависимости от логики приложения
-        return {
-            'composition_text': composition_text,
-            'forestry_formulas_text': forestry_formulas_text if 'forestry_formulas_text' in locals() else "",
-            'total_plots': total_plots if 'total_plots' in locals() else 0
-        }
-
+        # Расчет формул лесного хозяйства
         forestry_formulas_text = ""
 
         # Расчет градаций для хвойных пород
@@ -5572,12 +5605,6 @@ class ExtendedMolodnikiTableScreen(Screen):
             os.startfile(self.reports_dir)
         else:
             self.show_error("Папка reports не найдена!")
-
-    def go_back(self, instance):
-        App.get_running_app().root.current = 'main'
-
-    def go_back(self, instance):
-        App.get_running_app().root.current = 'main'
 
     def go_back(self, instance):
         App.get_running_app().root.current = 'main'
@@ -7886,13 +7913,10 @@ class ExtendedMolodnikiTableScreen(Screen):
         if self.current_page not in self.page_data:
             self.page_data[self.current_page] = []
 
-        # Находим следующий доступный индекс
+        # Находим следующий доступный индекс (без создания пустой строки!)
         row_idx = len(self.page_data[self.current_page])
 
-        # Расширяем page_data если нужно
-        while len(self.page_data[self.current_page]) <= row_idx:
-            self.page_data[self.current_page].append(['', '', '', '', '', ''])
-
+        # НЕ добавляем пустую строку заранее - только при реальном сохранении
         # Открываем popup для ввода данных площадки
         MolodnikiTreeDataInputPopup(self, row_idx).open()
 
@@ -8005,9 +8029,9 @@ class ExtendedMolodnikiTableScreen(Screen):
         radius_btn.bind(on_press=self.show_radius_popup)
         buttons_layout.add_widget(radius_btn)
 
-        # Кнопка Площадь участка
+        # Кнопка Площадь
         plot_area_btn = ModernButton(
-            text='Площадь участка',
+            text='Площадь',
             bg_color=get_color_from_hex('#32CD32'),
             size_hint=(1, None),
             height=60,
@@ -8058,9 +8082,9 @@ class ExtendedMolodnikiTableScreen(Screen):
         # Кнопки для операций с файлами
         buttons_layout = GridLayout(cols=2, spacing=10, size_hint=(1, None), height=200)
 
-        # Кнопка Создать площадку
+        # Кнопка Создать
         create_plot_btn = ModernButton(
-            text='Создать площадку',
+            text='Создать',
             bg_color=get_color_from_hex('#32CD32'),
             size_hint=(1, None),
             height=50,
@@ -8091,9 +8115,9 @@ class ExtendedMolodnikiTableScreen(Screen):
         load_btn.bind(on_press=self.load_section)
         buttons_layout.add_widget(load_btn)
 
-        # Кнопка Редактировать
+        # Кнопка Изменить
         edit_btn = ModernButton(
-            text='Редактировать',
+            text='Изменить',
             bg_color=get_color_from_hex('#FF6347'),
             size_hint=(1, None),
             height=50,
@@ -8102,9 +8126,9 @@ class ExtendedMolodnikiTableScreen(Screen):
         edit_btn.bind(on_press=self.show_edit_plots_popup)
         buttons_layout.add_widget(edit_btn)
 
-        # Кнопка Открыть папку
+        # Кнопка Открыть
         open_folder_btn = ModernButton(
-            text='Открыть папку',
+            text='Открыть',
             bg_color=get_color_from_hex('#0000FF'),
             size_hint=(1, None),
             height=50,
