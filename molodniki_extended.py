@@ -407,12 +407,17 @@ class MolodnikiTreeDataInputPopup(Popup):
                 'Ива', 'Ива кустарниковая'
             ]
 
+        # Загружаем пользовательские породы из базы данных
+        custom_breeds = self.load_custom_breeds(breed_type)
+        # Добавляем пользовательские породы к стандартным
+        all_breeds = breeds + custom_breeds
+
         # ScrollView для списка пород
         scroll = ScrollView(size_hint=(1, None), height=300)
         breeds_layout = GridLayout(cols=1, spacing=5, size_hint_y=None)
         breeds_layout.bind(minimum_height=breeds_layout.setter('height'))
 
-        for breed in breeds:
+        for breed in all_breeds:
             btn = ModernButton(
                 text=breed,
                 bg_color=get_color_from_hex('#87CEEB'),
@@ -453,6 +458,79 @@ class MolodnikiTreeDataInputPopup(Popup):
 
         cancel_btn.bind(on_press=popup.dismiss)
         popup.open()
+
+    def update_plot_breeds_display(self, plot_breeds_list, existing_breeds_for_plot):
+        """Обновить отображение списка пород на площадке"""
+        # Очищаем текущий список
+        plot_breeds_list.clear_widgets()
+
+        if existing_breeds_for_plot:
+            for i, breed_info in enumerate(existing_breeds_for_plot):
+                if not isinstance(breed_info, dict):
+                    continue
+                breed_name = breed_info.get('name', 'Неизвестная')
+
+                # Рассчитываем густоту (для хвойных - сумма градаций)
+                density = breed_info.get('density', 0)
+                if breed_info.get('type') == 'coniferous':
+                    conif_density = (breed_info.get('do_05', 0) + breed_info.get('05_15', 0) + breed_info.get('bolee_15', 0))
+                    if conif_density > 0:
+                        density = conif_density
+
+                height = breed_info.get('height', 0)
+                age = breed_info.get('age', 0)
+                diameter = breed_info.get('diameter', 0)
+
+                # Формируем строку с параметрами породы
+                params_parts = []
+                if density:
+                    params_parts.append(f"Густота: {density}")
+                if height:
+                    params_parts.append(f"Высота: {height}м")
+                if diameter:
+                    params_parts.append(f"Диаметр: {diameter}см")
+                if age:
+                    params_parts.append(f"Возраст: {age}л")
+
+                params_text = ", ".join(params_parts) if params_parts else "Нет данных"
+
+                # Для хвойных пород добавляем градации по высоте
+                gradation_text = ""
+                if breed_info.get('type') == 'coniferous':
+                    gradations = []
+                    if breed_info.get('do_05', 0) > 0:
+                        gradations.append(f"До 0.5м: {breed_info['do_05']}")
+                    if breed_info.get('05_15', 0) > 0:
+                        gradations.append(f"0.5-1.5м: {breed_info['05_15']}")
+                    if breed_info.get('bolee_15', 0) > 0:
+                        gradations.append(f">1.5м: {breed_info['bolee_15']}")
+                    if gradations:
+                        gradation_text = " | " + ", ".join(gradations)
+
+                breed_item = Label(
+                    text=f'{i+1}. {breed_name} - {params_text}{gradation_text}',
+                    font_name='Roboto',
+                    font_size='12sp',
+                    color=(0.2, 0.2, 0.2, 1),
+                    size_hint=(1, None),
+                    height=35 if gradation_text else 30,
+                    halign='left',
+                    valign='middle'
+                )
+                breed_item.bind(size=lambda *args: setattr(breed_item, 'text_size', (breed_item.width, None)))
+                plot_breeds_list.add_widget(breed_item)
+        else:
+            no_breeds_label = Label(
+                text='Породы еще не добавлены',
+                font_name='Roboto',
+                font_size='12sp',
+                color=(0.5, 0.5, 0.5, 1),
+                size_hint=(1, None),
+                height=30,
+                halign='left'
+            )
+            no_breeds_label.bind(size=lambda *args: setattr(no_breeds_label, 'text_size', (no_breeds_label.width, None)))
+            plot_breeds_list.add_widget(no_breeds_label)
 
     def select_breed(self, instance, breed_type, selected_breed):
         """Обработка выбора породы"""
@@ -522,7 +600,7 @@ class MolodnikiTreeDataInputPopup(Popup):
             except (json.JSONDecodeError, TypeError) as e:
                 print(f"DEBUG: Error parsing breeds from instance.text: {e}")
                 pass
-        
+
         # Также проверяем page_data как резервный источник
         if not existing_breeds_for_plot:
             if self.table_screen.current_page in self.table_screen.page_data:
@@ -535,59 +613,9 @@ class MolodnikiTreeDataInputPopup(Popup):
                     except (json.JSONDecodeError, TypeError) as e:
                         print(f"DEBUG: Error parsing breeds from page_data: {e}")
                         pass
-        
-        if existing_breeds_for_plot:
-            for i, breed_info in enumerate(existing_breeds_for_plot):
-                if not isinstance(breed_info, dict):
-                    continue
-                breed_name = breed_info.get('name', 'Неизвестная')
-                breed_type_display = "Хвойная" if breed_info.get('type') == 'coniferous' else "Лиственная"
-                
-                # Рассчитываем густоту (для хвойных - сумма градаций)
-                density = breed_info.get('density', 0)
-                if breed_info.get('type') == 'coniferous':
-                    conif_density = (breed_info.get('do_05', 0) + breed_info.get('05_15', 0) + breed_info.get('bolee_15', 0))
-                    if conif_density > 0:
-                        density = conif_density
-                
-                height = breed_info.get('height', 0)
-                age = breed_info.get('age', 0)
-                
-                # Формируем строку с параметрами породы
-                params_parts = []
-                if density:
-                    params_parts.append(f"Густота: {density}")
-                if height:
-                    params_parts.append(f"Высота: {height}м")
-                if age:
-                    params_parts.append(f"Возраст: {age}л")
-                
-                params_text = ", ".join(params_parts) if params_parts else "Нет данных"
-                
-                breed_item = Label(
-                    text=f'{i+1}. {breed_name} ({breed_type_display}) - {params_text}',
-                    font_name='Roboto',
-                    font_size='12sp',
-                    color=(0.2, 0.2, 0.2, 1),
-                    size_hint=(1, None),
-                    height=30,
-                    halign='left',
-                    valign='middle'
-                )
-                breed_item.bind(size=lambda *args: setattr(breed_item, 'text_size', (breed_item.width, None)))
-                plot_breeds_list.add_widget(breed_item)
-        else:
-            no_breeds_label = Label(
-                text='Породы еще не добавлены',
-                font_name='Roboto',
-                font_size='12sp',
-                color=(0.5, 0.5, 0.5, 1),
-                size_hint=(1, None),
-                height=30,
-                halign='left'
-            )
-            no_breeds_label.bind(size=lambda *args: setattr(no_breeds_label, 'text_size', (no_breeds_label.width, None)))
-            plot_breeds_list.add_widget(no_breeds_label)
+
+        # Используем новый метод для отображения пород
+        self.update_plot_breeds_display(plot_breeds_list, existing_breeds_for_plot)
         
         plot_breeds_scroll.add_widget(plot_breeds_list)
         plot_breeds_box.add_widget(plot_breeds_scroll)
@@ -636,36 +664,45 @@ class MolodnikiTreeDataInputPopup(Popup):
         scroll_fields.add_widget(fields_layout)
         content.add_widget(scroll_fields)
 
-        # Кнопки управления - три отдельные кнопки
+        # Кнопки управления - четыре отдельные кнопки
         btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
-        
+
         add_btn = ModernButton(
             text='Добавить породу',
             bg_color=get_color_from_hex('#32CD32'),
-            size_hint=(0.33, 1),
+            size_hint=(0.25, 1),
             height=50,
             font_size='14sp'
         )
-        
+
         save_btn = ModernButton(
             text='Сохранить',
             bg_color=get_color_from_hex('#00FF00'),
-            size_hint=(0.33, 1),
+            size_hint=(0.25, 1),
             height=50,
             font_size='14sp',
             bold=True
         )
-        
-        exit_btn = ModernButton(
-            text='Выйти',
+
+        delete_btn = ModernButton(
+            text='Удалить породу',
             bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(0.34, 1),
+            size_hint=(0.25, 1),
             height=50,
             font_size='14sp'
         )
-        
+
+        exit_btn = ModernButton(
+            text='Выйти',
+            bg_color=get_color_from_hex('#FF0000'),
+            size_hint=(0.25, 1),
+            height=50,
+            font_size='14sp'
+        )
+
         btn_layout.add_widget(add_btn)
         btn_layout.add_widget(save_btn)
+        btn_layout.add_widget(delete_btn)
         btn_layout.add_widget(exit_btn)
         content.add_widget(btn_layout)
 
@@ -674,59 +711,6 @@ class MolodnikiTreeDataInputPopup(Popup):
             content=content,
             size_hint=(0.9, 0.95)
         )
-        
-        # Функция для обновления бокса сохраненных пород
-        def update_breeds_display():
-            """Обновляет отображение сохраненных пород в боксе"""
-            # Очищаем текущий список
-            plot_breeds_list.clear_widgets()
-            
-            # Получаем обновленный список пород
-            updated_breeds = []
-            if self.table_screen.current_page in self.table_screen.page_data:
-                page_data = self.table_screen.page_data[self.table_screen.current_page]
-                if self.row_index < len(page_data) and page_data[self.row_index][3]:
-                    try:
-                        updated_breeds = json.loads(page_data[self.row_index][3]) if isinstance(page_data[self.row_index][3], str) else []
-                    except (json.JSONDecodeError, TypeError):
-                        pass
-            
-            if updated_breeds:
-                for i, breed_info in enumerate(updated_breeds):
-                    breed_name = breed_info.get('name', 'Неизвестная')
-                    breed_type_display = "Хвойная" if breed_info.get('type') == 'coniferous' else "Лиственная"
-                    density = breed_info.get('density', 0)
-                    height = breed_info.get('height', 0)
-                    
-                    # Для хвойных показываем сумму градаций
-                    if breed_info.get('type') == 'coniferous':
-                        conif_density = (breed_info.get('do_05', 0) + breed_info.get('05_15', 0) + breed_info.get('bolee_15', 0))
-                        if conif_density > 0:
-                            density = conif_density
-                    
-                    breed_item = Label(
-                        text=f'{i+1}. {breed_name} ({breed_type_display}) - Густота: {density}, Высота: {height}м',
-                        font_name='Roboto',
-                        font_size='12sp',
-                        color=(0.2, 0.2, 0.2, 1),
-                        size_hint=(1, None),
-                        height=25,
-                        halign='left'
-                    )
-                    breed_item.bind(size=lambda *args: setattr(breed_item, 'text_size', (breed_item.width, None)))
-                    plot_breeds_list.add_widget(breed_item)
-            else:
-                no_breeds_label = Label(
-                    text='Породы еще не добавлены',
-                    font_name='Roboto',
-                    font_size='12sp',
-                    color=(0.5, 0.5, 0.5, 1),
-                    size_hint=(1, None),
-                    height=25,
-                    halign='left'
-                )
-                no_breeds_label.bind(size=lambda *args: setattr(no_breeds_label, 'text_size', (no_breeds_label.width, None)))
-                plot_breeds_list.add_widget(no_breeds_label)
 
         def add_breed(btn):
             """Добавить породу - открывает меню выбора типа породы"""
@@ -786,17 +770,26 @@ class MolodnikiTreeDataInputPopup(Popup):
                     self.table_screen.page_data[self.table_screen.current_page][self.row_index][3] = instance.text
 
                 self.table_screen.update_plot_total(instance, instance.text)
-                
+
                 # Очищаем поля ввода
                 for inp in self.breed_inputs.values():
                     inp.text = ''
-                
-                # Обновляем отображение
-                update_breeds_display()
-            
-            # Закрываем текущий popup и открываем меню выбора типа породы
+
+                # Обновляем отображение с градациями по высоте
+                self.update_plot_breeds_display(plot_breeds_list, existing_breeds)
+
+                # Сохраняем в базу данных
+                self.table_screen.save_current_page()
+
+                # Показываем сообщение об успехе
+                self.table_screen.show_success(f"Порода добавлена! Всего пород: {len(existing_breeds)}")
+
+            # Закрываем текущий popup с параметрами породы
             popup.dismiss()
-            self.show_breed_popup(instance, True)
+            
+            # Открываем popup выбора типа породы для добавления следующей породы
+            from kivy.clock import Clock
+            Clock.schedule_once(lambda dt: self.show_breed_popup(instance, True), 0.2)
 
         def save_data(btn):
             """Сохранить данные - отображает породы в блоке и сохраняет в БД"""
@@ -855,19 +848,21 @@ class MolodnikiTreeDataInputPopup(Popup):
                     self.table_screen.page_data[self.table_screen.current_page][self.row_index][3] = instance.text
 
                 self.table_screen.update_plot_total(instance, instance.text)
-                
+
                 # Очищаем поля ввода
                 for inp in self.breed_inputs.values():
                     inp.text = ''
-            
-            # Обновляем отображение сохраненных пород
-            update_breeds_display()
-            
+
+            # Получаем актуальный список пород для обновления отображения
+            existing_breeds = self.table_screen.parse_breeds_data(instance.text)
+
+            # Обновляем отображение сохраненных пород с градациями по высоте для хвойных
+            self.update_plot_breeds_display(plot_breeds_list, existing_breeds)
+
             # Сохраняем в базу данных
             self.table_screen.save_current_page()
-            
+
             # Показываем сообщение об успехе
-            existing_breeds = self.table_screen.parse_breeds_data(instance.text)
             self.table_screen.show_success(f"Данные сохранены! Всего пород: {len(existing_breeds)}")
 
         def exit_popup(btn):
@@ -927,18 +922,177 @@ class MolodnikiTreeDataInputPopup(Popup):
                     self.table_screen.page_data[self.table_screen.current_page][self.row_index][3] = instance.text
 
                 self.table_screen.update_plot_total(instance, instance.text)
-            
+
+            # Получаем актуальный список пород для обновления отображения
+            existing_breeds = self.table_screen.parse_breeds_data(instance.text)
+
+            # Обновляем отображение пород с градациями
+            self.update_plot_breeds_display(plot_breeds_list, existing_breeds)
+
             # Всегда сохраняем в базу данных при выходе
             self.table_screen.save_current_page()
-            
-            existing_breeds = self.table_screen.parse_breeds_data(instance.text)
+
             self.table_screen.show_success(f"Данные автоматически сохранены в БД! Всего пород: {len(existing_breeds)}")
-            
+
             popup.dismiss()
 
         add_btn.bind(on_press=add_breed)
         save_btn.bind(on_press=save_data)
+        delete_btn.bind(on_press=lambda x: self.show_delete_breed_popup(instance, plot_breeds_list))
         exit_btn.bind(on_press=exit_popup)
+
+        popup.open()
+
+    def show_delete_breed_popup(self, instance, plot_breeds_list):
+        """Показать popup для удаления пород"""
+        # Получаем список пород
+        existing_breeds = self.table_screen.parse_breeds_data(instance.text)
+        
+        if not existing_breeds:
+            self.table_screen.show_error("Нет пород для удаления!")
+            return
+        
+        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        
+        title_label = Label(
+            text="Выберите породы для удаления:",
+            font_name='Roboto',
+            bold=True,
+            size_hint=(1, None),
+            height=40,
+            color=(0.5, 0, 0, 1)
+        )
+        content.add_widget(title_label)
+        
+        # ScrollView для списка пород
+        scroll = ScrollView(size_hint=(1, None), height=300)
+        breeds_layout = GridLayout(cols=1, spacing=5, size_hint_y=None)
+        breeds_layout.bind(minimum_height=breeds_layout.setter('height'))
+        
+        # Чекбоксы для выбора пород
+        self.breed_checkboxes = {}
+        for i, breed_info in enumerate(existing_breeds):
+            breed_name = breed_info.get('name', 'Неизвестная')
+            
+            # Создаём строку с чекбоксом и названием породы
+            breed_row = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=40)
+            
+            # Чекбокс (используем Button как чекбокс)
+            from kivy.uix.checkbox import CheckBox
+            checkbox = CheckBox(size_hint=(None, None), size=(40, 40), active=False)
+            self.breed_checkboxes[i] = checkbox
+            
+            # Название породы
+            breed_label = Label(
+                text=f"{breed_name}",
+                font_name='Roboto',
+                size_hint=(1, None),
+                height=40,
+                halign='left'
+            )
+            
+            breed_row.add_widget(checkbox)
+            breed_row.add_widget(breed_label)
+            breeds_layout.add_widget(breed_row)
+        
+        scroll.add_widget(breeds_layout)
+        content.add_widget(scroll)
+
+        # Кнопки управления
+        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
+
+        confirm_btn = ModernButton(
+            text='Удалить выбранные',
+            bg_color=get_color_from_hex('#FF6347'),
+            size_hint=(0.34, 1),
+            height=50
+        )
+
+        clear_all_btn = ModernButton(
+            text='Очистить все',
+            bg_color=get_color_from_hex('#FFA500'),
+            size_hint=(0.33, 1),
+            height=50
+        )
+
+        cancel_btn = ModernButton(
+            text='Отмена',
+            bg_color=get_color_from_hex('#808080'),
+            size_hint=(0.33, 1),
+            height=50
+        )
+
+        btn_layout.add_widget(confirm_btn)
+        btn_layout.add_widget(clear_all_btn)
+        btn_layout.add_widget(cancel_btn)
+        content.add_widget(btn_layout)
+
+        popup = Popup(
+            title="Удаление пород",
+            content=content,
+            size_hint=(0.8, 0.7)
+        )
+
+        def confirm_delete(btn):
+            # Получаем индексы пород для удаления
+            indices_to_delete = sorted(
+                [idx for idx, cb in self.breed_checkboxes.items() if cb.active],
+                reverse=True
+            )
+
+            if not indices_to_delete:
+                self.table_screen.show_error("Выберите хотя бы одну породу для удаления!")
+                return
+
+            # Удаляем породы
+            for idx in indices_to_delete:
+                if 0 <= idx < len(existing_breeds):
+                    existing_breeds.pop(idx)
+
+            # Обновляем данные
+            instance.text = json.dumps(existing_breeds, ensure_ascii=False, indent=2) if existing_breeds else ''
+
+            # Update page_data
+            if self.table_screen.current_page in self.table_screen.page_data:
+                page_data = self.table_screen.page_data[self.table_screen.current_page]
+                if self.row_index < len(page_data):
+                    page_data[self.row_index][3] = instance.text
+
+            self.table_screen.update_plot_total(instance, instance.text)
+
+            # Сохраняем в базу данных
+            self.table_screen.save_current_page()
+
+            # Обновляем отображение пород в основном popup
+            self.update_plot_breeds_display(plot_breeds_list, existing_breeds)
+
+            self.table_screen.show_success(f"Удалено пород: {len(indices_to_delete)}")
+            popup.dismiss()
+
+        def clear_all(btn):
+            # Очищаем все породы
+            instance.text = ''
+
+            # Update page_data
+            if self.table_screen.current_page in self.table_screen.page_data:
+                page_data = self.table_screen.page_data[self.table_screen.current_page]
+                if self.row_index < len(page_data):
+                    page_data[self.row_index][3] = ''
+
+            self.table_screen.update_plot_total(instance, '')
+
+            # Сохраняем в базу данных
+            self.table_screen.save_current_page()
+
+            # Обновляем отображение пород в основном popup
+            self.update_plot_breeds_display(plot_breeds_list, [])
+
+            self.table_screen.show_success("Все породы очищены!")
+            popup.dismiss()
+
+        confirm_btn.bind(on_press=confirm_delete)
+        clear_all_btn.bind(on_press=clear_all)
+        cancel_btn.bind(on_press=popup.dismiss)
 
         popup.open()
 
@@ -1055,9 +1209,14 @@ class MolodnikiTreeDataInputPopup(Popup):
                 if any(forbidden.lower() in breed_name.lower() for forbidden in forbidden_breeds):
                     self.table_screen.show_error("Эта порода не разрешена для использования!")
                     return
-                instance.text = breed_name
-                self.show_breed_details_popup(instance, breed_type, breed_name)
+
+                # Сохраняем новую породу в базу данных
+                self.save_custom_breed_to_db(breed_name, breed_type)
+
+                # Возвращаемся в меню выбора типа породы с новым названием
                 popup.dismiss()
+                from kivy.clock import Clock
+                Clock.schedule_once(lambda dt: self.show_breed_selection_popup(instance, breed_type), 0.15)
             else:
                 self.table_screen.show_error("Название породы не может быть пустым!")
 
@@ -1079,6 +1238,36 @@ class MolodnikiTreeDataInputPopup(Popup):
                 density_input.text = str(total_density) if total_density > 0 else ''
             except (ValueError, AttributeError):
                 pass
+
+    def save_custom_breed_to_db(self, breed_name, breed_type):
+        """Сохранить новую породу в базу данных"""
+        conn = sqlite3.connect('forest_data.db')
+        cursor = conn.cursor()
+        try:
+            cursor.execute('''
+                INSERT INTO custom_breeds (breed_name, breed_type)
+                VALUES (?, ?)
+            ''', (breed_name, breed_type))
+            conn.commit()
+            return True
+        except sqlite3.IntegrityError:
+            # Порода уже существует
+            return False
+        finally:
+            conn.close()
+
+    def load_custom_breeds(self, breed_type):
+        """Загрузить пользовательские породы из базы данных"""
+        conn = sqlite3.connect('forest_data.db')
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT breed_name FROM custom_breeds
+            WHERE breed_type = ?
+            ORDER BY breed_name
+        ''', (breed_type,))
+        results = [row[0] for row in cursor.fetchall()]
+        conn.close()
+        return results
 
     def save_data(self, instance):
         # Save to page_data
@@ -1111,6 +1300,7 @@ class ExtendedMolodnikiTableScreen(Screen):
     current_radius = StringProperty("5.64")
     current_plot_area_ha = StringProperty("")
     plot_area_input = StringProperty("")
+    current_address_display_text = StringProperty("")
     MAX_PAGES = 200
 
     # Данные проекта ухода
@@ -1245,8 +1435,47 @@ class ExtendedMolodnikiTableScreen(Screen):
 
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_molodniki_suggestions ON molodniki_suggestions (column_index, value)')
 
+        # Создаем таблицу для хранения пользовательских пород
+        cursor.execute('''CREATE TABLE IF NOT EXISTS custom_breeds (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        breed_name TEXT UNIQUE,
+                        breed_type TEXT, -- 'coniferous' или 'deciduous'
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_custom_breeds ON custom_breeds (breed_type)')
+
         conn.commit()
         conn.close()
+
+    def save_custom_breed_to_db(self, breed_name, breed_type):
+        """Сохранить новую породу в базу данных"""
+        conn = sqlite3.connect(self.db_name)
+        cursor = conn.cursor()
+        try:
+            cursor.execute('''
+                INSERT INTO custom_breeds (breed_name, breed_type)
+                VALUES (?, ?)
+            ''', (breed_name, breed_type))
+            conn.commit()
+            return True
+        except sqlite3.IntegrityError:
+            # Порода уже существует
+            return False
+        finally:
+            conn.close()
+
+    def load_custom_breeds(self, breed_type):
+        """Загрузить пользовательские породы из базы данных"""
+        conn = sqlite3.connect(self.db_name)
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT breed_name FROM custom_breeds
+            WHERE breed_type = ?
+            ORDER BY breed_name
+        ''', (breed_type,))
+        results = [row[0] for row in cursor.fetchall()]
+        conn.close()
+        return results
 
     def create_ui(self):
         main_layout = BoxLayout(orientation='horizontal', padding=10, spacing=10)
@@ -1513,12 +1742,17 @@ class ExtendedMolodnikiTableScreen(Screen):
                 'Ива', 'Ива кустарниковая'
             ]
 
+        # Загружаем пользовательские породы из базы данных
+        custom_breeds = self.load_custom_breeds(breed_type)
+        # Добавляем пользовательские породы к стандартным
+        all_breeds = breeds + custom_breeds
+
         # ScrollView для списка пород
         scroll = ScrollView(size_hint=(1, None), height=300)
         breeds_layout = GridLayout(cols=1, spacing=5, size_hint_y=None)
         breeds_layout.bind(minimum_height=breeds_layout.setter('height'))
 
-        for breed in breeds:
+        for breed in all_breeds:
             btn = ModernButton(
                 text=breed,
                 bg_color=get_color_from_hex('#87CEEB'),
@@ -1738,29 +1972,39 @@ class ExtendedMolodnikiTableScreen(Screen):
             )
             content.add_widget(hint_label)
 
-        # Кнопки управления - добавление и выход
+        # Кнопки управления - добавление, удаление и выход
         btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
-        
+
         # Главная кнопка - "Добавить"
         save_add_btn = ModernButton(
             text='Добавить',
             bg_color=get_color_from_hex('#00FF00'),
-            size_hint=(0.5, 1),
+            size_hint=(0.33, 1),
             height=50,
             font_size='16sp',
             bold=True
         )
-        
-        # Кнопка отмены
-        cancel_btn = ModernButton(
-            text='Отмена',
+
+        # Кнопка удаления
+        delete_btn = ModernButton(
+            text='Удалить',
             bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(0.5, 1),
+            size_hint=(0.33, 1),
             height=50,
             font_size='14sp'
         )
-        
+
+        # Кнопка отмены
+        cancel_btn = ModernButton(
+            text='Отмена',
+            bg_color=get_color_from_hex('#FF0000'),
+            size_hint=(0.34, 1),
+            height=50,
+            font_size='14sp'
+        )
+
         btn_layout.add_widget(save_add_btn)
+        btn_layout.add_widget(delete_btn)
         btn_layout.add_widget(cancel_btn)
         content.add_widget(btn_layout)
 
@@ -1828,10 +2072,161 @@ class ExtendedMolodnikiTableScreen(Screen):
             self.show_after_add_popup(instance, selected_breed, len(existing_breeds))
 
         save_add_btn.bind(on_press=save_and_add)
+        delete_btn.bind(on_press=lambda x: self.show_delete_breed_popup(instance, plot_breeds_list))
         cancel_btn.bind(on_press=popup.dismiss)
 
         popup.open()
+
+    def show_delete_breed_popup(self, instance, plot_breeds_list):
+        """Показать popup для удаления пород"""
+        # Получаем список пород
+        existing_breeds = self.parse_breeds_data(instance.text)
         
+        if not existing_breeds:
+            self.show_error("Нет пород для удаления!")
+            return
+        
+        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        
+        title_label = Label(
+            text="Выберите породы для удаления:",
+            font_name='Roboto',
+            bold=True,
+            size_hint=(1, None),
+            height=40,
+            color=(0.5, 0, 0, 1)
+        )
+        content.add_widget(title_label)
+        
+        # ScrollView для списка пород
+        scroll = ScrollView(size_hint=(1, None), height=300)
+        breeds_layout = GridLayout(cols=1, spacing=5, size_hint_y=None)
+        breeds_layout.bind(minimum_height=breeds_layout.setter('height'))
+        
+        # Чекбоксы для выбора пород
+        self.breed_checkboxes = {}
+        for i, breed_info in enumerate(existing_breeds):
+            breed_name = breed_info.get('name', 'Неизвестная')
+            
+            # Создаём строку с чекбоксом и названием породы
+            breed_row = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=40)
+            
+            checkbox = CheckBox(size_hint=(None, None), size=(40, 40), active=False)
+            self.breed_checkboxes[i] = checkbox
+            
+            breed_label = Label(
+                text=f"{breed_name}",
+                font_name='Roboto',
+                size_hint=(1, None),
+                height=40,
+                halign='left'
+            )
+            
+            breed_row.add_widget(checkbox)
+            breed_row.add_widget(breed_label)
+            breeds_layout.add_widget(breed_row)
+        
+        scroll.add_widget(breeds_layout)
+        content.add_widget(scroll)
+
+        # Кнопки управления
+        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
+
+        confirm_btn = ModernButton(
+            text='Удалить выбранные',
+            bg_color=get_color_from_hex('#FF6347'),
+            size_hint=(0.34, 1),
+            height=50
+        )
+
+        clear_all_btn = ModernButton(
+            text='Очистить все',
+            bg_color=get_color_from_hex('#FFA500'),
+            size_hint=(0.33, 1),
+            height=50
+        )
+
+        cancel_btn = ModernButton(
+            text='Отмена',
+            bg_color=get_color_from_hex('#808080'),
+            size_hint=(0.33, 1),
+            height=50
+        )
+
+        btn_layout.add_widget(confirm_btn)
+        btn_layout.add_widget(clear_all_btn)
+        btn_layout.add_widget(cancel_btn)
+        content.add_widget(btn_layout)
+
+        popup = Popup(
+            title="Удаление пород",
+            content=content,
+            size_hint=(0.8, 0.7)
+        )
+
+        def confirm_delete(btn):
+            # Получаем индексы пород для удаления
+            indices_to_delete = sorted(
+                [idx for idx, cb in self.breed_checkboxes.items() if cb.active],
+                reverse=True
+            )
+
+            if not indices_to_delete:
+                self.show_error("Выберите хотя бы одну породу для удаления!")
+                return
+
+            # Удаляем породы
+            for idx in indices_to_delete:
+                if 0 <= idx < len(existing_breeds):
+                    existing_breeds.pop(idx)
+
+            # Обновляем данные
+            instance.text = json.dumps(existing_breeds, ensure_ascii=False, indent=2) if existing_breeds else ''
+
+            # Update page_data
+            if self.current_page in self.page_data:
+                page_data = self.page_data[self.current_page]
+                if hasattr(instance, 'row_index') and instance.row_index < len(page_data):
+                    page_data[instance.row_index][3] = instance.text
+
+            self.update_plot_total(instance, instance.text)
+
+            # Сохраняем в базу данных
+            self.save_current_page()
+
+            # Обновляем отображение пород в основном popup
+            self.update_plot_breeds_display(plot_breeds_list, existing_breeds)
+
+            self.show_success(f"Удалено пород: {len(indices_to_delete)}")
+            popup.dismiss()
+
+        def clear_all(btn):
+            # Очищаем все породы
+            instance.text = ''
+
+            # Update page_data
+            if self.current_page in self.page_data:
+                page_data = self.page_data[self.current_page]
+                if hasattr(instance, 'row_index') and instance.row_index < len(page_data):
+                    page_data[instance.row_index][3] = ''
+
+            self.update_plot_total(instance, '')
+
+            # Сохраняем в базу данных
+            self.save_current_page()
+
+            # Обновляем отображение пород в основном popup
+            self.update_plot_breeds_display(plot_breeds_list, [])
+
+            self.show_success("Все породы очищены!")
+            popup.dismiss()
+
+        confirm_btn.bind(on_press=confirm_delete)
+        clear_all_btn.bind(on_press=clear_all)
+        cancel_btn.bind(on_press=popup.dismiss)
+
+        popup.open()
+
     def show_after_add_popup(self, instance, added_breed, total_breeds_count):
         """Показать popup после добавления породы с выбором следующего действия"""
         content = BoxLayout(orientation='vertical', spacing=15, padding=15)
@@ -2326,6 +2721,7 @@ class ExtendedMolodnikiTableScreen(Screen):
             input_filter='float',
             text=self.plot_area_input if hasattr(self, 'plot_area_input') and self.plot_area_input else ''
         )
+        self.plot_area_input_field.bind(text=self.update_plot_area_display)
         content.add_widget(self.plot_area_input_field)
 
         info_label = Label(
@@ -2377,6 +2773,7 @@ class ExtendedMolodnikiTableScreen(Screen):
                 self.project_data['address']['plot_area'] = str(plot_area)
                 self.show_success(f"Площадь участка {plot_area} га сохранена")
                 popup.dismiss()
+                self.update_address_popup_display()
 
             except ValueError:
                 self.show_error("Введите корректное числовое значение площади!")
@@ -2809,6 +3206,8 @@ class ExtendedMolodnikiTableScreen(Screen):
                 result_parts.append(f"Типы: {', '.join(selected_activities)}")
 
             self.show_success(f"Мероприятие сохранено: {'; '.join(result_parts)}")
+            if hasattr(self, 'current_details_info'):
+                self.update_details_display()
             popup.dismiss()
 
         save_btn.bind(on_press=save_activity)
@@ -2910,6 +3309,7 @@ class ExtendedMolodnikiTableScreen(Screen):
                 # Также сохраняем в свойство класса
                 self.characteristics = characteristics_text
                 self.show_success(f"Характеристики сохранены:\n{characteristics_text}")
+                self.update_details_display()
             else:
                 self.show_error("Заполните хотя бы одну характеристику!")
                 return
@@ -2992,6 +3392,7 @@ class ExtendedMolodnikiTableScreen(Screen):
                     self.care_date = date_text
                     self.project_data['details']['care_date'] = date_text
                     self.show_success(f"Дата рубки сохранена: {date_text}")
+                    self.update_details_display()
                 else:
                     self.show_error("Неверный формат даты! Используйте ДД.ММ.ГГГГ")
                     return
@@ -3060,6 +3461,7 @@ class ExtendedMolodnikiTableScreen(Screen):
                 self.technology = technology_text
                 self.project_data['details']['technology'] = technology_text
                 self.show_success(f"Технология ухода сохранена: {technology_text[:50]}...")
+                self.update_details_display()
             else:
                 self.show_error("Введите технологию ухода!")
                 return
@@ -3145,9 +3547,10 @@ class ExtendedMolodnikiTableScreen(Screen):
                     break
 
             if selected_purpose:
-                self.selected_forest_purpose = selected_purpose
+                self.forest_purpose = selected_purpose
                 self.project_data['details']['forest_purpose'] = selected_purpose
                 self.show_success(f"Назначение лесов установлено: {selected_purpose}")
+                self.update_details_display()
                 popup.dismiss()
             else:
                 self.show_error("Выберите назначение лесов!")
@@ -3271,7 +3674,7 @@ class ExtendedMolodnikiTableScreen(Screen):
         technology_val = self.project_data['details'].get('technology', '') or self.technology or 'Не указана'
         forest_purpose_val = self.project_data['details'].get('forest_purpose', '') or self.forest_purpose or 'Не указано'
 
-        current_info = Label(
+        self.current_details_info = Label(
             text=f"Очередь рубки: {care_queue_val}\n"
                  f"Характеристика молодняков: {characteristics_val}\n"
                  f"Дата рубки: {care_date_val}\n"
@@ -3285,8 +3688,8 @@ class ExtendedMolodnikiTableScreen(Screen):
             halign='left',
             valign='top'
         )
-        current_info.bind(size=lambda *args: setattr(current_info, 'text_size', (current_info.width, None)))
-        current_values.add_widget(current_info)
+        self.current_details_info.bind(size=lambda *args: setattr(self.current_details_info, 'text_size', (self.current_details_info.width, None)))
+        current_values.add_widget(self.current_details_info)
 
         scroll_content.add_widget(current_values)
 
@@ -3425,8 +3828,10 @@ class ExtendedMolodnikiTableScreen(Screen):
                 self.current_quarter = quarter
                 self.project_data['address']['quarter'] = quarter
                 self.update_address_label()
+                self.update_address_popup_display()
                 self.show_success(f"Квартал установлен: {quarter}")
                 popup.dismiss()
+                self.update_address_popup_display()
             else:
                 self.show_error("Номер квартала не может быть пустым!")
 
@@ -3457,6 +3862,7 @@ class ExtendedMolodnikiTableScreen(Screen):
             input_filter='int',
             text=self.current_plot
         )
+        self.plot_input.bind(text=self.update_plot_display)
         content.add_widget(self.plot_input)
 
         btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
@@ -3490,6 +3896,7 @@ class ExtendedMolodnikiTableScreen(Screen):
                 self.update_address_label()
                 self.show_success(f"Выдел установлен: {plot}")
                 popup.dismiss()
+                self.update_address_popup_display()
             else:
                 self.show_error("Номер выдела не может быть пустым!")
 
@@ -3529,6 +3936,7 @@ class ExtendedMolodnikiTableScreen(Screen):
             font_name='Roboto',
             text=self.current_forestry
         )
+        self.forestry_input.bind(text=lambda instance, value: self.update_forestry_display(value))
         content.add_widget(self.forestry_input)
 
         # Поле для участкового лесничества
@@ -3549,6 +3957,7 @@ class ExtendedMolodnikiTableScreen(Screen):
             font_name='Roboto',
             text=getattr(self, 'current_district_forestry', '')
         )
+        self.district_forestry_input.bind(text=lambda instance, value: self.update_district_forestry_display(value))
         content.add_widget(self.district_forestry_input)
 
         btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
@@ -3585,6 +3994,7 @@ class ExtendedMolodnikiTableScreen(Screen):
                 self.update_address_label()
                 self.show_success(f"Лесничество установлено: {forestry}" + (f", участковое: {district_forestry}" if district_forestry else ""))
                 popup.dismiss()
+                self.update_address_popup_display()
             else:
                 self.show_error("Название лесничества не может быть пустым!")
 
@@ -5757,6 +6167,10 @@ class ExtendedMolodnikiTableScreen(Screen):
                 if any(forbidden.lower() in breed_name.lower() for forbidden in forbidden_breeds):
                     self.show_error("Эта порода не разрешена для использования!")
                     return
+                
+                # Сохраняем новую породу в базу данных
+                self.save_custom_breed_to_db(breed_name, breed_type)
+                
                 instance.text = breed_name
                 self.show_breed_details_popup(instance, breed_type, breed_name)
                 popup.dismiss()
@@ -5782,21 +6196,181 @@ class ExtendedMolodnikiTableScreen(Screen):
             except (ValueError, AttributeError):
                 pass
 
-    def update_address_label(self):
-        """Обновить текст адресной строки"""
+    def update_plot_breeds_display(self, plot_breeds_list, existing_breeds_for_plot):
+        """Обновить отображение списка пород на площадке"""
+        # Очищаем текущий список
+        plot_breeds_list.clear_widgets()
+
+        if existing_breeds_for_plot:
+            for i, breed_info in enumerate(existing_breeds_for_plot):
+                if not isinstance(breed_info, dict):
+                    continue
+                breed_name = breed_info.get('name', 'Неизвестная')
+
+                # Рассчитываем густоту (для хвойных - сумма градаций)
+                density = breed_info.get('density', 0)
+                if breed_info.get('type') == 'coniferous':
+                    conif_density = (breed_info.get('do_05', 0) + breed_info.get('05_15', 0) + breed_info.get('bolee_15', 0))
+                    if conif_density > 0:
+                        density = conif_density
+
+                height = breed_info.get('height', 0)
+                age = breed_info.get('age', 0)
+                diameter = breed_info.get('diameter', 0)
+
+                # Формируем строку с параметрами породы
+                params_parts = []
+                if density:
+                    params_parts.append(f"Густота: {density}")
+                if height:
+                    params_parts.append(f"Высота: {height}м")
+                if diameter:
+                    params_parts.append(f"Диаметр: {diameter}см")
+                if age:
+                    params_parts.append(f"Возраст: {age}л")
+
+                params_text = ", ".join(params_parts) if params_parts else "Нет данных"
+
+                # Для хвойных пород добавляем градации по высоте
+                gradation_text = ""
+                if breed_info.get('type') == 'coniferous':
+                    gradations = []
+                    if breed_info.get('do_05', 0) > 0:
+                        gradations.append(f"До 0.5м: {breed_info['do_05']}")
+                    if breed_info.get('05_15', 0) > 0:
+                        gradations.append(f"0.5-1.5м: {breed_info['05_15']}")
+                    if breed_info.get('bolee_15', 0) > 0:
+                        gradations.append(f">1.5м: {breed_info['bolee_15']}")
+                    if gradations:
+                        gradation_text = " | " + ", ".join(gradations)
+
+                breed_item = Label(
+                    text=f'{i+1}. {breed_name} - {params_text}{gradation_text}',
+                    font_name='Roboto',
+                    font_size='12sp',
+                    color=(0.2, 0.2, 0.2, 1),
+                    size_hint=(1, None),
+                    height=35 if gradation_text else 30,
+                    halign='left',
+                    valign='middle'
+                )
+                breed_item.bind(size=lambda *args: setattr(breed_item, 'text_size', (breed_item.width, None)))
+                plot_breeds_list.add_widget(breed_item)
+        else:
+            no_breeds_label = Label(
+                text='Породы еще не добавлены',
+                font_name='Roboto',
+                font_size='12sp',
+                color=(0.5, 0.5, 0.5, 1),
+                size_hint=(1, None),
+                height=30,
+                halign='left'
+            )
+            no_breeds_label.bind(size=lambda *args: setattr(no_breeds_label, 'text_size', (no_breeds_label.width, None)))
+            plot_breeds_list.add_widget(no_breeds_label)
+
+    def update_address_display(self):
+        """Обновить отображение адреса везде"""
+        # Обновляем адресную строку в интерфейсе
         address_parts = []
         if self.current_quarter:
-            address_parts.append(f"{self.current_quarter}")
+            address_parts.append(f"К: {self.current_quarter}")
         if self.current_plot:
-            address_parts.append(f"{self.current_plot}")
-        # Убрали отображение current_forestry для удаления текста "Молодняки участок 1"
-        # if self.current_forestry:
-        #     address_parts.append(self.current_forestry)
-        if getattr(self, 'current_district_forestry', ''):
-            address_parts.append(f"{self.current_district_forestry}")
+            address_parts.append(f"В: {self.current_plot}")
+        if self.current_forestry:
+            address_parts.append(f"Л: {self.current_forestry}")
+        if self.current_radius:
+            address_parts.append(f"Р: {self.current_radius}")
+        if hasattr(self, 'plot_area_input') and self.plot_area_input:
+            address_parts.append(f"П: {self.plot_area_input} га")
 
-        address_text = " ".join(address_parts) if address_parts else ""
+        address_text = " | ".join(address_parts) if address_parts else ""
         self.address_label.text = address_text
+
+        # Обновляем текст для бокса "Настройки Адреса"
+        address_display_text = (
+            f"Квартал: {self.project_data['address'].get('quarter', 'Не указан')}\n"
+            f"Выдел: {self.project_data['address'].get('plot', 'Не указан')}\n"
+            f"Лесничество: {self.project_data['address'].get('forestry', 'Не указано')}\n"
+            f"Участковое лесничество: {self.project_data['address'].get('district_forestry', 'Не указано')}\n"
+            f"Радиус: {self.project_data['address'].get('radius', 'Не указан')} м\n"
+            f"Площадь участка: {self.project_data['address'].get('plot_area', 'Не указана')} га"
+        )
+        self.current_address_display_text = address_display_text
+
+        # Если popup открыт, обновляем и там
+        self.update_address_popup_display()
+
+    def update_quarter_display(self, value):
+        """Обновить отображение квартала"""
+        self.current_quarter = value.strip() if value else ""
+        self.project_data['address']['quarter'] = self.current_quarter
+        self.update_address_display()
+
+    def update_plot_area_display(self, instance, value):
+        """Обновить отображение площади участка"""
+        self.plot_area_input = value.strip() if value else ""
+        self.project_data['address']['plot_area'] = self.plot_area_input
+        self.update_address_display()
+
+    def update_plot_display(self, instance, value):
+        """Обновить отображение выдела"""
+        self.current_plot = value.strip() if value else ""
+        self.project_data['address']['plot'] = self.current_plot
+        self.update_address_display()
+
+    def update_forestry_display(self, instance, value):
+        """Обновить отображение лесничества"""
+        self.current_forestry = value.strip() if value else ""
+        self.project_data['address']['forestry'] = self.current_forestry
+        self.update_address_display()
+
+    def update_district_forestry_display(self, instance, value):
+        """Обновить отображение участкового лесничества"""
+        self.current_district_forestry = value.strip() if value else ""
+        self.project_data['address']['district_forestry'] = self.current_district_forestry
+        self.update_address_display()
+
+    def update_radius_display(self, instance, value):
+        """Обновить отображение радиуса"""
+        self.current_radius = value.strip() if value else "5.64"
+        self.project_data['address']['radius'] = self.current_radius
+        self.update_address_display()
+
+    def update_address_label(self):
+        """Устаревший метод - используем update_address_display"""
+        self.update_address_display()
+
+    def update_address_popup_display(self):
+        """Обновить отображение адреса в открытом popup Настройки адреса"""
+        if hasattr(self, 'current_address_info') and self.current_address_info:
+            self.current_address_info.text = (
+                f"Квартал: {self.project_data['address'].get('quarter', 'Не указан')}\n"
+                f"Выдел: {self.project_data['address'].get('plot', 'Не указан')}\n"
+                f"Лесничество: {self.project_data['address'].get('forestry', 'Не указано')}\n"
+                f"Участковое лесничество: {self.project_data['address'].get('district_forestry', 'Не указано')}\n"
+                f"Радиус: {self.project_data['address'].get('radius', 'Не указан')} м\n"
+                f"Площадь участка: {self.project_data['address'].get('plot_area', 'Не указана')} га"
+            )
+        if hasattr(self, 'address_popup') and self.address_popup:
+            self.address_popup.title = "Настройки адреса (обновлено)"
+
+    def update_details_display(self):
+        """Обновляет отображение деталей проекта"""
+        if hasattr(self, 'current_details_info') and self.current_details_info:
+            care_queue_val = self.project_data['details'].get('care_queue', '') or self.care_queue or 'Не указана'
+            characteristics_val = self.project_data['details'].get('characteristics', '') or self.characteristics or 'Не указана'
+            care_date_val = self.project_data['details'].get('care_date', '') or self.care_date or 'Не указана'
+            technology_val = self.project_data['details'].get('technology', '') or self.technology or 'Не указана'
+            forest_purpose_val = self.project_data['details'].get('forest_purpose', '') or self.forest_purpose or 'Не указано'
+
+            self.current_details_info.text = (
+                f"Очередь рубки: {care_queue_val}\n"
+                f"Характеристика молодняков: {characteristics_val}\n"
+                f"Дата рубки: {care_date_val}\n"
+                f"Технология ухода: {technology_val}\n"
+                f"Назначение лесов: {forest_purpose_val}"
+            )
 
     def load_existing_data(self):
         """Загружаем существующие данные из базы данных"""
@@ -5915,6 +6489,7 @@ class ExtendedMolodnikiTableScreen(Screen):
             input_filter='int',
             text=self.project_data['address'].get('quarter', self.current_quarter)
         )
+        self.quarter_input.bind(text=lambda instance, value: self.update_quarter_display(value))
         content.add_widget(self.quarter_input)
 
         btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=40)
@@ -5945,7 +6520,7 @@ class ExtendedMolodnikiTableScreen(Screen):
             if quarter:
                 self.current_quarter = quarter
                 self.project_data['address']['quarter'] = quarter
-                self.update_address_label()
+                self.update_address_display()
                 self.show_success(f"Квартал установлен: {quarter}")
                 popup.dismiss()
             else:
@@ -8017,6 +8592,7 @@ class ExtendedMolodnikiTableScreen(Screen):
             input_filter='float',
             text=self.current_radius
         )
+        self.radius_input.bind(text=self.update_radius_display)
         content.add_widget(self.radius_input)
 
         info_label = Label(
@@ -8068,6 +8644,7 @@ class ExtendedMolodnikiTableScreen(Screen):
                 self.update_totals()
                 self.show_success(f"Радиус {radius} м сохранен для всех расчетов")
                 popup.dismiss()
+                self.update_address_popup_display()
 
             except ValueError:
                 self.show_error("Введите корректное числовое значение радиуса!")
@@ -8142,8 +8719,9 @@ class ExtendedMolodnikiTableScreen(Screen):
         # Обновляем общие итоги страницы при изменении данных
         self.update_totals()
 
-    def update_plot_total(self, row_idx, value):
+    def update_plot_total(self, instance, value):
         """Обновляем итог по площадке при изменении данных"""
+        row_idx = instance.row_index
         breeds_text = value
         breeds_data = self.parse_breeds_data(breeds_text)
 
@@ -8175,7 +8753,8 @@ class ExtendedMolodnikiTableScreen(Screen):
             if 'age' in breed_info and breed_info['age']:
                 total_age += breed_info['age']
 
-        # Метод завершен
+        # Обновляем общие итоги
+        self.update_totals()
 
     def create_new_plot(self, instance=None):
         """Создать новую площадку с помощью всплывающего окна"""
@@ -8232,7 +8811,8 @@ class ExtendedMolodnikiTableScreen(Screen):
         )
         current_values.add_widget(current_title)
 
-        current_info = Label(
+        # Сохраняем ссылку на label для обновления при каждом открытии
+        self.current_address_info = Label(
             text=f"Квартал: {self.project_data['address'].get('quarter', 'Не указан')}\n"
                  f"Выдел: {self.project_data['address'].get('plot', 'Не указан')}\n"
                  f"Лесничество: {self.project_data['address'].get('forestry', 'Не указано')}\n"
@@ -8247,8 +8827,8 @@ class ExtendedMolodnikiTableScreen(Screen):
             halign='left',
             valign='top'
         )
-        current_info.bind(size=lambda *args: setattr(current_info, 'text_size', (current_info.width, None)))
-        current_values.add_widget(current_info)
+        self.current_address_info.bind(size=lambda *args: setattr(self.current_address_info, 'text_size', (self.current_address_info.width, None)))
+        current_values.add_widget(self.current_address_info)
 
         scroll_content.add_widget(current_values)
 
@@ -8325,14 +8905,18 @@ class ExtendedMolodnikiTableScreen(Screen):
         )
         content.add_widget(close_btn)
 
-        popup = Popup(
+        self.address_popup = Popup(
             title="Настройки адреса",
             content=content,
-            size_hint=(0.95, 0.95)
+            size_hint=(0.8, 0.9)
         )
 
-        close_btn.bind(on_press=popup.dismiss)
-        popup.open()
+        # Обновляем данные перед открытием popup
+        self.update_address_display()
+        self.update_details_display()
+
+        close_btn.bind(on_press=self.address_popup.dismiss)
+        self.address_popup.open()
 
     def show_file_popup(self, instance):
         """Показать popup с операциями над файлами"""
