@@ -4336,6 +4336,18 @@ class ExtendedMolodnikiTableScreen(Screen):
             with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False, encoding='utf-8') as f:
                 json.dump(temp_data, f, ensure_ascii=False, indent=2)
                 temp_file = f.name
+            
+            # ОТЛАДОЧНЫЙ ВЫВОД
+            print("=" * 60)
+            print("ОТЛАДКА: Данные для проекта ухода")
+            print("=" * 60)
+            print(f"Адрес: Квартал {address_data.get('quarter')}, Выдел {address_data.get('plot')}")
+            print(f"Интенсивность: {total_data.get('intensity')}")
+            print(f"Средний диаметр: {total_data.get('avg_diameter')}")
+            print(f"Породы: {len(total_data.get('breeds', []))}")
+            for breed in total_data.get('breeds', []):
+                print(f"  - {breed.get('name')}: d={breed.get('diameter')}, h={breed.get('height')}, density={breed.get('density')}")
+            print("=" * 60)
 
             # Вызываем скрипт fill_our_template.py с параметром
             script_path = os.path.join(os.path.dirname(__file__), 'fill_our_template.py')
@@ -4633,16 +4645,19 @@ class ExtendedMolodnikiTableScreen(Screen):
             all_densities = []
             all_heights = []
             all_ages = []
+            all_diameters = []
 
             for breed_name, data in breeds_data.items():
                 if data['plots']:
                     all_densities.extend([p['density'] for p in data['plots'] if p['density'] > 0])
                     all_heights.extend([p['height'] for p in data['plots'] if p['height'] > 0])
                     all_ages.extend([p['age'] for p in data['plots'] if p['age'] > 0])
+                    all_diameters.extend([p.get('diameter', 0) for p in data['plots'] if p.get('diameter', 0) > 0])
 
             avg_overall_density = sum(all_densities) / len(all_densities) if all_densities else 0
             avg_overall_height = sum(all_heights) / len(all_heights) if all_heights else 0
             avg_overall_age = sum(all_ages) / len(all_ages) if all_ages else 0
+            avg_overall_diameter = sum(all_diameters) / len(all_diameters) if all_diameters else 0
 
             # Формируем итоговые данные
             total_data = {
@@ -4652,11 +4667,11 @@ class ExtendedMolodnikiTableScreen(Screen):
                 'avg_age': avg_overall_age,
                 'avg_density': avg_overall_density,
                 'avg_height': avg_overall_height,
-                'avg_diameter': 0,  # Пока не рассчитывается
+                'avg_diameter': avg_overall_diameter,  # РАССЧИТЫВАЕМ!
                 'total_plots': len([row for page in self.page_data.values() for row in page if any(cell for cell in row[:3] if cell)]),
                 'composition': composition_text,
                 'care_subject': care_subject,
-                'intensity': intensity,
+                'intensity': intensity if intensity > 0 else 25,  # Если не рассчитана, по умолчанию 25%
                 'breeds': []
             }
 
@@ -4666,13 +4681,15 @@ class ExtendedMolodnikiTableScreen(Screen):
                     avg_density = sum(p['density'] for p in data['plots']) / len(data['plots'])
                     avg_height = sum(p['height'] for p in data['plots'] if p['height'] > 0) / len([p for p in data['plots'] if p['height'] > 0]) if any(p['height'] > 0 for p in data['plots']) else 0
                     avg_age = sum(p['age'] for p in data['plots'] if p['age'] > 0) / len([p for p in data['plots'] if p['age'] > 0]) if any(p['age'] > 0 for p in data['plots']) else 0
+                    avg_diameter = sum(p.get('diameter', 0) for p in data['plots'] if p.get('diameter', 0) > 0) / len([p for p in data['plots'] if p.get('diameter', 0) > 0]) if any(p.get('diameter', 0) > 0 for p in data['plots']) else 0
 
                     breed_data = {
                         'name': breed_name,
                         'type': data['type'],
                         'density': avg_density,
                         'height': avg_height,
-                        'age': avg_age
+                        'age': avg_age,
+                        'diameter': avg_diameter  # ДОБАВЛЯЕМ ДИАМЕТР!
                     }
 
                     if data['type'] == 'coniferous':
