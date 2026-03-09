@@ -23,24 +23,21 @@ def create_custom_template():
     section.right_margin = Cm(1.5)
     
     # === ПОДПИСИ ===
+    # Согласовано - ПУСТОЕ (заполняет лесник)
     table = doc.add_table(rows=1, cols=2)
     table.autofit = False
     
-    # Согласовано
     cell1 = table.cell(0, 0)
     p = cell1.paragraphs[0]
-    p.add_run('Согласовано:\n').bold = True
-    p.add_run('Начальник ГКУ РК\n')
-    p.add_run('«Муезерское центральное лесничество»\n')
-    p.add_run('Зипунников В.Н.\n\n')
+    p.add_run('Согласовано:\n\n\n')
     p.add_run('________________________\n')
     p.add_run('"____" _____________20__г.')
     
-    # Утверждаю
+    # Утверждаю - тоже пустое
     cell2 = table.cell(0, 1)
     p = cell2.paragraphs[0]
     p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    p.add_run('Утверждаю:\n\n').bold = True
+    p.add_run('Утверждаю:\n\n\n').bold = True
     p.add_run('________________________\n')
     p.add_run('"____" _____________20__г.')
     

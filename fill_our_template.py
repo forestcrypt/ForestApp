@@ -2,17 +2,13 @@
 # -*- coding: utf-8 -*-
 """
 Скрипт для заполнения нашего шаблона проекта ухода
-ИСПРАВЛЕНИЯ ПО ВСЕМ ЗАМЕЧАНИЯМ:
-1. Согласовано - пустое (заполняет лесник)
-2. Вид рубки: "осветление, первая - РУМ (осветление) очередь"
-3. Тип леса - из меню Итого
-4. Диаметр по породам - заполняется из данных
-5. Проектируемые высота и диаметр выше исходных (мелочь убирается)
-6. Густота проектируемая - из предмета ухода (тыс. шт/га)
-7. Интенсивность рубки - рассчитанная из меню Итого
-8. Характеристика деревьев - породы через "-"
-9. Склонение названий лесничеств
-10. Соблюдение абзацев и отступов
+ИСПРАВЛЕНИЯ ВСЕХ ПРОБЛЕМ:
+1. Согласовано - ПУСТОЕ (удалить текст из шаблона)
+2. Диаметры - заполнять из breed.get('diameter')
+3. Характеристика деревьев - породы из меню Итого (список пород), а не все подряд
+4. Интенсивность рубки - из total_data.get('intensity')
+5. Густота проектируемая - парсинг предмета ухода с БАЗОЙ пород
+6. База данных пород для предмета ухода
 """
 
 import os
@@ -21,6 +17,44 @@ import json
 import re
 import datetime
 from docx import Document
+
+# БАЗА ДАННЫХ ПОРОД для предмета ухода
+BREED_DATABASE = {
+    'С': 'Сосна',
+    'Б': 'Берёза',
+    'Ос': 'Осина',
+    'Е': 'Ель',
+    'П': 'Пихта',
+    'Ол': 'Ольха',
+    'Д': 'Дуб',
+    'Я': 'Ясень',
+    'Г': 'Граб',
+    'Лц': 'Лиственница',
+    'Лп': 'Липа',
+    'К': 'Кедр',
+    'Мж': 'Можжевельник',
+    'Кл': 'Клён',
+    'Р': 'Рябина'
+}
+
+# Обратный маппинг: название породы -> код
+BREED_TO_CODE = {
+    'Сосна': 'С',
+    'Берёза': 'Б',
+    'Осина': 'Ос',
+    'Ель': 'Е',
+    'Пихта': 'П',
+    'Ольха': 'Ол',
+    'Дуб': 'Д',
+    'Ясень': 'Я',
+    'Граб': 'Г',
+    'Лиственница': 'Лц',
+    'Липа': 'Лп',
+    'Кедр': 'К',
+    'Можжевельник': 'Мж',
+    'Клён': 'Кл',
+    'Рябина': 'Р'
+}
 
 class OurTemplateFiller:
     def __init__(self, data_file=None):
@@ -53,8 +87,11 @@ class OurTemplateFiller:
 
             print(f"[OK] Данные загружены")
             print(f"  Пород: {len(self.breeds_data)}")
+            for breed in self.breeds_data:
+                print(f"    - {breed.get('name', 'Н/Д')}: d={breed.get('diameter', 0)}, h={breed.get('height', 0)}, density={breed.get('density', 0)}")
             print(f"  Коэффициент состава: {self.total_data.get('composition', 'Н/Д')}")
             print(f"  Интенсивность: {self.total_data.get('intensity', 'Н/Д')}")
+            print(f"  Предмет ухода: {self.details_data.get('care_subject', 'Н/Д')}")
             return True
 
         except Exception as e:
@@ -63,9 +100,9 @@ class OurTemplateFiller:
             traceback.print_exc()
             return False
 
-    def format_number(self, value, default='Н/Д'):
+    def format_number(self, value, default=''):
         """Форматирует число с одной десятичной точкой"""
-        if value is None or value == 'Н/Д':
+        if value is None or value == 'Н/Д' or value == 0:
             return default
         try:
             num = float(value)
@@ -95,58 +132,107 @@ class OurTemplateFiller:
             return name + 'е'  # По умолчанию
     
     def parse_care_subject_density(self, care_text):
-        """Парсит предмет ухода и возвращает густоту по породам {порода: густоту тыс. шт/га}"""
+        """
+        Парсит предмет ухода и возвращает густоту по породам {порода: густоту тыс. шт/га}
+        Примеры: "3000шт/гаС", "3С2Б", "300шт/гаС + 50шт/гаБ"
+        """
         if not care_text:
             return {}
         
-        # Пример: "300шт/гаС + 50шт/гаБ" или "3С2Б"
         result = {}
+        care_text = care_text.strip()
         
-        # Ищем паттерны типа "300шт/гаС" или "300 шт/га Сосна"
-        matches = re.findall(r'(\d+(?:\.\d+)?)\s*(?:шт/га)?\s*([А-ЯA-Яа-яa-zA-Z]+)', care_text, re.IGNORECASE)
-        
-        breed_map = {
-            'С': 'Сосна', 'Е': 'Ель', 'П': 'Пихта', 'К': 'Кедр', 'Л': 'Лиственница',
-            'Б': 'Берёза', 'Ос': 'Осина', 'О': 'Ольха', 'Д': 'Дуб'
-        }
+        # Паттерн 1: "3000шт/гаС" или "3000 шт/га С"
+        matches = re.findall(r'(\d+(?:\.\d+)?)\s*(?:шт/га)?\s*([А-ЯA-Z][а-яa-z]*)', care_text)
         
         for density_str, breed_str in matches:
             density = float(density_str) / 1000  # Переводим в тыс. шт/га
             
-            # Определяем породу
-            breed_name = None
-            for code, name in breed_map.items():
-                if code.lower() in breed_str.lower():
-                    breed_name = name
-                    break
+            # Определяем породу по коду (первая заглавная буква)
+            breed_code = breed_str[0].upper() if breed_str else ''
+            
+            # Ищем полное название породы по коду
+            breed_name = BREED_DATABASE.get(breed_code, None)
+            
+            # Если не нашли по коду, ищем по названию
+            if not breed_name:
+                for code, name in BREED_DATABASE.items():
+                    if code.lower() in breed_str.lower():
+                        breed_name = name
+                        break
             
             if breed_name:
                 result[breed_name] = density
         
+        # Паттерн 2: "3С2Б" (коэффициенты состава)
+        if not result:
+            matches = re.findall(r'(\d+(?:\.\d+)?)([А-ЯA-Z][а-яa-z]*)', care_text)
+            for coeff_str, breed_str in matches:
+                coeff = float(coeff_str)
+                # Коэффициент состава переводим в густоту (примерно)
+                # 10 = 100%, значит coeff = coeff/10 * 100% от общей густоты
+                density = coeff / 10  # тыс. шт/га
+                
+                breed_code = breed_str[0].upper() if breed_str else ''
+                breed_name = BREED_DATABASE.get(breed_code, None)
+                
+                if not breed_name:
+                    for code, name in BREED_DATABASE.items():
+                        if code.lower() in breed_str.lower():
+                            breed_name = name
+                            break
+                
+                if breed_name:
+                    result[breed_name] = density
+        
+        print(f"[INFO] Распарсен предмет ухода: {result}")
         return result
 
     def get_characteristics(self):
-        """Получает характеристики деревьев с породами"""
+        """
+        Получает характеристики деревьев с породами из меню Итого (Детали ухода)
+        Формат: "Лучшие: текст - Сосна; Берёза"
+        """
         characteristics = self.details_data.get('characteristics', '')
         
-        # Формируем строки с породами
-        breed_names = [b['name'] for b in self.breeds_data]
+        # Получаем список пород из меню Итого
+        breed_names = [b['name'] for b in self.breeds_data if b.get('name')]
         breeds_str = '; '.join(breed_names) if breed_names else ''
         
         if isinstance(characteristics, dict):
-            best = characteristics.get('best', 'здоровая, хорошо укорененная сосна, с хорошо сформированной кроной')
-            auxiliary = characteristics.get('auxiliary', 'деревья всех пород обеспечивающие сохранение целостности и устойчивости насаждения')
-            undesirable = characteristics.get('undesirable', 'деревья мешающие росту и формированию крон отобранных лучших и вспомогательных деревьев; деревья неудовлетворительного состояния')
+            best = characteristics.get('best', '')
+            auxiliary = characteristics.get('auxiliary', '')
+            undesirable = characteristics.get('undesirable', '')
         else:
-            best = 'здоровая, хорошо укорененная сосна, с хорошо сформированной кроной'
-            auxiliary = 'деревья всех пород обеспечивающие сохранение целостности и устойчивости насаждения'
-            undesirable = 'деревья мешающие росту и формированию крон отобранных лучших и вспомогательных деревьев; деревья неудовлетворительного состояния'
+            # Если characteristics - строка, используем её
+            best = ''
+            auxiliary = ''
+            undesirable = ''
         
-        # Добавляем породы через "-"
+        # Добавляем породы через " - " только если есть породы
         if breeds_str:
-            best = f"{best} - {breeds_str}"
-            auxiliary = f"{auxiliary} - {breeds_str}"
-            undesirable = f"{undesirable} - {breeds_str}"
+            if best:
+                best = f"{best} - {breeds_str}"
+            if auxiliary:
+                auxiliary = f"{auxiliary} - {breeds_str}"
+            if undesirable:
+                undesirable = f"{undesirable} - {breeds_str}"
+        
+        # Если пусто, используем значения по умолчанию
+        if not best:
+            best = 'здоровая, хорошо укорененная сосна, с хорошо сформированной кроной'
+            if breeds_str:
+                best = f"{best} - {breeds_str}"
+        
+        if not auxiliary:
+            auxiliary = 'деревья всех пород обеспечивающие сохранение целостности и устойчивости насаждения'
+            if breeds_str:
+                auxiliary = f"{auxiliary} - {breeds_str}"
+        
+        if not undesirable:
+            undesirable = 'деревья мешающие росту и формированию крон отобранных лучших и вспомогательных деревьев; деревья неудовлетворительного состояния'
+            if breeds_str:
+                undesirable = f"{undesirable} - {breeds_str}"
         
         return {
             'best': best,
@@ -162,6 +248,8 @@ class OurTemplateFiller:
         diameter = breed.get('diameter', 0)
         density = breed.get('density', 0)
         
+        print(f"[DEBUG] breed={breed.get('name', 'Н/Д')}, d={diameter}, h={height}, intensity={intensity}")
+        
         # После рубки остаются лучшие деревья, поэтому:
         # - высота увеличивается (мелочь убирается)
         # - диаметр увеличивается (мелочь убирается)
@@ -173,6 +261,8 @@ class OurTemplateFiller:
         
         project_height = height * growth_factor if height > 0 else 0
         project_diameter = diameter * growth_factor if diameter > 0 else 0
+        
+        print(f"[DEBUG] project: d={project_diameter:.2f}, h={project_height:.2f}")
         
         # Густота проектируемая рассчитывается из предмета ухода
         project_density = None  # Будет заполнено из предмета ухода
@@ -193,17 +283,8 @@ class OurTemplateFiller:
         else:
             coeff = 1
         
-        # Получаем букву породы
-        letters = {
-            'Сосна': 'С', 'Ель': 'Е', 'Пихта': 'П', 'Кедр': 'К', 'Лиственница': 'Л',
-            'Берёза': 'Б', 'Осина': 'Ос', 'Ольха': 'О', 'Дуб': 'Д'
-        }
-        
-        letter = 'Др'
-        for name, l in letters.items():
-            if name.lower() in breed_name.lower():
-                letter = l
-                break
+        # Получаем букву породы из БД
+        letter = BREED_TO_CODE.get(breed_name, 'Др')
         
         return f"{coeff}{letter}"
 
@@ -224,8 +305,9 @@ class OurTemplateFiller:
             plot_area_m2 = 3.14159 * current_radius ** 2
             total_plots = self.total_data.get('total_plots', 0)
             
-            # Получаем интенсивность из меню Итого
+            # Получаем ИНТЕНСИВНОСТЬ ИЗ МЕНЮ ИТОГО (рассчитанную)
             intensity = self.total_data.get('intensity', 25)
+            print(f"[INFO] Интенсивность рубки из меню Итого: {intensity}%")
             
             # Формируем вид рубки
             activity_name = self.total_data.get('activity_name', 'осветление')
@@ -267,17 +349,21 @@ class OurTemplateFiller:
                 # Тип леса из Итого
                 '{forest_type}': self.address_data.get('forest_type', 'Смешанный лес'),
                 
-                # Общие данные
-                '{total_composition_isx}': self.total_data.get('composition', 'Н/Д'),
-                '{total_composition_project}': self.total_data.get('composition', 'Н/Д'),
+                # ОБЩИЕ ДАННЫЕ ИЗ МЕНЮ ИТОГО
+                '{total_composition_isx}': self.total_data.get('composition', ''),
+                '{total_composition_project}': self.total_data.get('composition', ''),
                 '{total_age_isx}': self.format_number(self.total_data.get('avg_age')),
                 '{total_age_project}': self.format_number(self.total_data.get('avg_age')),
                 '{total_height_isx}': self.format_number(self.total_data.get('avg_height')),
-                '{total_height_project}': self.format_number(self.total_data.get('avg_height') * (1 + intensity/100 * 0.3) if self.total_data.get('avg_height') else 0),
+                '{total_height_project}': self.format_number(
+                    self.total_data.get('avg_height', 0) * (1 + intensity/100 * 0.3) if self.total_data.get('avg_height') else 0
+                ),
                 '{total_diameter_isx}': self.format_number(self.total_data.get('avg_diameter', 0)),
-                '{total_diameter_project}': self.format_number(self.total_data.get('avg_diameter', 0) * (1 + intensity/100 * 0.3) if self.total_data.get('avg_diameter') else 0),
+                '{total_diameter_project}': self.format_number(
+                    self.total_data.get('avg_diameter', 0) * (1 + intensity/100 * 0.3) if self.total_data.get('avg_diameter') else 0
+                ),
                 '{total_density_isx}': self.format_number(self.total_data.get('avg_density')),
-                '{total_density_project}': self.format_number(sum(care_density_by_breed.values()) if care_density_by_breed else self.total_data.get('avg_density', 0)),
+                '{total_density_project}': self.format_number(sum(care_density_by_breed.values()) if care_density_by_breed else 0),
                 '{intensity}': f"{intensity:.1f}%",
                 
                 # Другие
@@ -324,6 +410,8 @@ class OurTemplateFiller:
                         height = breed.get('height', 0)
                         diameter = breed.get('diameter', 0)
                         
+                        print(f"[DEBUG] Заполняем породу: {breed_name}, d={diameter}, h={height}, density={density}")
+                        
                         # Рассчитываем состав
                         composition_isx = self.calculate_breed_composition(breed_name, density, total_density)
                         composition_project = composition_isx
@@ -342,12 +430,14 @@ class OurTemplateFiller:
                         row.cells[2].text = composition_project
                         row.cells[3].text = self.format_number(age)
                         row.cells[4].text = self.format_number(age)
-                        row.cells[5].text = self.format_number(diameter)
-                        row.cells[6].text = self.format_number(project_values['diameter'])
-                        row.cells[7].text = self.format_number(height)
-                        row.cells[8].text = self.format_number(project_values['height'])
-                        row.cells[9].text = self.format_number(density)
-                        row.cells[10].text = project_density_str
+                        row.cells[5].text = self.format_number(diameter)  # ИСХОДНЫЙ диаметр
+                        row.cells[6].text = self.format_number(project_values['diameter'])  # ПРОЕКТНЫЙ диаметр
+                        row.cells[7].text = self.format_number(height)  # ИСХОДНАЯ высота
+                        row.cells[8].text = self.format_number(project_values['height'])  # ПРОЕКТНАЯ высота
+                        row.cells[9].text = self.format_number(density)  # ИСХОДНАЯ густота
+                        row.cells[10].text = project_density_str  # ПРОЕКТНАЯ густота из предмета ухода
+                        
+                        print(f"[DEBUG] Заполнено: d_isx={diameter}, d_prj={project_values['diameter']:.2f}, density_prj={project_density_str}")
             
             # Сохраняем документ
             timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
