@@ -236,11 +236,23 @@ class WordDocumentFiller:
             return False
 
         try:
+            print("=" * 50)
+            print("ЗАПОЛНЕНИЕ ДОКУМЕНТА")
+            print("=" * 50)
+            print(f"Данные total_data: {list(self.total_data.keys())}")
+            print(f"Адресные данные: {self.total_data.get('address_data', self.address_data)}")
+            print(f"Очередь рубки: {self.total_data.get('care_queue', 'не указана')}")
+            print(f"Дата рубки: {self.total_data.get('care_date', 'не указана')}")
+            print(f"Коэффициент состава: {self.total_data.get('composition', 'не определен')}")
+            print(f"Интенсивность: {self.total_data.get('intensity', 'не указана')}")
+            print(f"Характеристики: {type(self.total_data.get('characteristics', ''))}")
+            print("=" * 50)
+            
             doc = Document(self.document_path)
 
             # Получаем данные из дополнительных функций
             care_queue = self.total_data.get('care_queue', 'первая')
-            characteristics = self.total_data.get('characteristics', {})
+            characteristics = self.total_data.get('characteristics', '')
             care_date = self.total_data.get('care_date', 'сент 2025 года')
             technology = self.total_data.get('technology', 'Равномерное изреживание молодняка. Срубленные деревья необходимо приземлить на месте. По пространственному размещению по площади лесного участка вырубаемых и оставляемых деревьев должна применяться равномерная рубка, в том числе при групповом или куртином размещении деревьев целевых древесных пород. Отбор деревьев производиться так, чтобы обеспечить равномерность размещения по площади оставляемых на выращивание деревьев целевых пород.')
             forest_purpose = self.total_data.get('forest_purpose', 'Эксплуатационные леса')
@@ -250,9 +262,16 @@ class WordDocumentFiller:
             care_activity_text = f"{activity_name}, {care_queue} очередь"
 
             # Формируем характеристики молодняков
-            best_text = characteristics.get('best', 'здоровая, хорошо укорененная сосна, с хорошо сформированной кроной')
-            auxiliary_text = characteristics.get('auxiliary', 'деревья всех пород обеспечивающие сохранение целостности и устойчивости насаждения')
-            undesirable_text = characteristics.get('undesirable', 'деревья мешающие росту и формированию крон отобранных лучших и вспомогательных деревьев; деревья неудовлетворительного состояния')
+            # characteristics может быть строкой или словарём
+            if isinstance(characteristics, dict):
+                best_text = characteristics.get('best', 'здоровая, хорошо укорененная сосна, с хорошо сформированной кроной')
+                auxiliary_text = characteristics.get('auxiliary', 'деревья всех пород обеспечивающие сохранение целостности и устойчивости насаждения')
+                undesirable_text = characteristics.get('undesirable', 'деревья мешающие росту и формированию крон отобранных лучших и вспомогательных деревьев; деревья неудовлетворительного состояния')
+            else:
+                # Если characteristics - строка, используем значения по умолчанию
+                best_text = 'здоровая, хорошо укорененная сосна, с хорошо сформированной кроной'
+                auxiliary_text = 'деревья всех пород обеспечивающие сохранение целостности и устойчивости насаждения'
+                undesirable_text = 'деревья мешающие росту и формированию крон отобранных лучших и вспомогательных деревьев; деревья неудовлетворительного состояния'
 
             # Функция для округления чисел до одной запятой
             def format_number(value, default='Н/Д'):
