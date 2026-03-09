@@ -4281,7 +4281,7 @@ class ExtendedMolodnikiTableScreen(Screen):
         return breed_densities
 
     def generate_care_project(self, instance):
-        """Генерирует проект ухода в Word документе"""
+        """Генерирует проект ухода в Word документе с использованием данных из меню Итого"""
         try:
             # Сохраняем текущую страницу перед генерацией отчета
             if not self.save_current_page():
@@ -4297,8 +4297,8 @@ class ExtendedMolodnikiTableScreen(Screen):
                 'district_forestry': str(self.project_data['address'].get('district_forestry', '')),
                 'plot_area': str(self.project_data['address'].get('plot_area', '')),
                 'radius': str(self.project_data['address'].get('radius', '5.64')),
-                'target_purpose': 'Эксплуатационные леса',  # Можно настроить
-                'forest_type': 'Смешанный лес'  # Можно настроить
+                'target_purpose': 'Эксплуатационные леса',
+                'forest_type': 'Смешанный лес'
             }
 
             # Добавляем данные деталей проекта
@@ -4310,8 +4310,18 @@ class ExtendedMolodnikiTableScreen(Screen):
                 'forest_purpose': str(self.project_data['details'].get('forest_purpose', ''))
             }
 
-            # Получаем итоговые данные из текущих данных приложения
+            # Получаем итоговые данные из меню Итого (рассчитанные данные)
             total_data = self.get_total_data_from_db()
+
+            # Добавляем данные деталей в total_data для передачи в fill_word_document.py
+            total_data.update({
+                'care_queue': details_data['care_queue'],
+                'characteristics': details_data['characteristics'],
+                'care_date': details_data['care_date'],
+                'technology': details_data['technology'],
+                'forest_purpose': details_data['forest_purpose'],
+                'address_data': address_data
+            })
 
             # Создаем временный JSON файл с данными для скрипта
             import tempfile
@@ -4349,7 +4359,7 @@ class ExtendedMolodnikiTableScreen(Screen):
                     return output_bytes.decode('utf-8')
                 except UnicodeDecodeError:
                     try:
-                        return output_bytes.decode('cp1251')  # Windows-1251 для русского
+                        return output_bytes.decode('cp1251')
                     except UnicodeDecodeError:
                         return output_bytes.decode('utf-8', errors='replace')
                 except Exception:

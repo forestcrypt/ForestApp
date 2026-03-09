@@ -46,11 +46,31 @@ class WordDocumentFiller:
             self.address_data = data.get('address_data', self.address_data)
             self.total_data = data.get('total_data', self.total_data)
 
+            # Добавляем данные деталей ухода из total_data (если они там есть)
+            # Эти данные передаются из меню Итого
+            if 'care_queue' in self.total_data:
+                self.total_data['care_queue'] = self.total_data.get('care_queue', '')
+            if 'characteristics' in self.total_data:
+                self.total_data['characteristics'] = self.total_data.get('characteristics', '')
+            if 'care_date' in self.total_data:
+                self.total_data['care_date'] = self.total_data.get('care_date', '')
+            if 'technology' in self.total_data:
+                self.total_data['technology'] = self.total_data.get('technology', '')
+            if 'forest_purpose' in self.total_data:
+                self.total_data['forest_purpose'] = self.total_data.get('forest_purpose', '')
+
             print("Данные успешно загружены из JSON файла")
+            print(f"  - Адрес: Квартал {self.address_data.get('quarter', '')}, Выдел {self.address_data.get('plot', '')}")
+            print(f"  - Очередь рубки: {self.total_data.get('care_queue', 'не указана')}")
+            print(f"  - Дата рубки: {self.total_data.get('care_date', 'не указана')}")
+            print(f"  - Коэффициент состава: {self.total_data.get('composition', 'не определен')}")
+            print(f"  - Интенсивность: {self.total_data.get('intensity', 'не указана')}")
             return True
 
         except Exception as e:
             print(f"Ошибка загрузки данных из JSON файла: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
     def load_data_from_db(self):
