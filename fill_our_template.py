@@ -2,12 +2,23 @@
 # -*- coding: utf-8 -*-
 """
 Скрипт для заполнения нашего шаблона проекта ухода
-Все данные из меню Итого заполняются - по каждой породе и общие
+ИСПРАВЛЕНИЯ ПО ВСЕМ ЗАМЕЧАНИЯМ:
+1. Согласовано - пустое (заполняет лесник)
+2. Вид рубки: "осветление, первая - РУМ (осветление) очередь"
+3. Тип леса - из меню Итого
+4. Диаметр по породам - заполняется из данных
+5. Проектируемые высота и диаметр выше исходных (мелочь убирается)
+6. Густота проектируемая - из предмета ухода (тыс. шт/га)
+7. Интенсивность рубки - рассчитанная из меню Итого
+8. Характеристика деревьев - породы через "-"
+9. Склонение названий лесничеств
+10. Соблюдение абзацев и отступов
 """
 
 import os
 import sys
 import json
+import re
 import datetime
 from docx import Document
 
@@ -18,6 +29,7 @@ class OurTemplateFiller:
         self.address_data = {}
         self.total_data = {}
         self.details_data = {}
+        self.breeds_data = []
 
     def load_data_from_json(self, file_path):
         """Загружаем данные из JSON файла"""
@@ -27,6 +39,7 @@ class OurTemplateFiller:
 
             self.address_data = data.get('address_data', {})
             self.total_data = data.get('total_data', {})
+            self.breeds_data = self.total_data.get('breeds', [])
             
             # Извлекаем детали из total_data
             self.details_data = {
@@ -34,11 +47,12 @@ class OurTemplateFiller:
                 'characteristics': self.total_data.get('characteristics', ''),
                 'care_date': self.total_data.get('care_date', ''),
                 'technology': self.total_data.get('technology', ''),
-                'forest_purpose': self.total_data.get('forest_purpose', '')
+                'forest_purpose': self.total_data.get('forest_purpose', ''),
+                'care_subject': self.total_data.get('care_subject', '')
             }
 
             print(f"[OK] Данные загружены")
-            print(f"  Пород: {len(self.total_data.get('breeds', []))}")
+            print(f"  Пород: {len(self.breeds_data)}")
             print(f"  Коэффициент состава: {self.total_data.get('composition', 'Н/Д')}")
             print(f"  Интенсивность: {self.total_data.get('intensity', 'Н/Д')}")
             return True
@@ -59,18 +73,116 @@ class OurTemplateFiller:
         except (ValueError, TypeError):
             return str(value)
 
+    def inflect_forestry(self, name):
+        """Склоняет название лесничества (упрощённо)"""
+        if not name:
+            return ''
+        
+        name = name.strip()
+        
+        # Простые правила склонения
+        if name.endswith('ое'):
+            return name[:-2] + 'ом'  # Красное -> Красном
+        elif name.endswith('ее'):
+            return name[:-2] + 'ем'  # Сегежское -> Сегежском
+        elif name.endswith('ий'):
+            return name[:-2] + 'ем'  # Лесной -> Лесном
+        elif name.endswith('ый'):
+            return name[:-2] + 'ом'  # Борвый -> Борвом
+        elif name.endswith('о'):
+            return name + 'м'  # Волом -> Воломом
+        else:
+            return name + 'е'  # По умолчанию
+    
+    def parse_care_subject_density(self, care_text):
+        """Парсит предмет ухода и возвращает густоту по породам {порода: густоту тыс. шт/га}"""
+        if not care_text:
+            return {}
+        
+        # Пример: "300шт/гаС + 50шт/гаБ" или "3С2Б"
+        result = {}
+        
+        # Ищем паттерны типа "300шт/гаС" или "300 шт/га Сосна"
+        matches = re.findall(r'(\d+(?:\.\d+)?)\s*(?:шт/га)?\s*([А-ЯA-Яа-яa-zA-Z]+)', care_text, re.IGNORECASE)
+        
+        breed_map = {
+            'С': 'Сосна', 'Е': 'Ель', 'П': 'Пихта', 'К': 'Кедр', 'Л': 'Лиственница',
+            'Б': 'Берёза', 'Ос': 'Осина', 'О': 'Ольха', 'Д': 'Дуб'
+        }
+        
+        for density_str, breed_str in matches:
+            density = float(density_str) / 1000  # Переводим в тыс. шт/га
+            
+            # Определяем породу
+            breed_name = None
+            for code, name in breed_map.items():
+                if code.lower() in breed_str.lower():
+                    breed_name = name
+                    break
+            
+            if breed_name:
+                result[breed_name] = density
+        
+        return result
+
     def get_characteristics(self):
-        """Получает характеристики деревьев"""
+        """Получает характеристики деревьев с породами"""
         characteristics = self.details_data.get('characteristics', '')
         
+        # Формируем строки с породами
+        breed_names = [b['name'] for b in self.breeds_data]
+        breeds_str = '; '.join(breed_names) if breed_names else ''
+        
         if isinstance(characteristics, dict):
-            return characteristics
+            best = characteristics.get('best', 'здоровая, хорошо укорененная сосна, с хорошо сформированной кроной')
+            auxiliary = characteristics.get('auxiliary', 'деревья всех пород обеспечивающие сохранение целостности и устойчивости насаждения')
+            undesirable = characteristics.get('undesirable', 'деревья мешающие росту и формированию крон отобранных лучших и вспомогательных деревьев; деревья неудовлетворительного состояния')
         else:
-            return {
-                'best': 'здоровая, хорошо укорененная сосна, с хорошо сформированной кроной',
-                'auxiliary': 'деревья всех пород обеспечивающие сохранение целостности и устойчивости насаждения',
-                'undesirable': 'деревья мешающие росту и формированию крон отобранных лучших и вспомогательных деревьев; деревья неудовлетворительного состояния'
-            }
+            best = 'здоровая, хорошо укорененная сосна, с хорошо сформированной кроной'
+            auxiliary = 'деревья всех пород обеспечивающие сохранение целостности и устойчивости насаждения'
+            undesirable = 'деревья мешающие росту и формированию крон отобранных лучших и вспомогательных деревьев; деревья неудовлетворительного состояния'
+        
+        # Добавляем породы через "-"
+        if breeds_str:
+            best = f"{best} - {breeds_str}"
+            auxiliary = f"{auxiliary} - {breeds_str}"
+            undesirable = f"{undesirable} - {breeds_str}"
+        
+        return {
+            'best': best,
+            'auxiliary': auxiliary,
+            'undesirable': undesirable
+        }
+
+    def calculate_project_values(self, breed, intensity):
+        """Рассчитывает проектируемые значения (после рубки)"""
+        # Исходные данные
+        age = breed.get('age', 0)
+        height = breed.get('height', 0)
+        diameter = breed.get('diameter', 0)
+        density = breed.get('density', 0)
+        
+        # После рубки остаются лучшие деревья, поэтому:
+        # - высота увеличивается (мелочь убирается)
+        # - диаметр увеличивается (мелочь убирается)
+        # - густота уменьшается согласно интенсивности
+        
+        # Коэффициент увеличения для высоты и диаметра (зависит от интенсивности)
+        # Чем выше интенсивность, тем больше остаются крупные деревья
+        growth_factor = 1 + (intensity / 100) * 0.3  # Увеличение на 30% при 100% интенсивности
+        
+        project_height = height * growth_factor if height > 0 else 0
+        project_diameter = diameter * growth_factor if diameter > 0 else 0
+        
+        # Густота проектируемая рассчитывается из предмета ухода
+        project_density = None  # Будет заполнено из предмета ухода
+        
+        return {
+            'age': age,  # Возраст не меняется
+            'height': project_height,
+            'diameter': project_diameter,
+            'density': project_density
+        }
 
     def calculate_breed_composition(self, breed_name, density, total_density):
         """Рассчитывает коэффициент состава для породы"""
@@ -112,16 +224,31 @@ class OurTemplateFiller:
             plot_area_m2 = 3.14159 * current_radius ** 2
             total_plots = self.total_data.get('total_plots', 0)
             
-            # Формируем мероприятие с очередью
+            # Получаем интенсивность из меню Итого
+            intensity = self.total_data.get('intensity', 25)
+            
+            # Формируем вид рубки
             activity_name = self.total_data.get('activity_name', 'осветление')
             care_queue = self.details_data.get('care_queue', 'первая')
-            care_activity_text = f"{activity_name}, {care_queue} очередь"
+            
+            # Вид рубки: "осветление, первая - РУМ (осветление) очередь"
+            care_activity_text = f"{activity_name}, {care_queue} - РУМ ({activity_name}) очередь"
+            
+            # Склоняем названия лесничеств
+            forestry = self.address_data.get('forestry', '')
+            district_forestry = self.address_data.get('district_forestry', '')
+            forestry_inflected = self.inflect_forestry(forestry)
+            district_forestry_inflected = self.inflect_forestry(district_forestry)
+            
+            # Парсим предмет ухода для густоты
+            care_subject = self.details_data.get('care_subject', '')
+            care_density_by_breed = self.parse_care_subject_density(care_subject)
             
             # Словарь общих замен
             replacements = {
-                # Адресные данные
-                '{forestry}': self.address_data.get('forestry', ''),
-                '{district_forestry}': self.address_data.get('district_forestry', ''),
+                # Адресные данные (со склонением)
+                '{forestry}': forestry_inflected,
+                '{district_forestry}': district_forestry_inflected,
                 '{quarter}': self.address_data.get('quarter', ''),
                 '{plot}': self.address_data.get('plot', ''),
                 '{plot_area}': self.address_data.get('plot_area', ''),
@@ -135,7 +262,10 @@ class OurTemplateFiller:
                 '{best}': characteristics.get('best', ''),
                 '{auxiliary}': characteristics.get('auxiliary', ''),
                 '{undesirable}': characteristics.get('undesirable', ''),
-                '{care_subject}': self.total_data.get('care_subject', ''),
+                '{care_subject}': care_subject,
+                
+                # Тип леса из Итого
+                '{forest_type}': self.address_data.get('forest_type', 'Смешанный лес'),
                 
                 # Общие данные
                 '{total_composition_isx}': self.total_data.get('composition', 'Н/Д'),
@@ -143,16 +273,15 @@ class OurTemplateFiller:
                 '{total_age_isx}': self.format_number(self.total_data.get('avg_age')),
                 '{total_age_project}': self.format_number(self.total_data.get('avg_age')),
                 '{total_height_isx}': self.format_number(self.total_data.get('avg_height')),
-                '{total_height_project}': self.format_number(self.total_data.get('avg_height')),
+                '{total_height_project}': self.format_number(self.total_data.get('avg_height') * (1 + intensity/100 * 0.3) if self.total_data.get('avg_height') else 0),
                 '{total_diameter_isx}': self.format_number(self.total_data.get('avg_diameter', 0)),
-                '{total_diameter_project}': self.format_number(self.total_data.get('avg_diameter', 0)),
+                '{total_diameter_project}': self.format_number(self.total_data.get('avg_diameter', 0) * (1 + intensity/100 * 0.3) if self.total_data.get('avg_diameter') else 0),
                 '{total_density_isx}': self.format_number(self.total_data.get('avg_density')),
-                '{total_density_project}': self.format_number(self.total_data.get('avg_density')),
-                '{intensity}': f"{self.total_data.get('intensity', 25):.1f}%",
+                '{total_density_project}': self.format_number(sum(care_density_by_breed.values()) if care_density_by_breed else self.total_data.get('avg_density', 0)),
+                '{intensity}': f"{intensity:.1f}%",
                 
                 # Другие
                 '{radius_info}': f"{total_plots} шт. {plot_area_m2:.0f}м²(R-{current_radius:.2f}м)",
-                '{forest_type}': self.address_data.get('forest_type', 'Смешанный лес'),
             }
             
             # Заполняем параграфы общими данными
@@ -171,9 +300,7 @@ class OurTemplateFiller:
                                     paragraph.text = paragraph.text.replace(old_text, str(new_text))
             
             # === ТЕПЕРЬ ЗАПОЛНЯЕМ ДАННЫМИ ПО ПОРОДАМ ===
-            breeds = self.total_data.get('breeds', [])
-            
-            if breeds:
+            if self.breeds_data:
                 # Находим таблицу с породами
                 breeds_table = None
                 for table in doc.tables:
@@ -186,29 +313,41 @@ class OurTemplateFiller:
                     if len(breeds_table.rows) > 1:
                         breeds_table._tbl.remove(breeds_table.rows[1]._tr)
                     
+                    # Рассчитываем общую густоту для коэффициента состава
+                    total_density = sum(b.get('density', 0) for b in self.breeds_data)
+                    
                     # Добавляем строки для каждой породы
-                    for breed in breeds:
+                    for breed in self.breeds_data:
                         breed_name = breed.get('name', '')
                         density = breed.get('density', 0)
+                        age = breed.get('age', 0)
+                        height = breed.get('height', 0)
+                        diameter = breed.get('diameter', 0)
                         
                         # Рассчитываем состав
-                        total_density = sum(b.get('density', 0) for b in breeds)
                         composition_isx = self.calculate_breed_composition(breed_name, density, total_density)
-                        composition_project = composition_isx  # Проект такой же, т.к. состав не меняется
+                        composition_project = composition_isx
+                        
+                        # Рассчитываем проектируемые значения
+                        project_values = self.calculate_project_values(breed, intensity)
+                        
+                        # Густота проектируемая из предмета ухода
+                        project_density = care_density_by_breed.get(breed_name, None)
+                        project_density_str = self.format_number(project_density) if project_density is not None else ''
                         
                         # Добавляем новую строку
                         row = breeds_table.add_row()
                         row.cells[0].text = breed_name
                         row.cells[1].text = composition_isx
                         row.cells[2].text = composition_project
-                        row.cells[3].text = self.format_number(breed.get('age', 0))
-                        row.cells[4].text = self.format_number(breed.get('age', 0))
-                        row.cells[5].text = self.format_number(breed.get('diameter', 0))
-                        row.cells[6].text = self.format_number(breed.get('diameter', 0))
-                        row.cells[7].text = self.format_number(breed.get('height', 0))
-                        row.cells[8].text = self.format_number(breed.get('height', 0))
+                        row.cells[3].text = self.format_number(age)
+                        row.cells[4].text = self.format_number(age)
+                        row.cells[5].text = self.format_number(diameter)
+                        row.cells[6].text = self.format_number(project_values['diameter'])
+                        row.cells[7].text = self.format_number(height)
+                        row.cells[8].text = self.format_number(project_values['height'])
                         row.cells[9].text = self.format_number(density)
-                        row.cells[10].text = self.format_number(density)
+                        row.cells[10].text = project_density_str
             
             # Сохраняем документ
             timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
