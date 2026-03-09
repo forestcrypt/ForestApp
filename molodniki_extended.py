@@ -4652,6 +4652,7 @@ class ExtendedMolodnikiTableScreen(Screen):
                 'avg_age': avg_overall_age,
                 'avg_density': avg_overall_density,
                 'avg_height': avg_overall_height,
+                'avg_diameter': 0,  # Пока не рассчитывается
                 'total_plots': len([row for page in self.page_data.values() for row in page if any(cell for cell in row[:3] if cell)]),
                 'composition': composition_text,
                 'care_subject': care_subject,
