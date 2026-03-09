@@ -4337,8 +4337,8 @@ class ExtendedMolodnikiTableScreen(Screen):
                 json.dump(temp_data, f, ensure_ascii=False, indent=2)
                 temp_file = f.name
 
-            # Вызываем скрипт fill_word_document.py с параметром
-            script_path = os.path.join(os.path.dirname(__file__), 'fill_word_document.py')
+            # Вызываем скрипт fill_our_template.py с параметром
+            script_path = os.path.join(os.path.dirname(__file__), 'fill_our_template.py')
             result = subprocess.run([
                 sys.executable, script_path, '--data-file', temp_file
             ], capture_output=True, text=False)
