@@ -19,7 +19,8 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 class WordDocumentFiller:
     def __init__(self, db_name='forest_data.db', data_file=None, address_data=None, total_data=None):
         self.db_name = db_name
-        self.document_path = 'reports/Шаблон проект.docx'
+        # Используем идеальный шаблон с правильными плейсхолдерами
+        self.document_path = 'reports/Шаблон проект_идеальный.docx'
         self.data_file = data_file
 
         # Данные адресной строки (можно настроить)
