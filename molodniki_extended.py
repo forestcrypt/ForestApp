@@ -441,6 +441,16 @@ class MolodnikiTreeDataInputPopup(Popup):
         other_btn.bind(on_press=lambda x: self.select_breed(instance, breed_type, 'other'))
         content.add_widget(other_btn)
 
+        # Кнопка "Очистить"
+        clear_btn = ModernButton(
+            text='Очистить',
+            bg_color=get_color_from_hex('#FFA500'),
+            size_hint=(1, None),
+            height=50
+        )
+        clear_btn.bind(on_press=lambda x: App.get_running_app().root.get_screen('molodniki').show_clear_breeds_popup(breed_type))
+        content.add_widget(clear_btn)
+
         # Кнопка отмены
         cancel_btn = ModernButton(
             text='Отмена',
@@ -668,7 +678,7 @@ class MolodnikiTreeDataInputPopup(Popup):
         btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
 
         add_btn = ModernButton(
-            text='Добавить породу',
+            text='Добавить',
             bg_color=get_color_from_hex('#32CD32'),
             size_hint=(0.25, 1),
             height=50,
@@ -685,7 +695,7 @@ class MolodnikiTreeDataInputPopup(Popup):
         )
 
         delete_btn = ModernButton(
-            text='Удалить породу',
+            text='Удалить',
             bg_color=get_color_from_hex('#FF6347'),
             size_hint=(0.25, 1),
             height=50,
@@ -1477,6 +1487,213 @@ class ExtendedMolodnikiTableScreen(Screen):
         conn.close()
         return results
 
+    def show_clear_breeds_popup(self, breed_type):
+        """Показать popup для очистки пользовательских пород с выбором через галочки"""
+        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+
+        # Заголовок
+        title_label = Label(
+            text=f"Очистка {'хвойных' if breed_type == 'coniferous' else 'лиственных'} пород",
+            font_name='Roboto',
+            bold=True,
+            size_hint=(1, None),
+            height=40,
+            color=(0.2, 0.2, 0.2, 1)
+        )
+        content.add_widget(title_label)
+
+        # Описание
+        desc_label = Label(
+            text="Отметьте породы для удаления:",
+            font_name='Roboto',
+            size_hint=(1, None),
+            height=30,
+            color=(0.3, 0.3, 0.3, 1),
+            halign='left'
+        )
+        desc_label.bind(size=desc_label.setter('text_size'))
+        content.add_widget(desc_label)
+
+        # Загружаем пользовательские породы
+        custom_breeds = self.load_custom_breeds(breed_type)
+
+        if not custom_breeds:
+            no_breeds_label = Label(
+                text="Нет пользовательских пород для удаления",
+                font_name='Roboto',
+                size_hint=(1, None),
+                height=40,
+                color=(0.5, 0.5, 0.5, 1)
+            )
+            content.add_widget(no_breeds_label)
+        else:
+            # ScrollView для списка пород
+            scroll = ScrollView(size_hint=(1, None), height=300)
+            breeds_layout = GridLayout(cols=1, spacing=5, size_hint_y=None)
+            breeds_layout.bind(minimum_height=breeds_layout.setter('height'))
+
+            # Хранилище для чекбоксов
+            self.breed_checkboxes = {}
+
+            for breed in custom_breeds:
+                # Создаем горизонтальный layout для чекбокса и названия
+                breed_row = BoxLayout(orientation='horizontal', size_hint_y=None, height=40, spacing=10)
+                
+                # Чекбокс (используем Button как чекбокс)
+                from kivy.uix.checkbox import CheckBox
+                checkbox = CheckBox(active=False, size_hint=(None, None), size=(40, 40))
+                self.breed_checkboxes[breed] = checkbox
+                
+                # Название породы
+                breed_label = Label(
+                    text=breed,
+                    font_name='Roboto',
+                    size_hint=(1, None),
+                    height=40,
+                    halign='left',
+                    color=(0.2, 0.2, 0.2, 1)
+                )
+                breed_label.bind(size=breed_label.setter('text_size'))
+                
+                breed_row.add_widget(checkbox)
+                breed_row.add_widget(breed_label)
+                breeds_layout.add_widget(breed_row)
+
+            scroll.add_widget(breeds_layout)
+            content.add_widget(scroll)
+
+        # Кнопки управления
+        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
+
+        # Кнопка "Выбрать все"
+        select_all_btn = ModernButton(
+            text='Выбрать все',
+            bg_color=get_color_from_hex('#4169E1'),
+            size_hint=(0.33, 1),
+            height=50
+        )
+
+        # Кнопка "Удалить"
+        delete_btn = ModernButton(
+            text='Удалить',
+            bg_color=get_color_from_hex('#FF0000'),
+            size_hint=(0.33, 1),
+            height=50
+        )
+
+        # Кнопка "Отмена"
+        cancel_btn = ModernButton(
+            text='Отмена',
+            bg_color=get_color_from_hex('#808080'),
+            size_hint=(0.33, 1),
+            height=50
+        )
+
+        btn_layout.add_widget(select_all_btn)
+        btn_layout.add_widget(delete_btn)
+        btn_layout.add_widget(cancel_btn)
+        content.add_widget(btn_layout)
+
+        popup = Popup(
+            title="Очистка пород",
+            content=content,
+            size_hint=(0.8, 0.7)
+        )
+
+        def select_all(instance):
+            """Выбрать все породы"""
+            for checkbox in self.breed_checkboxes.values():
+                checkbox.active = True
+
+        def delete_selected(instance):
+            """Удалить выбранные породы"""
+            breeds_to_delete = [breed for breed, checkbox in self.breed_checkboxes.items() if checkbox.active]
+            
+            if not breeds_to_delete:
+                # Показываем сообщение что ничего не выбрано
+                error_popup = Popup(
+                    title="Внимание",
+                    content=Label(
+                        text="Не выбрано ни одной породы для удаления",
+                        font_name='Roboto',
+                        color=(0.2, 0.2, 0.2, 1)
+                    ),
+                    size_hint=(0.5, 0.3),
+                    auto_dismiss=True
+                )
+                error_popup.open()
+                return
+
+            # Подтверждение удаления
+            confirm_content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+            confirm_label = Label(
+                text=f"Вы уверены, что хотите удалить {len(breeds_to_delete)} пород(ы)?",
+                font_name='Roboto',
+                color=(0.2, 0.2, 0.2, 1)
+            )
+            confirm_content.add_widget(confirm_label)
+
+            confirm_btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
+            confirm_yes_btn = ModernButton(
+                text='Да, удалить',
+                bg_color=get_color_from_hex('#FF0000'),
+                size_hint=(0.5, 1),
+                height=50
+            )
+            confirm_no_btn = ModernButton(
+                text='Отмена',
+                bg_color=get_color_from_hex('#00FF00'),
+                size_hint=(0.5, 1),
+                height=50
+            )
+            confirm_btn_layout.add_widget(confirm_yes_btn)
+            confirm_btn_layout.add_widget(confirm_no_btn)
+            confirm_content.add_widget(confirm_btn_layout)
+
+            confirm_popup = Popup(
+                title="Подтверждение удаления",
+                content=confirm_content,
+                size_hint=(0.6, 0.4)
+            )
+
+            def do_delete(instance):
+                """Выполнить удаление"""
+                conn = sqlite3.connect(self.db_name)
+                cursor = conn.cursor()
+                for breed in breeds_to_delete:
+                    cursor.execute('''
+                        DELETE FROM custom_breeds
+                        WHERE breed_name = ? AND breed_type = ?
+                    ''', (breed, breed_type))
+                conn.commit()
+                conn.close()
+                
+                confirm_popup.dismiss()
+                popup.dismiss()
+                
+                # Показываем сообщение об успехе
+                success_popup = Popup(
+                    title="Успешно",
+                    content=Label(
+                        text=f"Удалено {len(breeds_to_delete)} пород(ы)",
+                        font_name='Roboto',
+                        color=(0, 0.5, 0, 1)
+                    ),
+                    size_hint=(0.5, 0.3),
+                    auto_dismiss=True
+                )
+                success_popup.open()
+
+            confirm_yes_btn.bind(on_press=do_delete)
+            confirm_no_btn.bind(on_press=confirm_popup.dismiss)
+            confirm_popup.open()
+
+        select_all_btn.bind(on_press=select_all)
+        delete_btn.bind(on_press=delete_selected)
+        cancel_btn.bind(on_press=popup.dismiss)
+
+        popup.open()
+
     def create_ui(self):
         main_layout = BoxLayout(orientation='horizontal', padding=10, spacing=10)
 
@@ -1775,6 +1992,16 @@ class ExtendedMolodnikiTableScreen(Screen):
         )
         other_btn.bind(on_press=lambda x: self.select_breed(instance, breed_type, 'other'))
         content.add_widget(other_btn)
+
+        # Кнопка "Очистить"
+        clear_btn = ModernButton(
+            text='Очистить',
+            bg_color=get_color_from_hex('#FFA500'),
+            size_hint=(1, None),
+            height=50
+        )
+        clear_btn.bind(on_press=lambda x: self.show_clear_breeds_popup(breed_type))
+        content.add_widget(clear_btn)
 
         # Кнопка отмены
         cancel_btn = ModernButton(
@@ -4003,1144 +4230,55 @@ class ExtendedMolodnikiTableScreen(Screen):
 
         popup.open()
 
-    def calculate_section_totals(self):
-        """Расчет итогов по всему разделу (все страницы)"""
-        breed_composition = {}
-        total_stats = {'density': [], 'height': [], 'age': []}
-        coniferous_stats = {'do_05': [], '05_15': [], 'bolee_15': [], 'height': [], 'age': []}
-
-        for page_num, page_data in self.page_data.items():
-            for row_data in page_data:
-                # row_data имеет 6 элементов: nn, gps_point, predmet_uhoda, poroda, primechanie, tip_lesa
-                if row_data[2]:  # predmet_uhoda
-                    composition = self.parse_composition(row_data[2])
-                    for breed, count in composition.items():
-                        if breed not in breed_composition:
-                            breed_composition[breed] = []
-                        breed_composition[breed].append(count)
-
-                breeds_text = row_data[3]  # poroda
-                if breeds_text:
-                    breeds_data = self.parse_breeds_data(breeds_text)
-                    for breed_info in breeds_data:
-                        if breed_info.get('type') == 'coniferous':
-                            # Густота хвойных = сумма градаций
-                            coniferous_density = (breed_info.get('do_05', 0) +
-                                                breed_info.get('05_15', 0) +
-                                                breed_info.get('bolee_15', 0))
-                            if coniferous_density > 0:
-                                total_stats['density'].append(coniferous_density)
-                            else:
-                                if 'density' in breed_info and breed_info['density']:
-                                    total_stats['density'].append(breed_info['density'])
-
-                        elif 'density' in breed_info and breed_info['density']:
-                            total_stats['density'].append(breed_info['density'])
-
-                        if 'height' in breed_info and breed_info['height']:
-                            total_stats['height'].append(breed_info['height'])
-                        if 'age' in breed_info and breed_info['age']:
-                            total_stats['age'].append(breed_info['age'])
-
-        # Рассчитываем остальные итоги
-
-        current_radius = float(self.current_radius) if self.current_radius else 5.64
-        plot_area_m2 = 3.14159 * (current_radius ** 2)  # Площадь пробной площади в м²
-
-        # Расчет средних по градациям для хвойных по формулам лесного хозяйства на гектар
-        coniferous_stats_ha = []
-        for row_data in [row for page in self.page_data.values() for row in page]:
-            breeds_text = row_data[3]
-            if breeds_text:
-                breeds_data = self.parse_breeds_data(breeds_text)
-                if breeds_data and any(b.get('type') == 'coniferous' for b in breeds_data):
-                    coniferous_density_ha = 0
-                    height_sum = 0
-                    age_sum = 0
-                    count = 0
-                    for breed_info in breeds_data:
-                        if breed_info.get('type') == 'coniferous':
-                            do_05 = breed_info.get('do_05', 0)
-                            _05_15 = breed_info.get('05_15', 0)
-                            bolee_15 = breed_info.get('bolee_15', 0)
-                            coniferous_density_ha += (do_05 * 10000 / plot_area_m2) + (_05_15 * 10000 / plot_area_m2) + (bolee_15 * 10000 / plot_area_m2)
-                            if breed_info.get('height'):
-                                height_sum += breed_info['height']
-                                count += 1
-                            if breed_info.get('age'):
-                                age_sum += breed_info['age']
-
-                    coniferous_stats_ha.append({
-                        'density_ha': coniferous_density_ha if coniferous_density_ha > 0 else 0,
-                        'height': height_sum / count if count > 0 else 0,
-                        'age': age_sum / count if count > 0 else 0
-                    })
-
-        # Итоги по лиственным
-        deciduous_stats = []
-        for row_data in [row for page in self.page_data.values() for row in page]:
-            breeds_text = row_data[3]
-            if breeds_text:
-                breeds_data = self.parse_breeds_data(breeds_text)
-                if breeds_data:
-                    deciduous_density_total = 0
-                    deciduous_height = []
-                    deciduous_age = []
-                    for breed_info in breeds_data:
-                        if breed_info.get('type') == 'deciduous':
-                            deciduous_density_total += breed_info.get('density', 0)
-                            if breed_info.get('height', 0) > 0:
-                                deciduous_height.append(breed_info['height'])
-                            if breed_info.get('age', 0) > 0:
-                                deciduous_age.append(breed_info['age'])
-                    if deciduous_height or deciduous_age:
-                        deciduous_density_ha = deciduous_density_total
-                        avg_height = sum(deciduous_height) / len(deciduous_height) if deciduous_height else 0
-                        avg_age = sum(deciduous_age) / len(deciduous_age) if deciduous_age else 0
-                        deciduous_stats.append({'density': deciduous_density_ha, 'height': avg_height, 'age': avg_age})
-
-        # Сводные итоги
-        avg_composition = {}
-        for breed, counts in breed_composition.items():
-            if counts:
-                avg_composition[breed] = sum(counts) / len(counts)
-
-        composition_text = ""
-        for breed in sorted(avg_composition.keys()):
-            count = avg_composition[breed]
-            if count > 0:
-                composition_text += f"{int(count)}{breed}"
-
-        # Расчет формул лесного хозяйства
-        forestry_formulas_text = ""
-
-        # Расчет градаций для хвойных пород
-        coniferous_gradiations_stats = {'do_05_ha': [], '05_15_ha': [], 'bolee_15_ha': [], 'height': [], 'age': []}
-
-        current_radius = float(self.current_radius) if self.current_radius else 5.64
-        plot_area_m2 = 3.14159 * (current_radius ** 2)
-
-        for row_data in [row for page in self.page_data.values() for row in page]:
-            breeds_text = row_data[3]
-            if breeds_text:
-                breeds_data = self.parse_breeds_data(breeds_text)
-                for breed_info in breeds_data:
-                    if breed_info.get('type') == 'coniferous':
-                        do_05_ha = breed_info.get('do_05', 0) * 10000 / plot_area_m2 if plot_area_m2 > 0 else 0
-                        _05_15_ha = breed_info.get('05_15', 0) * 10000 / plot_area_m2 if plot_area_m2 > 0 else 0
-                        bolee_15_ha = breed_info.get('bolee_15', 0) * 10000 / plot_area_m2 if plot_area_m2 > 0 else 0
-                        height = breed_info.get('height', 0)
-                        age = breed_info.get('age', 0)
-
-                        coniferous_gradiations_stats['do_05_ha'].append(do_05_ha)
-                        coniferous_gradiations_stats['05_15_ha'].append(_05_15_ha)
-                        coniferous_gradiations_stats['bolee_15_ha'].append(bolee_15_ha)
-                        if height > 0:
-                            coniferous_gradiations_stats['height'].append(height)
-                        if age > 0:
-                            coniferous_gradiations_stats['age'].append(age)
-
-        if coniferous_gradiations_stats['do_05_ha'] or coniferous_gradiations_stats['05_15_ha'] or coniferous_gradiations_stats['bolee_15_ha']:
-            forestry_formulas_text += "Хвойные: "
-            gradiations = []
-            avg_do_05 = sum(coniferous_gradiations_stats['do_05_ha']) / len(coniferous_gradiations_stats['do_05_ha']) if coniferous_gradiations_stats['do_05_ha'] else 0
-            gradiations.append(f"до 0.5м: {avg_do_05:.1f} шт/га")
-
-            avg_05_15 = sum(coniferous_gradiations_stats['05_15_ha']) / len(coniferous_gradiations_stats['05_15_ha']) if coniferous_gradiations_stats['05_15_ha'] else 0
-            gradiations.append(f"0.5-1.5м: {avg_05_15:.1f} шт/га")
-
-            avg_bolee_15 = sum(coniferous_gradiations_stats['bolee_15_ha']) / len(coniferous_gradiations_stats['bolee_15_ha']) if coniferous_gradiations_stats['bolee_15_ha'] else 0
-            gradiations.append(f">1.5м: {avg_bolee_15:.1f} шт/га")
-
-            forestry_formulas_text += ", ".join(gradiations)
-
-            if coniferous_gradiations_stats['height']:
-                avg_height = sum(coniferous_gradiations_stats['height']) / len(coniferous_gradiations_stats['height'])
-                forestry_formulas_text += f", высота: {avg_height:.1f}м"
-            if coniferous_gradiations_stats['age']:
-                avg_age = sum(coniferous_gradiations_stats['age']) / len(coniferous_gradiations_stats['age'])
-                forestry_formulas_text += f", возраст: {avg_age:.1f} лет"
-
-        # Лиственные итоги
-        if deciduous_stats:
-            if forestry_formulas_text:
-                forestry_formulas_text += "; "
-            forestry_formulas_text += "Лиственные: "
-            avg_deciduous_density = sum(d['density'] for d in deciduous_stats) / len(deciduous_stats) if deciduous_stats else 0
-            avg_deciduous_height = sum(d['height'] for d in deciduous_stats) / len(deciduous_stats) if deciduous_stats else 0
-            avg_deciduous_age = sum(d['age'] for d in deciduous_stats) / len(deciduous_stats) if deciduous_stats else 0
-
-            if avg_deciduous_density > 0:
-                forestry_formulas_text += f"густота: {avg_deciduous_density:.1f} шт/га "
-            if avg_deciduous_height > 0:
-                forestry_formulas_text += f"высота: {avg_deciduous_height:.1f}м "
-            if avg_deciduous_age > 0:
-                forestry_formulas_text += f"возраст: {avg_deciduous_age:.1f} лет"
-
-        return {
-            'composition_text': composition_text,
-            'forestry_formulas_text': forestry_formulas_text,
-            'total_plots': sum(len(page) for page in self.page_data.values() if page)
-        }
-
-    def show_total_summary_popup(self, *args, **kwargs):
-        """Показать popup со сводными итогами и таксационными расчетами (как в меню таксационные показатели)"""
-        try:
-            default_radius = float(self.current_radius) if self.current_radius else 1.78
-            plot_area_m2_default = 3.14159 * (default_radius ** 2)
-            trees_per_ha = 10000 / plot_area_m2_default if plot_area_m2_default > 0 else 0
-
-            # Словарь для сбора данных по породам
-            breeds_data = {}
-
-            # Обрабатываем все страницы
-            for page_num, page_rows in self.page_data.items():
-                for row in page_rows:
-                    if len(row) < 4:
-                        continue
-
-                    # Get radius for this specific plot row
-                    plot_radius = default_radius  # always use default radius for consistent calculations
-
-                    plot_area_m2 = 3.14159 * (plot_radius ** 2)
-                    plot_area_ha = plot_area_m2 / 10000  # Гектары
-
-                    # Столбец "Порода" в row[3]
-                    breeds_text = row[3]
-                    if not breeds_text:
-                        continue
-
-                    try:
-                        breeds_list = json.loads(breeds_text) if isinstance(breeds_text, str) else []
-                    except json.JSONDecodeError:
-                        continue
-
-                    for breed_info in breeds_list:
-                        if not isinstance(breed_info, dict):
-                            continue
-
-                        breed_name = breed_info.get('name', '').strip()
-                        if not breed_name:
-                            continue
-
-                        breed_type = breed_info.get('type', self.determine_breed_type(breed_name))
-                        density = 0
-                        height = None
-                        age = None
-
-                        # Расчет густоты и высоты в зависимости от типа породы
-                        if breed_type == 'coniferous':
-                            do_05 = breed_info.get('do_05', 0)
-                            _05_15 = breed_info.get('05_15', 0)
-                            bolee_15 = breed_info.get('bolee_15', 0)
-                            density = (do_05 + _05_15 + bolee_15) / plot_area_ha if plot_area_ha > 0 else 0
-
-                            # Для хвойных пород определяем высоту по градациям или среднюю
-                            if any([do_05, _05_15, bolee_15]):
-                                # Высота определяется по градациям
-                                if bolee_15 > 0:
-                                    height = 2.0  # >1.5m
-                                elif _05_15 > 0:
-                                    height = 1.0  # 0.5-1.5m
-                                elif do_05 > 0:
-                                    height = 0.3  # до 0.5m
-                                else:
-                                    height = 0.0
-                            else:
-                                height = breed_info.get('height', 0) or 0
-                        else:
-                            # Для лиственных пород - обычная плотность и средняя высота
-                            density_value = breed_info.get('density', 0)
-                            density = density_value / plot_area_ha if plot_area_ha > 0 else 0
-                            height = breed_info.get('height', 0) or 0
-
-                        age = breed_info.get('age', 0) or 0
-                        diameter = breed_info.get('diameter', 0) or 0
-
-                        # Сбор данных по породе
-                        if breed_name not in breeds_data:
-                            breeds_data[breed_name] = {
-                                'type': breed_type,
-                                'plots': [],
-                                'coniferous_zones': {'do_05': 0, '05_15': 0, 'bolee_15': 0} if breed_type == 'coniferous' else None,
-                                'diameters': []
-                            }
-
-                        # Добавляем данные
-                        plot_data = {
-                            'density': density,
-                            'height': height,
-                            'age': age
-                        }
-
-                        if breed_type == 'coniferous':
-                            plot_data.update({
-                                'do_05_density': do_05 / plot_area_ha if plot_area_ha > 0 else 0,
-                                '05_15_density': _05_15 / plot_area_ha if plot_area_ha > 0 else 0,
-                                'bolee_15_density': bolee_15 / plot_area_ha if plot_area_ha > 0 else 0
-                            })
-
-                        breeds_data[breed_name]['plots'].append(plot_data)
-                        breeds_data[breed_name]['diameters'].append(diameter)
-
-                        if breed_type == 'coniferous':
-                            breeds_data[breed_name]['coniferous_zones']['do_05'] += plot_data['do_05_density']
-                            breeds_data[breed_name]['coniferous_zones']['05_15'] += plot_data['05_15_density']
-                            breeds_data[breed_name]['coniferous_zones']['bolee_15'] += plot_data['bolee_15_density']
-
-            # Создаем popup с результатами
-            content = BoxLayout(orientation='vertical', spacing=10, padding=10)
-
-            # Заголовок результатов с радиусом и адресными данными
-            address_parts = []
-            if self.current_quarter:
-                address_parts.append(f"Квартал: {self.current_quarter}")
-            if self.current_plot:
-                address_parts.append(f"Выдел: {self.current_plot}")
-            if self.current_forestry:
-                address_parts.append(f"Лесничество: {self.current_forestry}")
-            if self.current_section:
-                address_parts.append(f"Участок: {self.current_section}")
-
-            address_text = " | ".join(address_parts) if address_parts else "Адрес не указан"
-
-            header_label = Label(
-                text=f'ИТОГИ ПО УЧАСТКУ МОЛОДНЯКОВ\n' +
-                     f'{address_text}\n' +
-                     f'Радиус участка: {default_radius:.2f} м\n' +
-                     f'1 дерево = {trees_per_ha:.0f} тыс.шт./га',
-                font_name='Roboto',
-                font_size='16sp',
-                bold=True,
-                color=(0, 0.5, 0, 1),
-                size_hint=(1, None),
-                height=100,
-                halign='center',
-                valign='top'
-            )
-            header_label.bind(size=lambda *args: setattr(header_label, 'text_size', (header_label.width, None)))
-            content.add_widget(header_label)
-
-            # Адресный блок
-            address_block = BoxLayout(orientation='vertical', spacing=5, size_hint=(1, None), height=120, padding=[10, 10])
-            with address_block.canvas.before:
-                Color(rgba=get_color_from_hex('#E8F4FD'))
-                address_block.bg = RoundedRectangle(pos=address_block.pos, size=address_block.size, radius=[10])
-                address_block.bind(pos=lambda *args: setattr(address_block.bg, 'pos', address_block.pos),
-                                 size=lambda *args: setattr(address_block.bg, 'size', address_block.size))
-
-            address_title = Label(
-                text='АДРЕС УЧАСТКА',
-                font_name='Roboto',
-                font_size='16sp',
-                bold=True,
-                color=(0, 0, 0, 1),
-                size_hint=(1, None),
-                height=30,
-                halign='center'
-            )
-            address_block.add_widget(address_title)
-
-            address_info = Label(
-                text=f"Квартал: {self.current_quarter or 'Не указан'}\n"
-                     f"Выдел: {self.current_plot or 'Не указан'}\n"
-                     f"Лесничество: {self.current_forestry or 'Не указано'}\n"
-                     f"Участковое лесничество: {getattr(self, 'current_district_forestry', '') or 'Не указано'}",
-                font_name='Roboto',
-                font_size='14sp',
-                color=(0, 0, 0, 1),
-                size_hint=(1, None),
-                height=80,
-                halign='left',
-                valign='top'
-            )
-            address_info.bind(size=lambda *args: setattr(address_info, 'text_size', (address_info.width, None)))
-            address_block.add_widget(address_info)
-
-            content.add_widget(address_block)
-
-            scroll = ScrollView(size_hint=(1, 1))
-            results_layout = GridLayout(cols=1, spacing=10, size_hint_y=None)
-            results_layout.bind(minimum_height=results_layout.setter('height'))
-
-            # Коэффициент состава насаждения
-            composition_label = Label(
-                text='КОЭФФИЦИЕНТ СОСТАВА НАСАЖДЕНИЯ',
-                font_name='Roboto',
-                font_size='16sp',
-                bold=True,
-                color=(0, 0, 0, 1),
-                size_hint=(1, None),
-                height=30,
-                halign='center'
-            )
-            results_layout.add_widget(composition_label)
-
-            # Расчет коэффициента состава на основе суммарной густоты пород
-            total_densities = {}
-            for breed_name, data in breeds_data.items():
-                if data['plots']:
-                    if data['plots'][0].get('type') == 'coniferous':
-                        # Для хвойных суммируем густоту по градациям
-                        total_density = 0
-                        for p in data['plots']:
-                            conif_density = (p.get('do_05_density', 0) + p.get('05_15_density', 0) + p.get('bolee_15_density', 0))
-                            total_density += conif_density
-                    else:
-                        # Для лиственных обычная густота
-                        total_density = sum(p.get('density', 0) for p in data['plots'])
-                    if total_density > 0:
-                        total_densities[breed_name] = total_density
-
-            if total_densities:
-                # Расчет коэффициентов состава так, чтобы их сумма равнялась 10
-                total_all_density = sum(total_densities.values())
-                composition_parts = []
-
-                # Сортируем по убыванию плотности
-                for breed_name, density in sorted(total_densities.items(), key=lambda x: x[1], reverse=True):
-                    if total_all_density > 0:
-                        # Коэффициент пропорционален плотности, сумма всех коэффициентов = 10
-                        coeff = max(1, round(density / total_all_density * 10))
-                    else:
-                        coeff = 1
-                    breed_letter = self.get_breed_letter(breed_name)
-                    composition_parts.append(f"{coeff}{breed_letter}")
-
-                # Корректировка чтобы сумма равнялась 10
-                coeffs_only = [int(''.join(filter(str.isdigit, part))) for part in composition_parts]
-                total_coeffs = sum(coeffs_only)
-                iterations = 0
-                while total_coeffs != 10 and iterations < 100:
-                    if total_coeffs > 10:
-                        # Уменьшаем самый большой коэффициент
-                        max_idx = coeffs_only.index(max(coeffs_only))
-                        coeffs_only[max_idx] -= 1
-                    elif total_coeffs < 10:
-                        # Увеличиваем самый большой коэффициент
-                        max_idx = coeffs_only.index(max(coeffs_only))
-                        coeffs_only[max_idx] += 1
-
-                    total_coeffs = sum(coeffs_only)
-                    iterations += 1
-
-                # Обновляем composition_parts
-                sorted_breeds = sorted(total_densities.items(), key=lambda x: x[1], reverse=True)
-                composition_parts = []
-                for i, (breed_name, _) in enumerate(sorted_breeds):
-                    if i < len(coeffs_only):
-                        breed_letter = self.get_breed_letter(breed_name)
-                        composition_parts.append(f"{coeffs_only[i]}{breed_letter}")
-
-                composition_text = ''.join(composition_parts) + "Др"
-                composition_result = Label(
-                    text=f"Формула состава: {composition_text}",
-                    font_name='Roboto',
-                    font_size='14sp',
-                    color=(0, 0, 0, 1),
-                    size_hint=(1, None),
-                    height=50,
-                    halign='center',
-                    text_size=(None, None),
-                    valign='middle'
-                )
-                composition_result.bind(size=lambda *args: setattr(composition_result, 'text_size', (composition_result.width, None)))
-                results_layout.add_widget(composition_result)
-            else:
-                no_composition = Label(
-                    text="Коэффициент состава не определен (недостаточно данных)",
-                    font_name='Roboto',
-                    font_size='14sp',
-                    color=(1, 0, 0, 1),
-                    size_hint=(1, None),
-                    height=30,
-                    halign='center'
-                )
-                results_layout.add_widget(no_composition)
-
-            # Хвойные породы с градациями высот
-            coniferous_label = Label(
-                text='\nХВОЙНЫЕ ПОРОДЫ - ВЫСОТА ПО ГРАДАЦИЯМ',
-                font_name='Roboto',
-                font_size='16sp',
-                bold=True,
-                color=(0, 0, 0, 1),
-                size_hint=(1, None),
-                height=50,
-                halign='center'
-            )
-            results_layout.add_widget(coniferous_label)
-
-            has_coniferous = False
-            for breed_name, data in sorted(breeds_data.items()):
-                if data['type'] == 'coniferous' and data['plots']:
-                    has_coniferous = True
-
-                    # Средняя густота в градациях
-                    zones = data.get('coniferous_zones', {})
-                    avg_do_05 = zones.get('do_05', 0) / len(data['plots']) if data['plots'] else 0
-                    avg_05_15 = zones.get('05_15', 0) / len(data['plots']) if data['plots'] else 0
-                    avg_bolee_15 = zones.get('bolee_15', 0) / len(data['plots']) if data['plots'] else 0
-
-                    # Средняя высота только по значениям >1.5м
-                    avg_heights_over_15 = [p['height'] for p in data['plots'] if p['height'] > 1.5]
-                    avg_height_total = sum(avg_heights_over_15) / len(avg_heights_over_15) if avg_heights_over_15 else 0
-
-                    # Средний диаметр
-                    avg_diameter = sum(data['diameters']) / len(data['diameters']) if data['diameters'] else 0
-
-                    # Средний возраст
-                    avg_ages = [p['age'] for p in data['plots'] if p['age'] > 0]
-                    avg_age = sum(avg_ages) / len(avg_ages) if avg_ages else 0
-
-                    coniferous_result = Label(
-                        text=f"{breed_name}:\n"
-                             f"• до 0.5м: {avg_do_05:.1f} шт/га\n"
-                             f"• 0.5-1.5м: {avg_05_15:.1f} шт/га\n"
-                             f"• >1.5м: {avg_bolee_15:.1f} шт/га\n"
-                             f"• средняя высота (>1.5м): {avg_height_total:.1f}м\n"
-                             f"• средний диаметр: {avg_diameter:.1f} см\n"
-                             f"• средний возраст: {avg_age:.1f} лет",
-                        font_name='Roboto',
-                        font_size='14sp',
-                        color=(0, 0.5, 0, 1),
-                        size_hint=(1, None),
-                        height=140,
-                        halign='left',
-                        valign='top'
-                    )
-                    coniferous_result.bind(size=lambda *args: setattr(coniferous_result, 'text_size', (coniferous_result.width, None)))
-                    results_layout.add_widget(coniferous_result)
-
-            if not has_coniferous:
-                no_coniferous = Label(
-                    text="Хвойные породы не найдены",
-                    font_name='Roboto',
-                    font_size='14sp',
-                    color=(0.5, 0.5, 0.5, 1),
-                    size_hint=(1, None),
-                    height=30,
-                    halign='center'
-                )
-                results_layout.add_widget(no_coniferous)
-            else:
-                # Общие средние по хвойным породам
-                coniferous_overall_label = Label(
-                    text='\nОБЩИЕ СРЕДНИЕ ПО ХВОЙНЫМ ПОРОДАМ',
-                    font_name='Roboto',
-                    font_size='16sp',
-                    bold=True,
-                    color=(0.0, 0.5, 0.7, 1),
-                    size_hint=(1, None),
-                    height=50,
-                    halign='center'
-                )
-                results_layout.add_widget(coniferous_overall_label)
-
-                # Рассчитываем общие средние по всем хвойным породам
-                coniferous_all_densities = []
-                coniferous_all_heights = []
-                coniferous_all_ages = []
-                coniferous_all_diameters = []
-
-                for breed_name, data in breeds_data.items():
-                    if data['type'] == 'coniferous' and data['plots']:
-                        for p in data['plots']:
-                            # Для густоты - используем сумму градаций
-                            if p['density'] > 0:
-                                coniferous_all_densities.append(p['density'])
-                            # Для высоты - только положительные значения
-                            if p['height'] is not None and p['height'] > 0:
-                                coniferous_all_heights.append(p['height'])
-                            # Для возраста - только положительные значения (включая 0, если age существует)
-                            # Добавляем возраст если ключ существует (включая 0)
-                            if p.get('age', 0) > 0:
-                                coniferous_all_ages.append(p['age'])
-                        coniferous_all_diameters.extend([d for d in data['diameters'] if d > 0])
-
-                avg_coniferous_overall_density = sum(coniferous_all_densities) / len(coniferous_all_densities) if coniferous_all_densities else 0
-                avg_coniferous_overall_height = sum(coniferous_all_heights) / len(coniferous_all_heights) if coniferous_all_heights else 0
-                avg_coniferous_overall_age = sum(coniferous_all_ages) / len(coniferous_all_ages) if coniferous_all_ages else 0
-                avg_coniferous_overall_diameter = sum(coniferous_all_diameters) / len(coniferous_all_diameters) if coniferous_all_diameters else 0
-
-                # Формируем текст - ВСЕГДА показываем строку с возрастом, даже если 0
-                text_parts = []
-                text_parts.append(f"Средняя густота хвойных пород: {avg_coniferous_overall_density:.1f} шт/га")
-                if coniferous_all_heights:
-                    text_parts.append(f"Средняя высота хвойных пород: {avg_coniferous_overall_height:.1f} м")
-                if coniferous_all_diameters:
-                    text_parts.append(f"Средний диаметр хвойных пород: {avg_coniferous_overall_diameter:.1f} см")
-                # ВСЕГДА показываем возраст
-                text_parts.append(f"Средний возраст хвойных пород: {avg_coniferous_overall_age:.1f} лет")
-
-                coniferous_overall_result = Label(
-                    text="\n".join(text_parts),
-                    font_name='Roboto',
-                    font_size='14sp',
-                    color=(0, 0.5, 0, 1),  # Зеленый цвет
-                    size_hint=(1, None),
-                    height=len(text_parts) * 25,
-                    halign='left',
-                    valign='top'
-                )
-                coniferous_overall_result.bind(size=lambda *args: setattr(coniferous_overall_result, 'text_size', (coniferous_overall_result.width, None)))
-                results_layout.add_widget(coniferous_overall_result)
-
-            # Лиственные породы - средние высоты и возраст
-            deciduous_label = Label(
-                text='\nЛИСТВЕННЫЕ ПОРОДЫ - СРЕДНИЕ ПОКАЗАТЕЛИ',
-                font_name='Roboto',
-                font_size='16sp',
-                bold=True,
-                color=(0, 0, 0, 1),
-                size_hint=(1, None),
-                height=50,
-                halign='center'
-            )
-            results_layout.add_widget(deciduous_label)
-
-            has_deciduous = False
-            for breed_name, data in sorted(breeds_data.items()):
-                if data['type'] == 'deciduous' and data['plots']:
-                    has_deciduous = True
-
-                    avg_density = sum(p['density'] for p in data['plots']) / len(data['plots'])
-
-                    avg_heights = [p['height'] for p in data['plots'] if p['height'] > 0]
-                    avg_height = sum(avg_heights) / len(avg_heights) if avg_heights else 0
-
-                    avg_ages = [p['age'] for p in data['plots'] if p['age'] > 0]
-                    avg_age = sum(avg_ages) / len(avg_ages) if avg_ages else 0
-
-                    # Средний диаметр
-                    avg_diameter = sum(data['diameters']) / len(data['diameters']) if data['diameters'] else 0
-
-                    deciduous_result = Label(
-                        text=f"{breed_name}:\n"
-                             f"• Густота: {avg_density:.1f} шт/га\n"
-                             f"• Средняя высота: {avg_height:.1f}м\n"
-                             f"• Средний возраст: {avg_age:.1f} лет\n"
-                             f"• Средний диаметр: {avg_diameter:.1f} см",
-                        font_name='Roboto',
-                        font_size='14sp',
-                        color=(0, 0.3, 0.5, 1),
-                        size_hint=(1, None),
-                        height=150,
-                        halign='left',
-                        valign='top'
-                    )
-                    deciduous_result.bind(size=lambda *args: setattr(deciduous_result, 'text_size', (deciduous_result.width, None)))
-                    results_layout.add_widget(deciduous_result)
-
-            if not has_deciduous:
-                no_deciduous = Label(
-                    text="Лиственные породы не найдены",
-                    font_name='Roboto',
-                    font_size='14sp',
-                    color=(0.5, 0.5, 0.5, 1),
-                    size_hint=(1, None),
-                    height=30,
-                    halign='center'
-                )
-                results_layout.add_widget(no_deciduous)
-
-            # Общие средние по лиственным породам
-            if has_deciduous:
-                deciduous_overall_label = Label(
-                    text='\nОБЩИЕ СРЕДНИЕ ПО ЛИСТВЕННЫМ ПОРОДАМ',
-                    font_name='Roboto',
-                    font_size='16sp',
-                    bold=True,
-                    color=(0, 0.5, 0.7, 1),
-                    size_hint=(1, None),
-                    height=50,
-                    halign='center'
-                )
-                results_layout.add_widget(deciduous_overall_label)
-
-                # Рассчитываем общие средние по всем лиственным породам
-                deciduous_all_densities = []
-                deciduous_all_heights = []
-                deciduous_all_ages = []
-                deciduous_all_diameters = []
-
-                for breed_name, data in breeds_data.items():
-                    if data['type'] == 'deciduous' and data['plots']:
-                        deciduous_all_densities.extend([p['density'] for p in data['plots'] if p['density'] > 0])
-                        deciduous_all_heights.extend([p['height'] for p in data['plots'] if p['height'] > 0])
-                        deciduous_all_ages.extend([p['age'] for p in data['plots'] if p['age'] > 0])
-                        deciduous_all_diameters.extend([d for d in data['diameters'] if d > 0])
-
-                avg_deciduous_overall_density = sum(deciduous_all_densities) / len(deciduous_all_densities) if deciduous_all_densities else 0
-                avg_deciduous_overall_height = sum(deciduous_all_heights) / len(deciduous_all_heights) if deciduous_all_heights else 0
-                avg_deciduous_overall_age = sum(deciduous_all_ages) / len(deciduous_all_ages) if deciduous_all_ages else 0
-                avg_deciduous_overall_diameter = sum(deciduous_all_diameters) / len(deciduous_all_diameters) if deciduous_all_diameters else 0
-
-                deciduous_overall_result = Label(
-                    text=f"Средняя густота лиственных пород: {avg_deciduous_overall_density:.1f} шт/га\n"
-                         f"Средняя высота лиственных пород: {avg_deciduous_overall_height:.1f} м\n"
-                         f"Средний возраст лиственных пород: {avg_deciduous_overall_age:.1f} лет\n"
-                         f"Средний диаметр лиственных пород: {avg_deciduous_overall_diameter:.1f} см",
-                    font_name='Roboto',
-                    font_size='14sp',
-                    color=(0.2, 0.4, 0.8, 1),
-                    size_hint=(1, None),
-                    height=100,
-                    halign='left',
-                    valign='top'
-                )
-                deciduous_overall_result.bind(size=lambda *args: setattr(deciduous_overall_result, 'text_size', (deciduous_overall_result.width, None)))
-                results_layout.add_widget(deciduous_overall_result)
-
-            # Средние данные в целом по участку
-            overall_label = Label(
-                text='\nСРЕДНИЕ ДАННЫЕ В ЦЕЛОМ ПО УЧАСТКУ',
-                font_name='Roboto',
-                font_size='16sp',
-                bold=True,
-                color=(0, 0, 0, 1),
-                size_hint=(1, None),
-                height=50,
-                halign='center'
-            )
-            results_layout.add_widget(overall_label)
-
-            # Рассчитываем общие средние
-            all_densities = []
-            all_heights = []
-            all_ages = []
-            all_diameters = []
-
-            for breed_name, data in breeds_data.items():
-                if data['plots']:
-                    all_densities.extend([p['density'] for p in data['plots'] if p['density'] > 0])
-                    all_heights.extend([p['height'] for p in data['plots'] if p['height'] > 0])
-                    all_ages.extend([p['age'] for p in data['plots'] if p['age'] > 0])
-                    all_diameters.extend([d for d in data['diameters'] if d > 0])
-
-            avg_overall_density = sum(all_densities) / len(all_densities) if all_densities else 0
-            avg_overall_height = sum(all_heights) / len(all_heights) if all_heights else 0
-            avg_overall_age = sum(all_ages) / len(all_ages) if all_ages else 0
-            avg_overall_diameter = sum(all_diameters) / len(all_diameters) if all_diameters else 0
-
-            overall_result = Label(
-                text=f"Средняя густота: {avg_overall_density:.1f} шт/га\n"
-                     f"Средняя высота: {avg_overall_height:.1f} м\n"
-                     f"Средний возраст: {avg_overall_age:.1f} лет\n"
-                     f"Средний диаметр: {avg_overall_diameter:.1f} см",
-                font_name='Roboto',
-                font_size='14sp',
-                color=(0.8, 0.4, 0, 1),
-                size_hint=(1, None),
-                height=150,
-                halign='left',
-                valign='top'
-            )
-            overall_result.bind(size=lambda *args: setattr(overall_result, 'text_size', (overall_result.width, None)))
-            results_layout.add_widget(overall_result)
-
-
-
-            # Предмет ухода и интенсивность рубки
-            care_label = Label(
-                text='\nПРЕДМЕТ УХОДА И ИНТЕНСИВНОСТЬ РУБКИ',
-                font_name='Roboto',
-                font_size='16sp',
-                bold=True,
-                color=(0, 0, 0, 1),
-                size_hint=(1, None),
-                height=50,
-                halign='center'
-            )
-            results_layout.add_widget(care_label)
-
-            # Собираем данные по предмету ухода и рассчитываем интенсивность
-            care_data = []
-            total_density_all_plots = 0  # Для площадок с предметом ухода
-            total_remaining_density = 0
-            plot_count_with_care = 0
-
-            # Рассчитываем среднюю густоту по всем площадкам
-            total_density_all = 0
-            plot_count_all = 0
-
-            for page_num, page_rows in self.page_data.items():
-                for row in page_rows:
-                    if len(row) >= 4 and row[3]:  # Есть данные пород
-                        plot_density = 0
-                        breeds_text = row[3]
-                        if breeds_text:
-                            try:
-                                breeds_list = json.loads(breeds_text) if isinstance(breeds_text, str) else []
-                                for breed_info in breeds_list:
-                                    if isinstance(breed_info, dict):
-                                        if breed_info.get('type') == 'coniferous':
-                                            # Для хвойных суммируем градации
-                                            do_05 = breed_info.get('do_05', 0)
-                                            _05_15 = breed_info.get('05_15', 0)
-                                            bolee_15 = breed_info.get('bolee_15', 0)
-                                            plot_density += (do_05 + _05_15 + bolee_15) / plot_area_ha if plot_area_ha > 0 else 0
-                                        else:
-                                            # Для лиственных обычная густота
-                                            density = breed_info.get('density', 0)
-                                            plot_density += density / plot_area_ha if plot_area_ha > 0 else 0
-                            except (json.JSONDecodeError, TypeError):
-                                pass
-
-                        if plot_density > 0:
-                            total_density_all += plot_density
-                            plot_count_all += 1
-
-                    if len(row) >= 4 and row[2]:  # Предмет ухода и данные пород
-                        care_text = row[2].strip()
-                        if care_text:
-                            # Рассчитываем общую густоту на этой площадке
-                            plot_density = 0
-                            breeds_text = row[3]
-                            if breeds_text:
-                                try:
-                                    breeds_list = json.loads(breeds_text) if isinstance(breeds_text, str) else []
-                                    for breed_info in breeds_list:
-                                        if isinstance(breed_info, dict):
-                                            if breed_info.get('type') == 'coniferous':
-                                                # Для хвойных суммируем градации
-                                                do_05 = breed_info.get('do_05', 0)
-                                                _05_15 = breed_info.get('05_15', 0)
-                                                bolee_15 = breed_info.get('bolee_15', 0)
-                                                plot_density += (do_05 + _05_15 + bolee_15) / plot_area_ha if plot_area_ha > 0 else 0
-                                            else:
-                                                # Для лиственных обычная густота
-                                                density = breed_info.get('density', 0)
-                                                plot_density += density / plot_area_ha if plot_area_ha > 0 else 0
-                                except (json.JSONDecodeError, TypeError):
-                                    pass
-
-                            if plot_density > 0:
-                                # Парсим предмет ухода для получения оставляемой густоты
-                                remaining_density = self.parse_care_subject_density(care_text)
-                                if remaining_density > 0:
-                                    care_data.append({
-                                        'care_text': care_text,
-                                        'plot_density': plot_density,
-                                        'remaining_density': remaining_density
-                                    })
-                                    total_density_all_plots += plot_density
-                                    total_remaining_density += remaining_density
-                                    plot_count_with_care += 1
-
-            if care_data:
-                # Рассчитываем средний предмет ухода
-                care_breed_totals = {}
-                care_plot_count = 0
-
-                for item in care_data:
-                    care_text = item['care_text']
-                    breed_densities = self.parse_care_subject_by_breeds(care_text)
-                    for breed, density in breed_densities.items():
-                        if breed not in care_breed_totals:
-                            care_breed_totals[breed] = 0
-                        care_breed_totals[breed] += density
-                    care_plot_count += 1
-
-                if care_breed_totals and care_plot_count > 0:
-                    avg_care_parts = []
-                    short_parts = []
-                    for breed, total_density in sorted(care_breed_totals.items()):
-                        avg_density = total_density / care_plot_count
-                        avg_care_parts.append(f"{avg_density * 1000:.0f}шт/га{breed}")
-                        short_parts.append(f"{avg_density:.1f}{breed}")
-                    avg_care_text = ''.join(avg_care_parts)
-                    short_text = ''.join(short_parts).replace('.', ',')
-
-                    care_result = Label(
-                        text=f"Средний предмет ухода: {avg_care_text} = {short_text}",
-                        font_name='Roboto',
-                        font_size='14sp',
-                        color=(0.2, 0.6, 0.2, 1),
-                        size_hint=(1, None),
-                        height=80,
-                        halign='left',
-                        valign='top'
-                    )
-                    care_result.bind(size=lambda *args: setattr(care_result, 'text_size', (care_result.width, None)))
-                    results_layout.add_widget(care_result)
-
-                    # Рассчитываем среднюю интенсивность рубки
-                if plot_count_with_care > 0 and plot_count_all > 0:
-                    avg_remaining_density = total_remaining_density / plot_count_with_care
-
-                    # Интенсивность рубки = ((общая густота - оставляемая густота) / общая густота) * 100%
-                    if avg_overall_density > 0:
-                        intensity = ((avg_overall_density - avg_remaining_density) / avg_overall_density) * 100
-
-                        intensity_result = Label(
-                            text=f"Средняя интенсивность рубки: {intensity:.1f}%\n"
-                                 f"(было {avg_overall_density:.0f} шт/га, "
-                                 f"останется {avg_remaining_density:.0f} шт/га)",
-                            font_name='Roboto',
-                            font_size='14sp',
-                            color=(0.8, 0.2, 0.2, 1),
-                            size_hint=(1, None),
-                            height=60,
-                            halign='left',
-                            valign='top'
-                        )
-                        intensity_result.bind(size=lambda *args: setattr(intensity_result, 'text_size', (intensity_result.width, None)))
-                        results_layout.add_widget(intensity_result)
-            else:
-                no_care = Label(
-                    text="Предмет ухода не указан или недостаточно данных для расчета",
-                    font_name='Roboto',
-                    font_size='14sp',
-                    color=(0.5, 0.5, 0.5, 1),
-                    size_hint=(1, None),
-                    height=30,
-                    halign='center'
-                )
-                results_layout.add_widget(no_care)
-
-            # Расчет преобладающего типа леса
-            forest_types_count = {}
-            for page_num, page_rows in self.page_data.items():
-                for row in page_rows:
-                    if len(row) >= 6 and row[5]:  # Тип Леса в row[5]
-                        forest_type = row[5].strip()
-                        if forest_type:
-                            forest_types_count[forest_type] = forest_types_count.get(forest_type, 0) + 1
-
-            predominant_forest_type = ""
-            if forest_types_count:
-                predominant_forest_type = max(forest_types_count.items(), key=lambda x: x[1])[0]
-
-            # Отображение преобладающего типа леса
-            forest_type_label = Label(
-                text=f'\nПРЕОБЛАДАЮЩИЙ ТИП ЛЕСА: {predominant_forest_type}',
-                font_name='Roboto',
-                font_size='16sp',
-                bold=True,
-                color=(0.2, 0.4, 0.6, 1),
-                size_hint=(1, None),
-                height=50,
-                halign='center'
-            )
-            results_layout.add_widget(forest_type_label)
-
-            # Расчет средних значений по типам леса
-            forest_type_stats = {}
-            for page_num, page_rows in self.page_data.items():
-                for row in page_rows:
-                    if len(row) >= 6 and row[5]:  # Тип Леса в row[5]
-                        forest_type = row[5].strip()
-                        if forest_type:
-                            if forest_type not in forest_type_stats:
-                                forest_type_stats[forest_type] = {
-                                    'count': 0,
-                                    'total_density': 0,
-                                    'total_height': 0,
-                                    'total_age': 0,
-                                    'valid_density': 0,
-                                    'valid_height': 0,
-                                    'valid_age': 0
-                                }
-
-                            # Расчет плотности для этой строки
-                            plot_density = 0
-                            breeds_text = row[3]
-                            if breeds_text:
-                                try:
-                                    breeds_list = json.loads(breeds_text) if isinstance(breeds_text, str) else []
-                                    for breed_info in breeds_list:
-                                        if isinstance(breed_info, dict):
-                                            if breed_info.get('type') == 'coniferous':
-                                                do_05 = breed_info.get('do_05', 0)
-                                                _05_15 = breed_info.get('05_15', 0)
-                                                bolee_15 = breed_info.get('bolee_15', 0)
-                                                plot_density += (do_05 + _05_15 + bolee_15) / plot_area_ha if plot_area_ha > 0 else 0
-                                            else:
-                                                density = breed_info.get('density', 0)
-                                                plot_density += density / plot_area_ha if plot_area_ha > 0 else 0
-                                except (json.JSONDecodeError, TypeError):
-                                    pass
-
-                            forest_type_stats[forest_type]['count'] += 1
-                            if plot_density > 0:
-                                forest_type_stats[forest_type]['total_density'] += plot_density
-                                forest_type_stats[forest_type]['valid_density'] += 1
-
-                            # Средняя высота и возраст по породам в этой строке
-                            heights = []
-                            ages = []
-                            if breeds_text:
-                                try:
-                                    breeds_list = json.loads(breeds_text) if isinstance(breeds_text, str) else []
-                                    for breed_info in breeds_list:
-                                        if isinstance(breed_info, dict):
-                                            if breed_info.get('height', 0) > 0:
-                                                heights.append(breed_info['height'])
-                                            if breed_info.get('age', 0) > 0:
-                                                ages.append(breed_info['age'])
-                                except (json.JSONDecodeError, TypeError):
-                                    pass
-
-                            if heights:
-                                avg_height = sum(heights) / len(heights)
-                                forest_type_stats[forest_type]['total_height'] += avg_height
-                                forest_type_stats[forest_type]['valid_height'] += 1
-
-                            if ages:
-                                avg_age = sum(ages) / len(ages)
-                                forest_type_stats[forest_type]['total_age'] += avg_age
-                                forest_type_stats[forest_type]['valid_age'] += 1
-
-            # Отображение средних значений по типам леса
-            forest_types_avg_label = Label(
-                text='\nСРЕДНИЕ ЗНАЧЕНИЯ ПО ТИПАМ ЛЕСА',
-                font_name='Roboto',
-                font_size='16sp',
-                bold=True,
-                color=(0.4, 0.2, 0.6, 1),
-                size_hint=(1, None),
-                height=50,
-                halign='center'
-            )
-            results_layout.add_widget(forest_types_avg_label)
-
-            for forest_type, stats in sorted(forest_type_stats.items()):
-                if stats['count'] > 0:
-                    avg_density = stats['total_density'] / stats['valid_density'] if stats['valid_density'] > 0 else 0
-                    avg_height = stats['total_height'] / stats['valid_height'] if stats['valid_height'] > 0 else 0
-                    avg_age = stats['total_age'] / stats['valid_age'] if stats['valid_age'] > 0 else 0
-
-                    is_predominant = forest_type == predominant_forest_type
-                    color = (0.8, 0.4, 0.2, 1) if is_predominant else (0.3, 0.3, 0.3, 1)
-
-                    forest_type_avg_result = Label(
-                        text=f"{forest_type} ({stats['count']} площадок){' - ПРЕОБЛАДАЮЩИЙ' if is_predominant else ''}:\n"
-                             f"• Средняя густота: {avg_density:.1f} шт/га\n"
-                             f"• Средняя высота: {avg_height:.1f} м\n"
-                             f"• Средний возраст: {avg_age:.1f} лет",
-                        font_name='Roboto',
-                        font_size='14sp',
-                        color=color,
-                        size_hint=(1, None),
-                        height=80,
-                        halign='left',
-                        valign='top'
-                    )
-                    forest_type_avg_result.bind(size=lambda *args: setattr(forest_type_avg_result, 'text_size', (forest_type_avg_result.width, None)))
-                    results_layout.add_widget(forest_type_avg_result)
-
-            # Информация о площади участка и площади перечета
-            plot_count = len([row for page in self.page_data.values() for row in page if any(cell for cell in row[:3] if cell)])
-            total_plot_area_ha = plot_count * plot_area_ha
-
-            plot_area_info = Label(
-                text=f"Информация о площади:\n"
-                     f"• Радиус пробной площади: {default_radius:.2f} м\n"
-                     f"• Площадь одной площадки: {plot_area_ha:.4f} га ({plot_area_m2:.4f} м²)\n"
-                     f"• Всего площадок: {plot_count}\n"
-                     f"• Совокупная площадь перечета: {total_plot_area_ha:.4f} га ({total_plot_area_ha*10000:.0f} м²)\n"
-                     f"• Пример: 1 площадка = {plot_area_ha:.4f} га, значит площадь перечета = {plot_area_m2:.0f} м²",
-                font_name='Roboto',
-                font_size='12sp',
-                color=(0.5, 0.5, 0.5, 1),
-                size_hint=(1, None),
-                height=200,
-                halign='left',
-                valign='top'
-            )
-            plot_area_info.bind(size=lambda *args: setattr(plot_area_info, 'text_size', (plot_area_info.width, None)))
-            results_layout.add_widget(plot_area_info)
-
-
-
-            scroll.add_widget(results_layout)
-            content.add_widget(scroll)
-
-            close_btn = ModernButton(
-                text='Закрыть',
-                bg_color=get_color_from_hex('#808080'),
-                size_hint=(1, None),
-                height=50
-            )
-            content.add_widget(close_btn)
-
-            # Блок ПРОЕКТ УХОДА
-            project_block = BoxLayout(orientation='vertical', spacing=5, size_hint=(1, None), height=200, padding=[10, 10])
-            with project_block.canvas.before:
-                Color(rgba=get_color_from_hex('#FFFACD'))
-                project_block.bg = RoundedRectangle(pos=project_block.pos, size=project_block.size, radius=[10])
-                project_block.bind(pos=lambda *args: setattr(project_block.bg, 'pos', project_block.pos),
-                                 size=lambda *args: setattr(project_block.bg, 'size', project_block.size))
-
-            project_title = Label(
-                text='ПРОЕКТ УХОДА',
-                font_name='Roboto',
-                font_size='16sp',
-                bold=True,
-                color=(0, 0, 0, 1),
-                size_hint=(1, None),
-                height=30,
-                halign='center'
-            )
-            project_block.add_widget(project_title)
-
-            project_info = Label(
-                text=f"Очередь рубки: {self.care_queue or 'Не указано'}\n"
-                     f"Характеристика молодняков: {self.characteristics or 'Не указано'}\n"
-                     f"Дата рубки: {self.care_date or 'Не указано'}\n"
-                     f"Технология ухода: {self.technology or 'Не указано'}\n"
-                     f"Назначение лесов: {self.forest_purpose or 'Не указано'}",
-                font_name='Roboto',
-                font_size='14sp',
-                color=(0, 0, 0, 1),
-                size_hint=(1, None),
-                height=150,
-                halign='left',
-                valign='top'
-            )
-            project_info.bind(size=lambda *args: setattr(project_info, 'text_size', (project_info.width, None)))
-            project_block.add_widget(project_info)
-
-            results_layout.add_widget(project_block)
-
-            scroll.add_widget(results_layout)
-            content.add_widget(scroll)
-
-            close_btn = ModernButton(
-                text='Закрыть',
-                bg_color=get_color_from_hex('#808080'),
-                size_hint=(1, None),
-                height=50
-            )
-            content.add_widget(close_btn)
-
-            popup = Popup(
-                title="Таксационные показатели молодняков",
-                content=content,
-                size_hint=(1, 0.98)
-            )
-
-            close_btn.bind(on_press=popup.dismiss)
-            popup.open()
-
-        except Exception as e:
-            import traceback
-            self.show_error(f"Ошибка расчета таксационных показателей: {str(e)}\n{traceback.format_exc()}")
-
-    def update_totals(self, update_global=True):
-        """Обновление строки итогов с поддержкой множественных пород"""
-        breed_composition = {}  # Initialize at top
-        total_stats = {'density': [], 'height': [], 'age': []}  # Initialize at top
-
-        # Calculate radius and area once
-        current_radius = float(self.current_radius) if self.current_radius else 5.64
-        plot_area_m2 = 3.14159 * (current_radius ** 2)
-        if update_global:
-            section_data = self.calculate_section_totals()
-            composition_text = section_data['composition_text']
-            forestry_formulas_text = section_data['forestry_formulas_text']
-            total_plots = section_data['total_plots']
+    def parse_care_subject_density(self, care_text):
+        """Парсит предмет ухода и возвращает оставляемую густоту на гектар"""
+        if not care_text:
+            return 0
+
+        care_text = care_text.strip().upper()
+
+        # Регулярное выражение для поиска чисел и букв
+        # Примеры: "3С", "2Б1С", "1Е0.5С" и т.д.
+        matches = re.findall(r'(\d+(?:\.\d+)?)([А-ЯA-Z]+)', care_text)
+
+        if not matches:
+            return 0
+
+        total_density = 0
+        for number_str, breed_code in matches:
+            try:
+                density = float(number_str)
+                total_density += density
+            except ValueError:
+                continue
+
+        # Предмет ухода показывает сколько деревьев оставить на гектар
+        # Например, "3С" значит оставить 3000 сосен на гектар
+        return total_density * 1000  # Умножаем на 1000, так как числа обычно означают тысячи деревьев
+
+    def parse_care_subject_by_breeds(self, care_text):
+        """Парсит предмет ухода и возвращает словарь {порода: густота в тыс. шт/га}"""
+        if not care_text:
+            return {}
+
+        care_text = care_text.strip().upper()
+
+        matches = re.findall(r'(\d+(?:\.\d+)?)([А-ЯA-Z]+)', care_text)
+
+        if not matches:
+            return {}
+
+        breed_densities = {}
+        for number_str, breed_code in matches:
+            try:
+                density = float(number_str)
+                if breed_code not in breed_densities:
+                    breed_densities[breed_code] = 0
+                breed_densities[breed_code] += density
+            except ValueError:
+                continue
+
+        return breed_densities
 
     def generate_care_project(self, instance):
         """Генерирует проект ухода в Word документе"""
@@ -6938,28 +6076,31 @@ class ExtendedMolodnikiTableScreen(Screen):
         }
 
     def show_total_summary_popup(self, *args, **kwargs):
-        """Показать popup со сводными итогами и таксационными расчетами (как в меню таксационные показатели)"""
+        """Показать popup со сводными итогами и таксационными расчетами - 10 отдельных цветных боксов"""
         try:
             default_radius = float(self.current_radius) if self.current_radius else 1.78
             plot_area_m2_default = 3.14159 * (default_radius ** 2)
+            plot_area_ha_default = plot_area_m2_default / 10000
             trees_per_ha = 10000 / plot_area_m2_default if plot_area_m2_default > 0 else 0
 
             # Словарь для сбора данных по породам
             breeds_data = {}
+            forest_types_set = set()
 
-            # Обрабатываем все страницы
+            # Обрабатываем все страницы для сбора данных
             for page_num, page_rows in self.page_data.items():
                 for row in page_rows:
                     if len(row) < 4:
                         continue
 
-                    # Get radius for this specific plot row
-                    plot_radius = default_radius  # always use default radius for consistent calculations
-
+                    plot_radius = default_radius
                     plot_area_m2 = 3.14159 * (plot_radius ** 2)
-                    plot_area_ha = plot_area_m2 / 10000  # Гектары
+                    plot_area_ha = plot_area_m2 / 10000
 
-                    # Столбец "Порода" в row[3]
+                    # Собираем тип леса из row[5] (индекс 5 в расширенной таблице)
+                    if len(row) > 5 and row[5]:
+                        forest_types_set.add(str(row[5]).strip())
+
                     breeds_text = row[3]
                     if not breeds_text:
                         continue
@@ -6982,28 +6123,24 @@ class ExtendedMolodnikiTableScreen(Screen):
                         height = None
                         age = None
 
-                        # Расчет густоты и высоты в зависимости от типа породы
                         if breed_type == 'coniferous':
                             do_05 = breed_info.get('do_05', 0)
                             _05_15 = breed_info.get('05_15', 0)
                             bolee_15 = breed_info.get('bolee_15', 0)
                             density = (do_05 + _05_15 + bolee_15) / plot_area_ha if plot_area_ha > 0 else 0
 
-                            # Для хвойных пород определяем высоту по градациям или среднюю
                             if any([do_05, _05_15, bolee_15]):
-                                # Высота определяется по градациям
                                 if bolee_15 > 0:
-                                    height = 2.0  # >1.5m
+                                    height = 2.0
                                 elif _05_15 > 0:
-                                    height = 1.0  # 0.5-1.5m
+                                    height = 1.0
                                 elif do_05 > 0:
-                                    height = 0.3  # до 0.5m
+                                    height = 0.3
                                 else:
                                     height = 0.0
                             else:
                                 height = breed_info.get('height', 0) or 0
                         else:
-                            # Для лиственных пород - обычная плотность и средняя высота
                             density_value = breed_info.get('density', 0)
                             density = density_value / plot_area_ha if plot_area_ha > 0 else 0
                             height = breed_info.get('height', 0) or 0
@@ -7011,7 +6148,6 @@ class ExtendedMolodnikiTableScreen(Screen):
                         age = breed_info.get('age', 0) or 0
                         diameter = breed_info.get('diameter', 0) or 0
 
-                        # Сбор данных по породе
                         if breed_name not in breeds_data:
                             breeds_data[breed_name] = {
                                 'type': breed_type,
@@ -7020,7 +6156,6 @@ class ExtendedMolodnikiTableScreen(Screen):
                                 'diameters': []
                             }
 
-                        # Добавляем данные
                         plot_data = {
                             'density': density,
                             'height': height,
@@ -7043,90 +6178,178 @@ class ExtendedMolodnikiTableScreen(Screen):
                             breeds_data[breed_name]['coniferous_zones']['bolee_15'] += plot_data['bolee_15_density']
 
             # Создаем popup с результатами
-            content = BoxLayout(orientation='vertical', spacing=10, padding=10)
-
-            # Заголовок результатов с радиусом
-            header_label = Label(
-                text=f'ИТОГИ ПО УЧАСТКУ МОЛОДНЯКОВ\n' +
-                     f'Радиус участка: {default_radius:.2f} м\n' +
-                     f'1 дерево = {trees_per_ha:.0f} тыс.шт./га',
-                font_name='Roboto',
-                font_size='18sp',
-                bold=True,
-                color=(0, 0.5, 0, 1),
-                size_hint=(1, None),
-                height=80,
-                halign='center',
-                valign='top'
-            )
-            content.add_widget(header_label)
+            content = BoxLayout(orientation='vertical', spacing=0, padding=10)
 
             scroll = ScrollView(size_hint=(1, None), height=600)
             results_layout = GridLayout(cols=1, spacing=10, size_hint_y=None)
             results_layout.bind(minimum_height=results_layout.setter('height'))
 
-            # Коэффициент состава насаждения
-            composition_label = Label(
-                text='КОЭФФИЦИЕНТ СОСТАВА НАСАЖДЕНИЯ',
+            # ============================================================
+            # БОКС 1: АДРЕСНАЯ ИНФОРМАЦИЯ (#E6F3FF)
+            # ============================================================
+            address_block = BoxLayout(orientation='vertical', size_hint_y=None, padding=[10, 10], spacing=8)
+            address_block.bind(minimum_height=address_block.setter('height'))
+            with address_block.canvas.before:
+                Color(rgba=get_color_from_hex('#E6F3FF'))
+                address_block.bg = RoundedRectangle(pos=address_block.pos, size=address_block.size, radius=[10])
+                address_block.bind(pos=lambda *args: setattr(address_block.bg, 'pos', address_block.pos),
+                                  size=lambda *args: setattr(address_block.bg, 'size', address_block.size))
+
+            address_title = Label(
+                text='📍 АДРЕСНАЯ ИНФОРМАЦИЯ',
                 font_name='Roboto',
-                font_size='16sp',
                 bold=True,
-                color=(0, 0, 0, 1),
+                font_size='14sp',
+                color=(0, 0.3, 0.6, 1),
                 size_hint=(1, None),
                 height=30,
                 halign='center'
             )
-            results_layout.add_widget(composition_label)
+            address_block.add_widget(address_title)
 
-            # Расчет коэффициента состава на основе суммарной густоты пород
+            address_inner = BoxLayout(orientation='vertical', size_hint_y=None, padding=[10, 10], spacing=5)
+            address_inner.bind(minimum_height=address_inner.setter('height'))
+            with address_inner.canvas.before:
+                Color(rgba=get_color_from_hex('#FFFFFF'))
+                address_inner.bg = RoundedRectangle(pos=address_inner.pos, size=address_inner.size, radius=[8])
+                address_inner.bind(pos=lambda *args: setattr(address_inner.bg, 'pos', address_inner.pos),
+                                  size=lambda *args: setattr(address_inner.bg, 'size', address_inner.size))
+
+            address_text = Label(
+                text=f"Квартал: {self.current_quarter or 'Не указан'}\n"
+                     f"Выдел: {getattr(self, 'current_plot', '') or 'Не указан'}\n"
+                     f"Лесничество: {self.current_forestry or 'Не указано'}\n"
+                     f"Участковое лесничество: {self.project_data['address'].get('district_forestry', '') or 'Не указано'}\n"
+                     f"Радиус: {default_radius:.2f} м | Площадь: {plot_area_m2_default:.1f} м²",
+                font_name='Roboto',
+                font_size='12sp',
+                color=(0.2, 0.2, 0.2, 1),
+                size_hint=(1, None),
+                halign='left',
+                valign='top'
+            )
+            address_text.bind(size=address_text.setter('text_size'))
+            address_inner.add_widget(address_text)
+            address_block.add_widget(address_inner)
+            results_layout.add_widget(address_block)
+
+            # ============================================================
+            # БОКС 2: ДЕТАЛИ УХОДА (#FFF8E6)
+            # ============================================================
+            details_block = BoxLayout(orientation='vertical', size_hint_y=None, padding=[10, 10], spacing=8)
+            details_block.bind(minimum_height=details_block.setter('height'))
+            with details_block.canvas.before:
+                Color(rgba=get_color_from_hex('#FFF8E6'))
+                details_block.bg = RoundedRectangle(pos=details_block.pos, size=details_block.size, radius=[10])
+                details_block.bind(pos=lambda *args: setattr(details_block.bg, 'pos', details_block.pos),
+                                  size=lambda *args: setattr(details_block.bg, 'size', details_block.size))
+
+            details_title = Label(
+                text='📋 ДЕТАЛИ УХОДА',
+                font_name='Roboto',
+                bold=True,
+                font_size='14sp',
+                color=(0.6, 0.4, 0, 1),
+                size_hint=(1, None),
+                height=30,
+                halign='center'
+            )
+            details_block.add_widget(details_title)
+
+            details_inner = BoxLayout(orientation='vertical', size_hint_y=None, padding=[10, 10], spacing=5)
+            details_inner.bind(minimum_height=details_inner.setter('height'))
+            with details_inner.canvas.before:
+                Color(rgba=get_color_from_hex('#FFFFFF'))
+                details_inner.bg = RoundedRectangle(pos=details_inner.pos, size=details_inner.size, radius=[8])
+                details_inner.bind(pos=lambda *args: setattr(details_inner.bg, 'pos', details_inner.pos),
+                                  size=lambda *args: setattr(details_inner.bg, 'size', details_inner.size))
+
+            care_queue_val = self.project_data['details'].get('care_queue', '') or self.care_queue or 'Не указана'
+            characteristics_val = self.project_data['details'].get('characteristics', '') or self.characteristics or 'Не указана'
+            technology_val = self.project_data['details'].get('technology', '') or self.technology or 'Не указана'
+            care_date_val = self.project_data['details'].get('care_date', '') or self.care_date or 'Не указана'
+            forest_purpose_val = self.project_data['details'].get('forest_purpose', '') or self.forest_purpose or 'Не указано'
+
+            details_text = Label(
+                text=f"Очередь рубки: {care_queue_val}\n"
+                     f"Дата рубки: {care_date_val}\n"
+                     f"Назначение лесов: {forest_purpose_val}\n"
+                     f"Характеристика: {characteristics_val[:80]}{'...' if len(characteristics_val) > 80 else ''}\n"
+                     f"Технология: {technology_val[:60]}{'...' if len(technology_val) > 60 else ''}",
+                font_name='Roboto',
+                font_size='11sp',
+                color=(0.3, 0.3, 0.3, 1),
+                size_hint=(1, None),
+                halign='left',
+                valign='top'
+            )
+            details_text.bind(size=details_text.setter('text_size'))
+            details_inner.add_widget(details_text)
+            details_block.add_widget(details_inner)
+            results_layout.add_widget(details_block)
+
+            # ============================================================
+            # БОКС 3: КОЭФФИЦИЕНТ СОСТАВА (#F3E5F5)
+            # ============================================================
+            composition_block = BoxLayout(orientation='vertical', size_hint_y=None, padding=[10, 10], spacing=8)
+            composition_block.bind(minimum_height=composition_block.setter('height'))
+            with composition_block.canvas.before:
+                Color(rgba=get_color_from_hex('#F3E5F5'))
+                composition_block.bg = RoundedRectangle(pos=composition_block.pos, size=composition_block.size, radius=[10])
+                composition_block.bind(pos=lambda *args: setattr(composition_block.bg, 'pos', composition_block.pos),
+                                      size=lambda *args: setattr(composition_block.bg, 'size', composition_block.size))
+
+            composition_title = Label(
+                text='🌳 КОЭФФИЦИЕНТ СОСТАВА',
+                font_name='Roboto',
+                bold=True,
+                font_size='14sp',
+                color=(0.6, 0.2, 0.8, 1),
+                size_hint=(1, None),
+                height=30,
+                halign='center'
+            )
+            composition_block.add_widget(composition_title)
+
+            composition_inner = BoxLayout(orientation='vertical', size_hint_y=None, padding=[10, 10], spacing=5)
+            composition_inner.bind(minimum_height=composition_inner.setter('height'))
+            with composition_inner.canvas.before:
+                Color(rgba=get_color_from_hex('#FFFFFF'))
+                composition_inner.bg = RoundedRectangle(pos=composition_inner.pos, size=composition_inner.size, radius=[8])
+                composition_inner.bind(pos=lambda *args: setattr(composition_inner.bg, 'pos', composition_inner.pos),
+                                      size=lambda *args: setattr(composition_inner.bg, 'size', composition_inner.size))
+
             total_densities = {}
             for breed_name, data in breeds_data.items():
                 if data['plots']:
                     if data['plots'][0].get('type') == 'coniferous':
-                        # Для хвойных суммируем густоту по градациям
-                        total_density = 0
-                        for p in data['plots']:
-                            conif_density = (p.get('do_05_density', 0) + p.get('05_15_density', 0) + p.get('bolee_15_density', 0))
-                            total_density += conif_density
+                        total_density = sum(p.get('do_05_density', 0) + p.get('05_15_density', 0) + p.get('bolee_15_density', 0) for p in data['plots'])
                     else:
-                        # Для лиственных обычная густота
                         total_density = sum(p.get('density', 0) for p in data['plots'])
                     if total_density > 0:
                         total_densities[breed_name] = total_density
 
             if total_densities:
-                # Расчет коэффициентов состава так, чтобы их сумма равнялась 10
                 total_all_density = sum(total_densities.values())
                 composition_parts = []
-
-                # Сортируем по убыванию плотности
                 for breed_name, density in sorted(total_densities.items(), key=lambda x: x[1], reverse=True):
-                    if total_all_density > 0:
-                        # Коэффициент пропорционален плотности, сумма всех коэффициентов = 10
-                        coeff = max(1, round(density / total_all_density * 10))
-                    else:
-                        coeff = 1
+                    coeff = max(1, round(density / total_all_density * 10)) if total_all_density > 0 else 1
                     breed_letter = self.get_breed_letter(breed_name)
                     composition_parts.append(f"{coeff}{breed_letter}")
 
-                # Корректировка чтобы сумма равнялась 10
                 coeffs_only = [int(''.join(filter(str.isdigit, part))) for part in composition_parts]
                 total_coeffs = sum(coeffs_only)
                 iterations = 0
                 while total_coeffs != 10 and iterations < 100:
                     if total_coeffs > 10:
-                        # Уменьшаем самый большой коэффициент
                         max_idx = coeffs_only.index(max(coeffs_only))
                         coeffs_only[max_idx] -= 1
                     elif total_coeffs < 10:
-                        # Увеличиваем самый большой коэффициент
                         max_idx = coeffs_only.index(max(coeffs_only))
                         coeffs_only[max_idx] += 1
-
                     total_coeffs = sum(coeffs_only)
                     iterations += 1
 
-                # Обновляем composition_parts
                 sorted_breeds = sorted(total_densities.items(), key=lambda x: x[1], reverse=True)
                 composition_parts = []
                 for i, (breed_name, _) in enumerate(sorted_breeds):
@@ -7135,165 +6358,206 @@ class ExtendedMolodnikiTableScreen(Screen):
                         composition_parts.append(f"{coeffs_only[i]}{breed_letter}")
 
                 composition_text = ''.join(composition_parts) + "Др"
-                composition_result = Label(
+                composition_label = Label(
                     text=f"Формула состава: {composition_text}",
                     font_name='Roboto',
                     font_size='14sp',
                     color=(0, 0, 0, 1),
                     size_hint=(1, None),
-                    size_hint_y=None,
-                    height=80,
                     halign='center',
-                    text_size=(None, None),
                     valign='middle'
                 )
-                composition_result.bind(size=lambda *args: setattr(composition_result, 'text_size', (composition_result.width, None)))
-                results_layout.add_widget(composition_result)
+                composition_label.bind(size=composition_label.setter('text_size'))
+                composition_inner.add_widget(composition_label)
             else:
                 no_composition = Label(
-                    text="Коэффициент состава не определен (недостаточно данных)",
+                    text="⚠️ Коэффициент состава не определен (недостаточно данных)",
                     font_name='Roboto',
                     font_size='14sp',
-                    color=(1, 0, 0, 1),
+                    color=(0.8, 0.2, 0.2, 1),
                     size_hint=(1, None),
-                    height=30,
-                    halign='center'
+                    halign='center',
+                    valign='middle'
                 )
-                results_layout.add_widget(no_composition)
+                no_composition.bind(size=no_composition.setter('text_size'))
+                composition_inner.add_widget(no_composition)
 
-            # Хвойные породы с градациями высот
-            coniferous_label = Label(
-                text='\nХВОЙНЫЕ ПОРОДЫ - ВЫСОТА ПО ГРАДАЦИЯМ',
+            composition_block.add_widget(composition_inner)
+            results_layout.add_widget(composition_block)
+
+            # ============================================================
+            # БОКС 4: ХВОЙНЫЕ ПОРОДЫ (#E8F5E9)
+            # ============================================================
+            coniferous_block = BoxLayout(orientation='vertical', size_hint_y=None, padding=[10, 10], spacing=8)
+            coniferous_block.bind(minimum_height=coniferous_block.setter('height'))
+            with coniferous_block.canvas.before:
+                Color(rgba=get_color_from_hex('#E8F5E9'))
+                coniferous_block.bg = RoundedRectangle(pos=coniferous_block.pos, size=coniferous_block.size, radius=[10])
+                coniferous_block.bind(pos=lambda *args: setattr(coniferous_block.bg, 'pos', coniferous_block.pos),
+                                     size=lambda *args: setattr(coniferous_block.bg, 'size', coniferous_block.size))
+
+            coniferous_title = Label(
+                text='🌲 ХВОЙНЫЕ ПОРОДЫ',
                 font_name='Roboto',
-                font_size='16sp',
                 bold=True,
-                color=(0, 0, 0, 1),
+                font_size='14sp',
+                color=(0, 0.5, 0, 1),
                 size_hint=(1, None),
-                height=50,
+                height=30,
                 halign='center'
             )
-            results_layout.add_widget(coniferous_label)
+            coniferous_block.add_widget(coniferous_title)
+
+            coniferous_inner = BoxLayout(orientation='vertical', size_hint_y=None, padding=[5, 5], spacing=8)
+            coniferous_inner.bind(minimum_height=coniferous_inner.setter('height'))
+            with coniferous_inner.canvas.before:
+                Color(rgba=get_color_from_hex('#FFFFFF'))
+                coniferous_inner.bg = RoundedRectangle(pos=coniferous_inner.pos, size=coniferous_inner.size, radius=[8])
+                coniferous_inner.bind(pos=lambda *args: setattr(coniferous_inner.bg, 'pos', coniferous_inner.pos),
+                                     size=lambda *args: setattr(coniferous_inner.bg, 'size', coniferous_inner.size))
 
             has_coniferous = False
             for breed_name, data in sorted(breeds_data.items()):
                 if data['type'] == 'coniferous' and data['plots']:
                     has_coniferous = True
-
-                    # Средняя густота в градациях
                     zones = data.get('coniferous_zones', {})
                     avg_do_05 = zones.get('do_05', 0) / len(data['plots']) if data['plots'] else 0
                     avg_05_15 = zones.get('05_15', 0) / len(data['plots']) if data['plots'] else 0
                     avg_bolee_15 = zones.get('bolee_15', 0) / len(data['plots']) if data['plots'] else 0
 
-                    # Средняя высота только по значениям >1.5м
                     avg_heights_over_15 = [p['height'] for p in data['plots'] if p['height'] > 1.5]
                     avg_height_total = sum(avg_heights_over_15) / len(avg_heights_over_15) if avg_heights_over_15 else 0
-
-                    # Средний диаметр
                     avg_diameter = sum(data['diameters']) / len(data['diameters']) if data['diameters'] else 0
+                    avg_ages = [p['age'] for p in data['plots'] if p['age'] > 0]
+                    avg_age = sum(avg_ages) / len(avg_ages) if avg_ages else 0
 
-                    coniferous_result = Label(
-                        text=f"{breed_name}:\n"
-                             f"• до 0.5м: {avg_do_05:.1f} шт/га\n"
-                             f"• 0.5-1.5м: {avg_05_15:.1f} шт/га\n"
-                             f"• >1.5м: {avg_bolee_15:.1f} шт/га\n"
-                             f"• средняя высота (>1.5м): {avg_height_total:.1f}м\n"
-                             f"• средний диаметр: {avg_diameter:.1f} см",
+                    breed_label = Label(
+                        text=f"🌲 {breed_name}:\nдо 0.5м: {avg_do_05:.1f} шт/га | 0.5-1.5м: {avg_05_15:.1f} шт/га | >1.5м: {avg_bolee_15:.1f} шт/га\nСр. высота: {avg_height_total:.1f}м | Возраст: {avg_age:.1f} лет | Диаметр: {avg_diameter:.1f} см",
                         font_name='Roboto',
-                        font_size='14sp',
-                        color=(0, 0.5, 0, 1),
+                        font_size='12sp',
+                        color=(0, 0.4, 0, 1),
                         size_hint=(1, None),
-                        height=180,
                         halign='left',
-                        valign='top'
+                        valign='middle'
                     )
-                    coniferous_result.bind(size=lambda *args: setattr(coniferous_result, 'text_size', (coniferous_result.width, None)))
-                    results_layout.add_widget(coniferous_result)
+                    breed_label.bind(size=breed_label.setter('text_size'))
+                    coniferous_inner.add_widget(breed_label)
 
             if not has_coniferous:
                 no_coniferous = Label(
-                    text="Хвойные породы не найдены",
+                    text="🌲 Хвойные породы не найдены",
                     font_name='Roboto',
-                    font_size='14sp',
+                    font_size='13sp',
                     color=(0.5, 0.5, 0.5, 1),
                     size_hint=(1, None),
-                    height=30,
                     halign='center'
                 )
-                results_layout.add_widget(no_coniferous)
+                no_coniferous.bind(size=no_coniferous.setter('text_size'))
+                coniferous_inner.add_widget(no_coniferous)
 
-            # Лиственные породы - средние высоты и возраст
-            deciduous_label = Label(
-                text='\nЛИСТВЕННЫЕ ПОРОДЫ - СРЕДНИЕ ПОКАЗАТЕЛИ',
+            coniferous_block.add_widget(coniferous_inner)
+            results_layout.add_widget(coniferous_block)
+
+            # ============================================================
+            # БОКС 5: ЛИСТВЕННЫЕ ПОРОДЫ (#E3F2FD)
+            # ============================================================
+            deciduous_block = BoxLayout(orientation='vertical', size_hint_y=None, padding=[10, 10], spacing=8)
+            deciduous_block.bind(minimum_height=deciduous_block.setter('height'))
+            with deciduous_block.canvas.before:
+                Color(rgba=get_color_from_hex('#E3F2FD'))
+                deciduous_block.bg = RoundedRectangle(pos=deciduous_block.pos, size=deciduous_block.size, radius=[10])
+                deciduous_block.bind(pos=lambda *args: setattr(deciduous_block.bg, 'pos', deciduous_block.pos),
+                                    size=lambda *args: setattr(deciduous_block.bg, 'size', deciduous_block.size))
+
+            deciduous_title = Label(
+                text='🍃 ЛИСТВЕННЫЕ ПОРОДЫ',
                 font_name='Roboto',
-                font_size='16sp',
                 bold=True,
-                color=(0, 0, 0, 1),
+                font_size='14sp',
+                color=(0, 0.4, 0.8, 1),
                 size_hint=(1, None),
-                height=50,
+                height=30,
                 halign='center'
             )
-            results_layout.add_widget(deciduous_label)
+            deciduous_block.add_widget(deciduous_title)
+
+            deciduous_inner = BoxLayout(orientation='vertical', size_hint_y=None, padding=[5, 5], spacing=8)
+            deciduous_inner.bind(minimum_height=deciduous_inner.setter('height'))
+            with deciduous_inner.canvas.before:
+                Color(rgba=get_color_from_hex('#FFFFFF'))
+                deciduous_inner.bg = RoundedRectangle(pos=deciduous_inner.pos, size=deciduous_inner.size, radius=[8])
+                deciduous_inner.bind(pos=lambda *args: setattr(deciduous_inner.bg, 'pos', deciduous_inner.pos),
+                                    size=lambda *args: setattr(deciduous_inner.bg, 'size', deciduous_inner.size))
 
             has_deciduous = False
             for breed_name, data in sorted(breeds_data.items()):
                 if data['type'] == 'deciduous' and data['plots']:
                     has_deciduous = True
-
                     avg_density = sum(p['density'] for p in data['plots']) / len(data['plots'])
-
                     avg_heights = [p['height'] for p in data['plots'] if p['height'] > 0]
                     avg_height = sum(avg_heights) / len(avg_heights) if avg_heights else 0
-
                     avg_ages = [p['age'] for p in data['plots'] if p['age'] > 0]
                     avg_age = sum(avg_ages) / len(avg_ages) if avg_ages else 0
-
-                    # Средний диаметр
                     avg_diameter = sum(data['diameters']) / len(data['diameters']) if data['diameters'] else 0
 
-                    deciduous_result = Label(
-                        text=f"{breed_name}:\n"
-                             f"• Густота: {avg_density:.1f} шт/га\n"
-                             f"• Средняя высота: {avg_height:.1f}м\n"
-                             f"• Средний возраст: {avg_age:.1f} лет\n"
-                             f"• Средний диаметр: {avg_diameter:.1f} см",
+                    breed_label = Label(
+                        text=f"🍃 {breed_name}:\nГустота: {avg_density:.1f} шт/га | Высота: {avg_height:.1f}м | Возраст: {avg_age:.1f} лет | Диаметр: {avg_diameter:.1f} см",
                         font_name='Roboto',
-                        font_size='14sp',
-                        color=(0, 0.3, 0.5, 1),
+                        font_size='12sp',
+                        color=(0, 0.3, 0.6, 1),
                         size_hint=(1, None),
-                        height=100,
                         halign='left',
-                        valign='top'
+                        valign='middle'
                     )
-                    deciduous_result.bind(size=lambda *args: setattr(deciduous_result, 'text_size', (deciduous_result.width, None)))
-                    results_layout.add_widget(deciduous_result)
+                    breed_label.bind(size=breed_label.setter('text_size'))
+                    deciduous_inner.add_widget(breed_label)
 
             if not has_deciduous:
                 no_deciduous = Label(
-                    text="Лиственные породы не найдены",
+                    text="🍃 Лиственные породы не найдены",
                     font_name='Roboto',
-                    font_size='14sp',
+                    font_size='13sp',
                     color=(0.5, 0.5, 0.5, 1),
                     size_hint=(1, None),
-                    height=30,
                     halign='center'
                 )
-                results_layout.add_widget(no_deciduous)
+                no_deciduous.bind(size=no_deciduous.setter('text_size'))
+                deciduous_inner.add_widget(no_deciduous)
 
-            # Средние данные в целом по участку
-            overall_label = Label(
-                text='\nСРЕДНИЕ ДАННЫЕ В ЦЕЛОМ ПО УЧАСТКУ',
+            deciduous_block.add_widget(deciduous_inner)
+            results_layout.add_widget(deciduous_block)
+
+            # ============================================================
+            # БОКС 6: СРЕДНИЕ ДАННЫЕ (#FFF3E0)
+            # ============================================================
+            overall_block = BoxLayout(orientation='vertical', size_hint_y=None, padding=[10, 10], spacing=8)
+            overall_block.bind(minimum_height=overall_block.setter('height'))
+            with overall_block.canvas.before:
+                Color(rgba=get_color_from_hex('#FFF3E0'))
+                overall_block.bg = RoundedRectangle(pos=overall_block.pos, size=overall_block.size, radius=[10])
+                overall_block.bind(pos=lambda *args: setattr(overall_block.bg, 'pos', overall_block.pos),
+                                  size=lambda *args: setattr(overall_block.bg, 'size', overall_block.size))
+
+            overall_title = Label(
+                text='📊 СРЕДНИЕ ДАННЫЕ',
                 font_name='Roboto',
-                font_size='16sp',
                 bold=True,
-                color=(0, 0, 0, 1),
+                font_size='14sp',
+                color=(0.8, 0.4, 0, 1),
                 size_hint=(1, None),
-                height=50,
+                height=30,
                 halign='center'
             )
-            results_layout.add_widget(overall_label)
+            overall_block.add_widget(overall_title)
 
-            # Рассчитываем общие средние
+            overall_inner = BoxLayout(orientation='vertical', size_hint_y=None, padding=[10, 10], spacing=5)
+            overall_inner.bind(minimum_height=overall_inner.setter('height'))
+            with overall_inner.canvas.before:
+                Color(rgba=get_color_from_hex('#FFFFFF'))
+                overall_inner.bg = RoundedRectangle(pos=overall_inner.pos, size=overall_inner.size, radius=[8])
+                overall_inner.bind(pos=lambda *args: setattr(overall_inner.bg, 'pos', overall_inner.pos),
+                                  size=lambda *args: setattr(overall_inner.bg, 'size', overall_inner.size))
+
             all_densities = []
             all_heights = []
             all_ages = []
@@ -7311,50 +6575,63 @@ class ExtendedMolodnikiTableScreen(Screen):
             avg_overall_age = sum(all_ages) / len(all_ages) if all_ages else 0
             avg_overall_diameter = sum(all_diameters) / len(all_diameters) if all_diameters else 0
 
-            overall_result = Label(
-                text=f"Средняя густота: {avg_overall_density:.1f} шт/га\n"
-                     f"Средняя высота: {avg_overall_height:.1f} м\n"
-                     f"Средний возраст: {avg_overall_age:.1f} лет\n"
-                     f"Средний диаметр: {avg_overall_diameter:.1f} см",
+            overall_text = Label(
+                text=f"📊 Средняя густота: {avg_overall_density:.1f} шт/га\n"
+                     f"📊 Средняя высота: {avg_overall_height:.1f} м\n"
+                     f"📊 Средний возраст: {avg_overall_age:.1f} лет\n"
+                     f"📊 Средний диаметр: {avg_overall_diameter:.1f} см",
                 font_name='Roboto',
-                font_size='14sp',
-                color=(0.8, 0.4, 0, 1),
+                font_size='13sp',
+                color=(0.7, 0.35, 0, 1),
                 size_hint=(1, None),
-                height=100,
                 halign='left',
-                valign='top'
+                valign='middle'
             )
-            overall_result.bind(size=lambda *args: setattr(overall_result, 'text_size', (overall_result.width, None)))
-            results_layout.add_widget(overall_result)
+            overall_text.bind(size=overall_text.setter('text_size'))
+            overall_inner.add_widget(overall_text)
+            overall_block.add_widget(overall_inner)
+            results_layout.add_widget(overall_block)
 
+            # ============================================================
+            # БОКС 7: ПРЕДМЕТ УХОДА (#FCE4EC)
+            # ============================================================
+            care_block = BoxLayout(orientation='vertical', size_hint_y=None, padding=[10, 10], spacing=8)
+            care_block.bind(minimum_height=care_block.setter('height'))
+            with care_block.canvas.before:
+                Color(rgba=get_color_from_hex('#FCE4EC'))
+                care_block.bg = RoundedRectangle(pos=care_block.pos, size=care_block.size, radius=[10])
+                care_block.bind(pos=lambda *args: setattr(care_block.bg, 'pos', care_block.pos),
+                               size=lambda *args: setattr(care_block.bg, 'size', care_block.size))
 
-
-            # Предмет ухода и интенсивность рубки
-            care_label = Label(
-                text='\nПРЕДМЕТ УХОДА И ИНТЕНСИВНОСТЬ РУБКИ',
+            care_title = Label(
+                text='✂️ ПРЕДМЕТ УХОДА',
                 font_name='Roboto',
-                font_size='16sp',
                 bold=True,
-                color=(0, 0, 0, 1),
+                font_size='14sp',
+                color=(0.8, 0.2, 0.4, 1),
                 size_hint=(1, None),
-                height=50,
+                height=30,
                 halign='center'
             )
-            results_layout.add_widget(care_label)
+            care_block.add_widget(care_title)
 
-            # Собираем данные по предмету ухода и рассчитываем интенсивность
+            care_inner = BoxLayout(orientation='vertical', size_hint_y=None, padding=[10, 10], spacing=5)
+            care_inner.bind(minimum_height=care_inner.setter('height'))
+            with care_inner.canvas.before:
+                Color(rgba=get_color_from_hex('#FFFFFF'))
+                care_inner.bg = RoundedRectangle(pos=care_inner.pos, size=care_inner.size, radius=[8])
+                care_inner.bind(pos=lambda *args: setattr(care_inner.bg, 'pos', care_inner.pos),
+                               size=lambda *args: setattr(care_inner.bg, 'size', care_inner.size))
+
             care_data = []
-            total_density_all_plots = 0  # Для площадок с предметом ухода
+            total_density_all = 0
+            plot_count_all = 0
             total_remaining_density = 0
             plot_count_with_care = 0
 
-            # Рассчитываем среднюю густоту по всем площадкам
-            total_density_all = 0
-            plot_count_all = 0
-
             for page_num, page_rows in self.page_data.items():
                 for row in page_rows:
-                    if len(row) >= 4 and row[3]:  # Есть данные пород
+                    if len(row) >= 4 and row[3]:
                         plot_density = 0
                         breeds_text = row[3]
                         if breeds_text:
@@ -7363,15 +6640,13 @@ class ExtendedMolodnikiTableScreen(Screen):
                                 for breed_info in breeds_list:
                                     if isinstance(breed_info, dict):
                                         if breed_info.get('type') == 'coniferous':
-                                            # Для хвойных суммируем градации
                                             do_05 = breed_info.get('do_05', 0)
                                             _05_15 = breed_info.get('05_15', 0)
                                             bolee_15 = breed_info.get('bolee_15', 0)
-                                            plot_density += (do_05 + _05_15 + bolee_15) / plot_area_ha if plot_area_ha > 0 else 0
+                                            plot_density += (do_05 + _05_15 + bolee_15) / plot_area_ha_default if plot_area_ha_default > 0 else 0
                                         else:
-                                            # Для лиственных обычная густота
                                             density = breed_info.get('density', 0)
-                                            plot_density += density / plot_area_ha if plot_area_ha > 0 else 0
+                                            plot_density += density / plot_area_ha_default if plot_area_ha_default > 0 else 0
                             except (json.JSONDecodeError, TypeError):
                                 pass
 
@@ -7379,10 +6654,9 @@ class ExtendedMolodnikiTableScreen(Screen):
                             total_density_all += plot_density
                             plot_count_all += 1
 
-                    if len(row) >= 4 and row[2]:  # Предмет ухода и данные пород
+                    if len(row) >= 4 and row[2]:
                         care_text = row[2].strip()
                         if care_text:
-                            # Рассчитываем общую густоту на этой площадке
                             plot_density = 0
                             breeds_text = row[3]
                             if breeds_text:
@@ -7391,20 +6665,17 @@ class ExtendedMolodnikiTableScreen(Screen):
                                     for breed_info in breeds_list:
                                         if isinstance(breed_info, dict):
                                             if breed_info.get('type') == 'coniferous':
-                                                # Для хвойных суммируем градации
                                                 do_05 = breed_info.get('do_05', 0)
                                                 _05_15 = breed_info.get('05_15', 0)
                                                 bolee_15 = breed_info.get('bolee_15', 0)
-                                                plot_density += (do_05 + _05_15 + bolee_15) / plot_area_ha if plot_area_ha > 0 else 0
+                                                plot_density += (do_05 + _05_15 + bolee_15) / plot_area_ha_default if plot_area_ha_default > 0 else 0
                                             else:
-                                                # Для лиственных обычная густота
                                                 density = breed_info.get('density', 0)
-                                                plot_density += density / plot_area_ha if plot_area_ha > 0 else 0
+                                                plot_density += density / plot_area_ha_default if plot_area_ha_default > 0 else 0
                                 except (json.JSONDecodeError, TypeError):
                                     pass
 
                             if plot_density > 0:
-                                # Парсим предмет ухода для получения оставляемой густоты
                                 remaining_density = self.parse_care_subject_density(care_text)
                                 if remaining_density > 0:
                                     care_data.append({
@@ -7412,15 +6683,12 @@ class ExtendedMolodnikiTableScreen(Screen):
                                         'plot_density': plot_density,
                                         'remaining_density': remaining_density
                                     })
-                                    total_density_all_plots += plot_density
                                     total_remaining_density += remaining_density
                                     plot_count_with_care += 1
 
             if care_data:
-                # Рассчитываем средний предмет ухода
                 care_breed_totals = {}
                 care_plot_count = 0
-
                 for item in care_data:
                     care_text = item['care_text']
                     breed_densities = self.parse_care_subject_by_breeds(care_text)
@@ -7440,74 +6708,206 @@ class ExtendedMolodnikiTableScreen(Screen):
                     avg_care_text = ''.join(avg_care_parts)
                     short_text = ''.join(short_parts).replace('.', ',')
 
-                    care_result = Label(
-                        text=f"Средний предмет ухода: {avg_care_text} = {short_text}",
+                    care_label = Label(
+                        text=f"✂️ Средний предмет ухода: {avg_care_text} = {short_text}",
                         font_name='Roboto',
-                        font_size='14sp',
-                        color=(0.2, 0.6, 0.2, 1),
+                        font_size='13sp',
+                        color=(0.6, 0.15, 0.3, 1),
                         size_hint=(1, None),
-                        height=40,
                         halign='left',
-                        valign='top'
+                        valign='middle'
                     )
-                    care_result.bind(size=lambda *args: setattr(care_result, 'text_size', (care_result.width, None)))
-                    results_layout.add_widget(care_result)
+                    care_label.bind(size=care_label.setter('text_size'))
+                    care_inner.add_widget(care_label)
 
-                    # Рассчитываем среднюю интенсивность рубки
-                if plot_count_with_care > 0 and plot_count_all > 0:
-                    avg_remaining_density = total_remaining_density / plot_count_with_care
-
-                    # Интенсивность рубки = ((общая густота - оставляемая густота) / общая густота) * 100%
-                    if avg_overall_density > 0:
-                        intensity = ((avg_overall_density - avg_remaining_density) / avg_overall_density) * 100
-
-                        intensity_result = Label(
-                            text=f"Средняя интенсивность рубки: {intensity:.1f}%\n"
-                                 f"(было {avg_overall_density:.0f} шт/га, "
-                                 f"останется {avg_remaining_density:.0f} шт/га)",
-                            font_name='Roboto',
-                            font_size='14sp',
-                            color=(0.8, 0.2, 0.2, 1),
-                            size_hint=(1, None),
-                            height=60,
-                            halign='left',
-                            valign='top'
-                        )
-                        intensity_result.bind(size=lambda *args: setattr(intensity_result, 'text_size', (intensity_result.width, None)))
-                        results_layout.add_widget(intensity_result)
-            else:
+            if not care_data:
                 no_care = Label(
-                    text="Предмет ухода не указан или недостаточно данных для расчета",
+                    text="ℹ️ Предмет ухода не указан или недостаточно данных",
                     font_name='Roboto',
-                    font_size='14sp',
+                    font_size='13sp',
                     color=(0.5, 0.5, 0.5, 1),
                     size_hint=(1, None),
-                    height=30,
-                    halign='center'
+                    halign='center',
+                    valign='middle'
                 )
-                results_layout.add_widget(no_care)
+                no_care.bind(size=no_care.setter('text_size'))
+                care_inner.add_widget(no_care)
 
-            # Информация о площади участка и площади перечета
-            plot_count = len([row for page in self.page_data.values() for row in page if any(cell for cell in row[:3] if cell)])
-            total_plot_area_ha = plot_count * plot_area_ha
+            care_block.add_widget(care_inner)
+            results_layout.add_widget(care_block)
 
-            plot_area_info = Label(
-                text=f"Информация о площади:\n"
-                     f"• Радиус пробной площади: {default_radius:.2f} м\n"
-                     f"• Площадь одной площадки: {plot_area_ha:.4f} га ({plot_area_m2:.4f} м²)\n"
-                     f"• Всего площадок: {plot_count}\n"
-                     f"• Совокупная площадь перечета: {total_plot_area_ha:.4f} га ({total_plot_area_ha*10000:.0f} м²)\n"
-                     f"• Пример: 1 площадка = {plot_area_ha:.4f} га, значит площадь перечета = {plot_area_m2:.0f} м²",
+            # ============================================================
+            # БОКС 8: ИНТЕНСИВНОСТЬ РУБКИ (#FFEBEE)
+            # ============================================================
+            intensity_block = BoxLayout(orientation='vertical', size_hint_y=None, padding=[10, 10], spacing=8)
+            intensity_block.bind(minimum_height=intensity_block.setter('height'))
+            with intensity_block.canvas.before:
+                Color(rgba=get_color_from_hex('#FFEBEE'))
+                intensity_block.bg = RoundedRectangle(pos=intensity_block.pos, size=intensity_block.size, radius=[10])
+                intensity_block.bind(pos=lambda *args: setattr(intensity_block.bg, 'pos', intensity_block.pos),
+                                    size=lambda *args: setattr(intensity_block.bg, 'size', intensity_block.size))
+
+            intensity_title = Label(
+                text='🔴 ИНТЕНСИВНОСТЬ РУБКИ',
                 font_name='Roboto',
-                font_size='12sp',
+                bold=True,
+                font_size='14sp',
+                color=(0.8, 0.2, 0.2, 1),
+                size_hint=(1, None),
+                height=30,
+                halign='center'
+            )
+            intensity_block.add_widget(intensity_title)
+
+            intensity_inner = BoxLayout(orientation='vertical', size_hint_y=None, padding=[10, 10], spacing=5)
+            intensity_inner.bind(minimum_height=intensity_inner.setter('height'))
+            with intensity_inner.canvas.before:
+                Color(rgba=get_color_from_hex('#FFFFFF'))
+                intensity_inner.bg = RoundedRectangle(pos=intensity_inner.pos, size=intensity_inner.size, radius=[8])
+                intensity_inner.bind(pos=lambda *args: setattr(intensity_inner.bg, 'pos', intensity_inner.pos),
+                                    size=lambda *args: setattr(intensity_inner.bg, 'size', intensity_inner.size))
+
+            if plot_count_with_care > 0 and plot_count_all > 0 and avg_overall_density > 0:
+                avg_remaining_density = total_remaining_density / plot_count_with_care
+                intensity = ((avg_overall_density - avg_remaining_density) / avg_overall_density) * 100
+
+                intensity_label = Label(
+                    text=f"🔴 Интенсивность рубки: {intensity:.1f}%\n(было {avg_overall_density:.0f} шт/га, останется {avg_remaining_density:.0f} шт/га)",
+                    font_name='Roboto',
+                    font_size='13sp',
+                    color=(0.8, 0.2, 0.2, 1),
+                    size_hint=(1, None),
+                    halign='left',
+                    valign='middle'
+                )
+                intensity_label.bind(size=intensity_label.setter('text_size'))
+                intensity_inner.add_widget(intensity_label)
+            else:
+                no_intensity = Label(
+                    text="ℹ️ Недостаточно данных для расчета интенсивности",
+                    font_name='Roboto',
+                    font_size='13sp',
+                    color=(0.5, 0.5, 0.5, 1),
+                    size_hint=(1, None),
+                    halign='center',
+                    valign='middle'
+                )
+                no_intensity.bind(size=no_intensity.setter('text_size'))
+                intensity_inner.add_widget(no_intensity)
+
+            intensity_block.add_widget(intensity_inner)
+            results_layout.add_widget(intensity_block)
+
+            # ============================================================
+            # БОКС 9: ИНФОРМАЦИЯ О ПЛОЩАДИ (#F5F5F5)
+            # ============================================================
+            plot_area_block = BoxLayout(orientation='vertical', size_hint_y=None, padding=[10, 10], spacing=8)
+            plot_area_block.bind(minimum_height=plot_area_block.setter('height'))
+            with plot_area_block.canvas.before:
+                Color(rgba=get_color_from_hex('#F5F5F5'))
+                plot_area_block.bg = RoundedRectangle(pos=plot_area_block.pos, size=plot_area_block.size, radius=[10])
+                plot_area_block.bind(pos=lambda *args: setattr(plot_area_block.bg, 'pos', plot_area_block.pos),
+                                    size=lambda *args: setattr(plot_area_block.bg, 'size', plot_area_block.size))
+
+            plot_area_title = Label(
+                text='📏 ИНФОРМАЦИЯ О ПЛОЩАДИ',
+                font_name='Roboto',
+                bold=True,
+                font_size='14sp',
                 color=(0.5, 0.5, 0.5, 1),
                 size_hint=(1, None),
-                height=200,
-                halign='left',
-                valign='top'
+                height=30,
+                halign='center'
             )
-            plot_area_info.bind(size=lambda *args: setattr(plot_area_info, 'text_size', (plot_area_info.width, None)))
-            results_layout.add_widget(plot_area_info)
+            plot_area_block.add_widget(plot_area_title)
+
+            plot_area_inner = BoxLayout(orientation='vertical', size_hint_y=None, padding=[10, 10], spacing=5)
+            plot_area_inner.bind(minimum_height=plot_area_inner.setter('height'))
+            with plot_area_inner.canvas.before:
+                Color(rgba=get_color_from_hex('#FFFFFF'))
+                plot_area_inner.bg = RoundedRectangle(pos=plot_area_inner.pos, size=plot_area_inner.size, radius=[8])
+                plot_area_inner.bind(pos=lambda *args: setattr(plot_area_inner.bg, 'pos', plot_area_inner.pos),
+                                    size=lambda *args: setattr(plot_area_inner.bg, 'size', plot_area_inner.size))
+
+            plot_count = len([row for page in self.page_data.values() for row in page if any(cell for cell in row[:3] if cell)])
+            total_plot_area_ha = plot_count * plot_area_ha_default
+
+            plot_area_label = Label(
+                text=f"📍 Радиус пробной площади: {default_radius:.2f} м\n"
+                     f"📍 Площадь одной площадки: {plot_area_ha_default:.4f} га ({plot_area_m2_default:.2f} м²)\n"
+                     f"📍 Всего площадок: {plot_count}\n"
+                     f"📍 Совокупная площадь перечета: {total_plot_area_ha:.4f} га ({total_plot_area_ha*10000:.0f} м²)",
+                font_name='Roboto',
+                font_size='12sp',
+                color=(0.4, 0.4, 0.4, 1),
+                size_hint=(1, None),
+                halign='left',
+                valign='middle'
+            )
+            plot_area_label.bind(size=plot_area_label.setter('text_size'))
+            plot_area_inner.add_widget(plot_area_label)
+            plot_area_block.add_widget(plot_area_inner)
+            results_layout.add_widget(plot_area_block)
+
+            # ============================================================
+            # БОКС 10: ТИП ЛЕСА (#E0F7FA)
+            # ============================================================
+            forest_type_block = BoxLayout(orientation='vertical', size_hint_y=None, padding=[10, 10], spacing=8)
+            forest_type_block.bind(minimum_height=forest_type_block.setter('height'))
+            with forest_type_block.canvas.before:
+                Color(rgba=get_color_from_hex('#E0F7FA'))
+                forest_type_block.bg = RoundedRectangle(pos=forest_type_block.pos, size=forest_type_block.size, radius=[10])
+                forest_type_block.bind(pos=lambda *args: setattr(forest_type_block.bg, 'pos', forest_type_block.pos),
+                                      size=lambda *args: setattr(forest_type_block.bg, 'size', forest_type_block.size))
+
+            forest_type_title = Label(
+                text='🌿 ТИП ЛЕСА',
+                font_name='Roboto',
+                bold=True,
+                font_size='14sp',
+                color=(0, 0.6, 0.6, 1),
+                size_hint=(1, None),
+                height=30,
+                halign='center'
+            )
+            forest_type_block.add_widget(forest_type_title)
+
+            forest_type_inner = BoxLayout(orientation='vertical', size_hint_y=None, padding=[10, 10], spacing=5)
+            forest_type_inner.bind(minimum_height=forest_type_inner.setter('height'))
+            with forest_type_inner.canvas.before:
+                Color(rgba=get_color_from_hex('#FFFFFF'))
+                forest_type_inner.bg = RoundedRectangle(pos=forest_type_inner.pos, size=forest_type_inner.size, radius=[8])
+                forest_type_inner.bind(pos=lambda *args: setattr(forest_type_inner.bg, 'pos', forest_type_inner.pos),
+                                      size=lambda *args: setattr(forest_type_inner.bg, 'size', forest_type_inner.size))
+
+            if forest_types_set:
+                forest_types_text = ', '.join(sorted(forest_types_set))
+                forest_type_label = Label(
+                    text=f"🌿 Встречающиеся типы леса:\n{forest_types_text}",
+                    font_name='Roboto',
+                    font_size='13sp',
+                    color=(0, 0.5, 0.5, 1),
+                    size_hint=(1, None),
+                    halign='left',
+                    valign='middle'
+                )
+                forest_type_label.bind(size=forest_type_label.setter('text_size'))
+                forest_type_inner.add_widget(forest_type_label)
+            else:
+                no_forest_type = Label(
+                    text="ℹ️ Тип леса не указан",
+                    font_name='Roboto',
+                    font_size='13sp',
+                    color=(0.5, 0.5, 0.5, 1),
+                    size_hint=(1, None),
+                    halign='center',
+                    valign='middle'
+                )
+                no_forest_type.bind(size=no_forest_type.setter('text_size'))
+                forest_type_inner.add_widget(no_forest_type)
+
+            forest_type_block.add_widget(forest_type_inner)
+            results_layout.add_widget(forest_type_block)
 
             scroll.add_widget(results_layout)
             content.add_widget(scroll)
