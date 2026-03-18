@@ -397,14 +397,12 @@ class MolodnikiTreeDataInputPopup(Popup):
         # Списки пород
         if breed_type == 'coniferous':
             breeds = [
-                'Сосна ЛК', 'Сосна ЕВ', 'Ель ЛК', 'Ель ЕВ',
-                'Пихта ЛК', 'Пихта ЕВ', 'Кедр ЛК', 'Кедр ЕВ',
-                'Лиственница ЛК', 'Лиственница ЕВ'
+                'Сосна', 'Ель', 'Лиственница', 'Кедр', 'Пихта'
             ]
         else:
             breeds = [
                 'Берёза', 'Осина', 'Ольха чёрная', 'Ольха серая',
-                'Ива', 'Ива кустарниковая'
+                'Ива'
             ]
 
         # Загружаем пользовательские породы из базы данных
@@ -431,9 +429,9 @@ class MolodnikiTreeDataInputPopup(Popup):
         scroll.add_widget(breeds_layout)
         content.add_widget(scroll)
 
-        # Кнопка "Другая порода"
+        # Кнопка "Новая"
         other_btn = ModernButton(
-            text='Другая порода',
+            text='Новая',
             bg_color=get_color_from_hex('#DDA0DD'),
             size_hint=(1, None),
             height=50
@@ -1951,12 +1949,12 @@ class ExtendedMolodnikiTableScreen(Screen):
         # Списки пород
         if breed_type == 'coniferous':
             breeds = [
-                'Сосна', 'Ель', 'Пихта', 'Кедр', 'Лиственница'
+                'Сосна', 'Ель', 'Лиственница', 'Кедр', 'Пихта'
             ]
         else:
             breeds = [
                 'Берёза', 'Осина', 'Ольха чёрная', 'Ольха серая',
-                'Ива', 'Ива кустарниковая'
+                'Ива'
             ]
 
         # Загружаем пользовательские породы из базы данных
@@ -1983,9 +1981,9 @@ class ExtendedMolodnikiTableScreen(Screen):
         scroll.add_widget(breeds_layout)
         content.add_widget(scroll)
 
-        # Кнопка "Другая порода"
+        # Кнопка "Новая"
         other_btn = ModernButton(
-            text='Другая порода',
+            text='Новая',
             bg_color=get_color_from_hex('#DDA0DD'),
             size_hint=(1, None),
             height=50
@@ -3575,7 +3573,8 @@ class ExtendedMolodnikiTableScreen(Screen):
 
         info_label = Label(
             text="Формат: ДД.ММ.ГГГГ\nНапример: 15.06.2025",
-            font_name='Roboto',
+            font_name=
+            'Roboto',
             font_size='14sp',
             color=(0.3, 0.3, 0.3, 1),
             size_hint=(1, None),
@@ -3799,7 +3798,7 @@ class ExtendedMolodnikiTableScreen(Screen):
         content = BoxLayout(orientation='vertical', spacing=15, padding=15)
 
         title_label = Label(
-            text="Дополнительные функции",
+            text="Детали проекта",
             font_name='Roboto',
             font_size='20sp',
             bold=True,
@@ -3815,7 +3814,7 @@ class ExtendedMolodnikiTableScreen(Screen):
         scroll_content.bind(minimum_height=scroll_content.setter('height'))
 
         # Кнопки дополнительных функций
-        buttons_layout = GridLayout(cols=2, spacing=15, size_hint=(1, None), height=340)
+        buttons_layout = GridLayout(cols=2, spacing=15, size_hint=(1, None), height=280)
 
         # Кнопка Вид рубки
         care_queue_btn = ModernButton(
@@ -3894,7 +3893,7 @@ class ExtendedMolodnikiTableScreen(Screen):
         )
         current_values.add_widget(current_title)
 
-        # Формируем текст с текущими значениями
+        # Формируем текст с текущими значениями (данные из project_data загружаются из JSON)
         care_queue_val = self.project_data['details'].get('care_queue', '') or self.care_queue or 'Не указана'
         characteristics_val = self.project_data['details'].get('characteristics', '') or self.characteristics or 'Не указана'
         care_date_val = self.project_data['details'].get('care_date', '') or self.care_date or 'Не указана'
@@ -3934,7 +3933,7 @@ class ExtendedMolodnikiTableScreen(Screen):
         content.add_widget(close_btn)
 
         popup = Popup(
-            title="Дополнительные функции",
+            title="Детали проекта",
             content=content,
             size_hint=(0.95, 0.95)
         )
@@ -4288,6 +4287,16 @@ class ExtendedMolodnikiTableScreen(Screen):
                 self.show_error("Не удалось сохранить текущую страницу!")
                 return
 
+            # Извлекаем Тип Леса из данных участка (столбец 5 в page_data)
+            forest_type = 'Смешанный лес'  # По умолчанию
+            for page_num, page_rows in self.page_data.items():
+                for row in page_rows:
+                    if len(row) >= 6 and row[5]:  # Столбец 5 - Тип Леса
+                        forest_type = str(row[5]).strip()
+                        break
+                if forest_type != 'Смешанный лес':
+                    break
+
             # Собираем данные из адресной строки и project_data
             address_data = {
                 'quarter': str(self.project_data['address'].get('quarter', '')),
@@ -4298,7 +4307,7 @@ class ExtendedMolodnikiTableScreen(Screen):
                 'plot_area': str(self.project_data['address'].get('plot_area', '')),
                 'radius': str(self.project_data['address'].get('radius', '5.64')),
                 'target_purpose': 'Эксплуатационные леса',
-                'forest_type': 'Смешанный лес'
+                'forest_type': forest_type  # Извлекаем из данных участка
             }
 
             # Добавляем данные деталей проекта
@@ -4636,28 +4645,76 @@ class ExtendedMolodnikiTableScreen(Screen):
                     # Расчет интенсивности
                     if plot_count_with_care > 0:
                         avg_remaining_density = total_remaining_density / plot_count_with_care
-                        avg_overall_density = total_density_all_plots / len([row for page in self.page_data.values() for row in page if any(cell for cell in row[:3] if cell)])
+                        # Используем среднюю густоту по площадкам для расчёта интенсивности
+                        num_plots = len([row for page in self.page_data.values() for row in page if any(cell for cell in row[:3] if cell)])
+                        avg_overall_density_for_intensity = total_density_all_plots / num_plots if num_plots > 0 else 0
 
-                        if avg_overall_density > 0:
-                            intensity = ((avg_overall_density - avg_remaining_density) / avg_overall_density) * 100
+                        if avg_overall_density_for_intensity > 0:
+                            intensity = ((avg_overall_density_for_intensity - avg_remaining_density) / avg_overall_density_for_intensity) * 100
+                            print(f"[DEBUG] Интенсивность: {avg_overall_density_for_intensity:.1f} - {avg_remaining_density:.0f} / {avg_overall_density_for_intensity:.1f} = {intensity:.1f}%")
 
-            # Расчет средних значений по участку
-            all_densities = []
-            all_heights = []
-            all_ages = []
-            all_diameters = []
+            # Расчет средних значений по участку (ОБЩАЯ густота, высота, диаметр, возраст)
+            # Используем среднюю густоту по площадкам, а не по породам
+            # Для каждой площадки считаем: общую густоту (сумма по породам), средние высоту/диаметр/возраст (по породам)
+            plot_densities = []
+            plot_height_sums = []
+            plot_height_counts = []
+            plot_diameter_sums = []
+            plot_diameter_counts = []
+            plot_age_sums = []
+            plot_age_counts = []
 
             for breed_name, data in breeds_data.items():
                 if data['plots']:
-                    all_densities.extend([p['density'] for p in data['plots'] if p['density'] > 0])
-                    all_heights.extend([p['height'] for p in data['plots'] if p['height'] > 0])
-                    all_ages.extend([p['age'] for p in data['plots'] if p['age'] > 0])
-                    all_diameters.extend([p.get('diameter', 0) for p in data['plots'] if p.get('diameter', 0) > 0])
+                    # Для каждой породы обрабатываем данные по площадкам
+                    for i, p in enumerate(data['plots']):
+                        # Если это новая площадка, создаём запись
+                        while i >= len(plot_densities):
+                            plot_densities.append(0)
+                            plot_height_sums.append(0)
+                            plot_height_counts.append(0)
+                            plot_diameter_sums.append(0)
+                            plot_diameter_counts.append(0)
+                            plot_age_sums.append(0)
+                            plot_age_counts.append(0)
 
-            avg_overall_density = sum(all_densities) / len(all_densities) if all_densities else 0
-            avg_overall_height = sum(all_heights) / len(all_heights) if all_heights else 0
-            avg_overall_age = sum(all_ages) / len(all_ages) if all_ages else 0
-            avg_overall_diameter = sum(all_diameters) / len(all_diameters) if all_diameters else 0
+                        # Густота - суммируем по породам
+                        plot_densities[i] += p['density']
+                        
+                        # Высота - суммируем и считаем количество для усреднения
+                        if p['height'] > 0:
+                            plot_height_sums[i] += p['height']
+                            plot_height_counts[i] += 1
+                        
+                        # Диаметр - суммируем и считаем количество для усреднения
+                        if p.get('diameter', 0) > 0:
+                            plot_diameter_sums[i] += p['diameter']
+                            plot_diameter_counts[i] += 1
+                        
+                        # Возраст - суммируем и считаем количество для усреднения
+                        if p['age'] > 0:
+                            plot_age_sums[i] += p['age']
+                            plot_age_counts[i] += 1
+
+            # Рассчитываем средние значения по площадкам
+            avg_overall_density = sum(plot_densities) / len(plot_densities) if plot_densities else 0
+            
+            # Для высоты/диаметра/возраста сначала считаем средние по каждой площадке, потом общее среднее
+            plot_avg_heights = []
+            plot_avg_diameters = []
+            plot_avg_ages = []
+            
+            for i in range(len(plot_densities)):
+                if plot_height_counts[i] > 0:
+                    plot_avg_heights.append(plot_height_sums[i] / plot_height_counts[i])
+                if plot_diameter_counts[i] > 0:
+                    plot_avg_diameters.append(plot_diameter_sums[i] / plot_diameter_counts[i])
+                if plot_age_counts[i] > 0:
+                    plot_avg_ages.append(plot_age_sums[i] / plot_age_counts[i])
+            
+            avg_overall_height = sum(plot_avg_heights) / len(plot_avg_heights) if plot_avg_heights else 0
+            avg_overall_diameter = sum(plot_avg_diameters) / len(plot_avg_diameters) if plot_avg_diameters else 0
+            avg_overall_age = sum(plot_avg_ages) / len(plot_avg_ages) if plot_avg_ages else 0
 
             # Формируем итоговые данные
             total_data = {
@@ -4791,65 +4848,486 @@ class ExtendedMolodnikiTableScreen(Screen):
         return breed_name[0].upper() if breed_name else 'Н'
 
     def show_edit_plots_popup(self, instance):
-        """Показать popup с списком номеров площадок для редактирования"""
-        # Собираем список номеров площадок из page_data
-        plot_numbers = []
-        if self.current_page in self.page_data:
-            for row_idx, row in enumerate(self.page_data[self.current_page]):
-                # Проверяем, есть ли данные в основных столбцах (кроме №ППР)
-                if any(row[col].strip() for col in range(1, 6)):
-                    nn = row_idx + 1  # Номер от 1
-                    plot_numbers.append(nn)
-
-        if not plot_numbers:
-            self.show_error("Нет площадок для редактирования!")
-            return
-
-        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        """Показать popup со списком площадок для управления породами"""
+        content = BoxLayout(orientation='vertical', spacing=15, padding=15)
 
         title_label = Label(
-            text='Выберите площадку для редактирования:',
+            text="Площадки - Управление породами",
             font_name='Roboto',
+            font_size='20sp',
             bold=True,
+            color=(0, 0.5, 0, 1),
             size_hint=(1, None),
-            height=30
+            height=50
         )
         content.add_widget(title_label)
 
-        scroll = ScrollView(size_hint=(1, None), height=400)
-        plots_layout = GridLayout(cols=1, spacing=5, size_hint_y=None)
+        # ScrollView для списка площадок
+        scroll = ScrollView(size_hint=(1, 1))
+        plots_layout = GridLayout(cols=1, spacing=10, size_hint_y=None)
         plots_layout.bind(minimum_height=plots_layout.setter('height'))
 
-        for plot_num in plot_numbers:
-            btn = ModernButton(
-                text=f'Площадка {plot_num}',
-                bg_color=get_color_from_hex('#87CEEB'),
+        # Получаем все площадки из page_data
+        all_plots = []
+        for page_num in sorted(self.page_data.keys()):
+            page_rows = self.page_data[page_num]
+            for row_idx, row in enumerate(page_rows):
+                if len(row) >= 6 and any(row[i] for i in range(6)):  # Есть данные
+                    all_plots.append({
+                        'page': page_num,
+                        'row': row_idx,
+                        'data': row
+                    })
+
+        if not all_plots:
+            no_plots_label = Label(
+                text="Нет сохраненных площадок.\nДобавьте площадки через меню 'Файл' -> 'Создать'",
+                font_name='Roboto',
+                font_size='16sp',
+                color=(0.5, 0.5, 0.5, 1),
                 size_hint=(1, None),
-                height=50,
-                font_size='16sp'
+                height=100,
+                halign='center',
+                valign='middle'
             )
-            btn.bind(on_press=lambda x, num=plot_num: self.edit_plot_popup(num - 1))  # row_index = num - 1
-            plots_layout.add_widget(btn)
+            no_plots_label.bind(size=lambda *args: setattr(no_plots_label, 'text_size', (no_plots_label.width, None)))
+            plots_layout.add_widget(no_plots_label)
+        else:
+            # Создаем боксы для каждой площадки
+            for plot_info in all_plots:
+                plot_num = plot_info['row'] + 1
+                gps_point = plot_info['data'][1] if len(plot_info['data']) > 1 else ''
+                predmet_uhoda = plot_info['data'][2] if len(plot_info['data']) > 2 else ''
+                breeds_data = plot_info['data'][3] if len(plot_info['data']) > 3 else ''
+                forest_type = plot_info['data'][5] if len(plot_info['data']) > 5 else ''
+
+                # Парсим данные о породах
+                breeds_list = self.parse_breeds_data(breeds_data) if breeds_data else []
+                breeds_count = len(breeds_list)
+
+                # Создаем бокс площадки
+                plot_box = BoxLayout(orientation='vertical', spacing=5, size_hint_y=None, height=120 if breeds_count > 0 else 80)
+                with plot_box.canvas.before:
+                    Color(rgba=get_color_from_hex('#F0FFF0'))
+                    plot_box.bg = RoundedRectangle(pos=plot_box.pos, size=plot_box.size, radius=[10])
+                    plot_box.bind(pos=lambda *args: setattr(plot_box.bg, 'pos', plot_box.pos),
+                                 size=lambda *args: setattr(plot_box.bg, 'size', plot_box.size))
+
+                # Заголовок площадки
+                plot_header = BoxLayout(orientation='horizontal', size_hint_y=None, height=35, padding=[10, 5])
+                plot_num_label = Label(
+                    text=f"Площадка №{plot_num}",
+                    font_name='Roboto',
+                    font_size='16sp',
+                    bold=True,
+                    color=(0, 0.5, 0, 1),
+                    size_hint=(0.3, 1),
+                    halign='left'
+                )
+                plot_num_label.bind(size=lambda *args: setattr(plot_num_label, 'text_size', (plot_num_label.width, None)))
+                plot_header.add_widget(plot_num_label)
+
+                if gps_point:
+                    gps_label = Label(
+                        text=f"GPS: {gps_point}",
+                        font_name='Roboto',
+                        font_size='14sp',
+                        color=(0.3, 0.3, 0.3, 1),
+                        size_hint=(0.35, 1),
+                        halign='left'
+                    )
+                    gps_label.bind(size=lambda *args: setattr(gps_label, 'text_size', (gps_label.width, None)))
+                    plot_header.add_widget(gps_label)
+
+                if forest_type:
+                    type_label = Label(
+                        text=f"Тип: {forest_type}",
+                        font_name='Roboto',
+                        font_size='14sp',
+                        color=(0.3, 0.3, 0.3, 1),
+                        size_hint=(0.35, 1),
+                        halign='left'
+                    )
+                    type_label.bind(size=lambda *args: setattr(type_label, 'text_size', (type_label.width, None)))
+                    plot_header.add_widget(type_label)
+
+                plot_box.add_widget(plot_header)
+
+                # Информация о породах
+                if breeds_count > 0:
+                    breeds_info_text = f"Пород: {breeds_count} | "
+                    breed_names = [b.get('name', 'Неизвестная') for b in breeds_list[:3]]
+                    breeds_info_text += ", ".join(breed_names)
+                    if breeds_count > 3:
+                        breeds_info_text += f" и еще {breeds_count - 3}"
+
+                    breeds_label = Label(
+                        text=breeds_info_text,
+                        font_name='Roboto',
+                        font_size='13sp',
+                        color=(0.2, 0.2, 0.2, 1),
+                        size_hint=(1, None),
+                        height=30,
+                        halign='left'
+                    )
+                    breeds_label.bind(size=lambda *args: setattr(breeds_label, 'text_size', (breeds_label.width, None)))
+                    plot_box.add_widget(breeds_label)
+
+                # Кнопка управления
+                manage_btn = ModernButton(
+                    text='Редакция',
+                    bg_color=get_color_from_hex('#32CD32'),
+                    size_hint=(1, None),
+                    height=40,
+                    font_size='14sp'
+                )
+                manage_btn.bind(on_press=lambda x, p=plot_info: self.show_plot_breed_management(p))
+                plot_box.add_widget(manage_btn)
+
+                plots_layout.add_widget(plot_box)
 
         scroll.add_widget(plots_layout)
         content.add_widget(scroll)
 
-        cancel_btn = ModernButton(
-            text='Отмена',
+        # Кнопка закрытия
+        close_btn = ModernButton(
+            text='Закрыть',
             bg_color=get_color_from_hex('#FF6347'),
+            size_hint=(1, None),
+            height=60,
+            font_size='18sp'
+        )
+        content.add_widget(close_btn)
+
+        popup = Popup(
+            title="Площадки",
+            content=content,
+            size_hint=(0.9, 0.9)
+        )
+
+        close_btn.bind(on_press=popup.dismiss)
+        popup.open()
+
+    def show_plot_breed_management(self, plot_info):
+        """Показать меню управления породами для конкретной площадки"""
+        page_num = plot_info['page']
+        row_idx = plot_info['row']
+        plot_data = plot_info['data']
+        plot_num = row_idx + 1
+
+        content = BoxLayout(orientation='vertical', spacing=15, padding=15)
+
+        # Заголовок
+        title_label = Label(
+            text=f"Управление породами - Площадка №{plot_num}",
+            font_name='Roboto',
+            font_size='20sp',
+            bold=True,
+            color=(0, 0.5, 0, 1),
             size_hint=(1, None),
             height=50
         )
-        content.add_widget(cancel_btn)
+        content.add_widget(title_label)
 
-        popup = Popup(
-            title="Выбор площадки для редактирования",
+        # ScrollView для содержимого
+        scroll = ScrollView(size_hint=(1, 1))
+        scroll_content = GridLayout(cols=1, spacing=15, size_hint_y=None)
+        scroll_content.bind(minimum_height=scroll_content.setter('height'))
+
+        # Информация о площадке
+        info_box = BoxLayout(orientation='vertical', spacing=8, size_hint=(1, None), height=150, padding=[15, 15])
+        with info_box.canvas.before:
+            Color(rgba=get_color_from_hex('#E8F4FD'))
+            info_box.bg = RoundedRectangle(pos=info_box.pos, size=info_box.size, radius=[10])
+            info_box.bind(pos=lambda *args: setattr(info_box.bg, 'pos', info_box.pos),
+                         size=lambda *args: setattr(info_box.bg, 'size', info_box.size))
+
+        info_title = Label(
+            text='Данные площадки:',
+            font_name='Roboto',
+            font_size='16sp',
+            bold=True,
+            color=(0, 0, 0, 1),
+            size_hint=(1, None),
+            height=30,
+            halign='left'
+        )
+        info_box.add_widget(info_title)
+
+        gps_point = plot_data[1] if len(plot_data) > 1 else ''
+        predmet_uhoda = plot_data[2] if len(plot_data) > 2 else ''
+        breeds_data = plot_data[3] if len(plot_data) > 3 else ''
+        forest_type = plot_data[5] if len(plot_data) > 5 else ''
+
+        info_text = f"GPS точка: {gps_point or 'Не указана'}\n"
+        info_text += f"Предмет ухода: {predmet_uhoda or 'Не указан'}\n"
+        info_text += f"Тип леса: {forest_type or 'Не указан'}"
+
+        info_details = Label(
+            text=info_text,
+            font_name='Roboto',
+            font_size='14sp',
+            color=(0.2, 0.2, 0.2, 1),
+            size_hint=(1, None),
+            height=80,
+            halign='left',
+            valign='top'
+        )
+        info_details.bind(size=lambda *args: setattr(info_details, 'text_size', (info_details.width, None)))
+        info_box.add_widget(info_details)
+
+        # Кнопка "Редакция" для данных площадки
+        edit_plot_btn = ModernButton(
+            text='Редакция',
+            bg_color=get_color_from_hex('#32CD32'),
+            size_hint=(1, None),
+            height=45,
+            font_size='15sp',
+            bold=True
+        )
+        edit_plot_btn.bind(on_press=lambda x, p=page_num, r=row_idx: self.edit_plot_data_from_management(p, r))
+        info_box.add_widget(edit_plot_btn)
+
+        scroll_content.add_widget(info_box)
+
+        # Список пород с боксами
+        breeds_box = BoxLayout(orientation='vertical', spacing=10, size_hint=(1, None), height=400, padding=[15, 15])
+        with breeds_box.canvas.before:
+            Color(rgba=get_color_from_hex('#FFF8DC'))
+            breeds_box.bg = RoundedRectangle(pos=breeds_box.pos, size=breeds_box.size, radius=[10])
+            breeds_box.bind(pos=lambda *args: setattr(breeds_box.bg, 'pos', breeds_box.pos),
+                           size=lambda *args: setattr(breeds_box.bg, 'size', breeds_box.size))
+
+        breeds_title = Label(
+            text='Сохраненные породы:',
+            font_name='Roboto',
+            font_size='16sp',
+            bold=True,
+            color=(0, 0, 0, 1),
+            size_hint=(1, None),
+            height=30,
+            halign='left'
+        )
+        breeds_box.add_widget(breeds_title)
+
+        # ScrollView для списка пород
+        breeds_scroll = ScrollView(size_hint=(1, 1))
+        breeds_list_layout = GridLayout(cols=1, spacing=8, size_hint_y=None)
+        breeds_list_layout.bind(minimum_height=breeds_list_layout.setter('height'))
+
+        # Получаем породы из данных
+        breeds_list = self.parse_breeds_data(breeds_data) if breeds_data else []
+
+        if not breeds_list:
+            no_breeds_label = Label(
+                text="Нет сохраненных пород для этой площадки",
+                font_name='Roboto',
+                font_size='14sp',
+                color=(0.5, 0.5, 0.5, 1),
+                size_hint=(1, None),
+                height=50,
+                halign='center'
+            )
+            breeds_list_layout.add_widget(no_breeds_label)
+        else:
+            # Создаем боксы для каждой породы
+            for i, breed_info in enumerate(breeds_list):
+                breed_name = breed_info.get('name', 'Неизвестная')
+                breed_type = breed_info.get('type', 'unknown')
+                breed_type_text = 'Хвойная' if breed_type == 'coniferous' else 'Лиственная'
+
+                # Создаем бокс породы
+                breed_box = BoxLayout(orientation='vertical', spacing=5, size_hint_y=None, height=140, padding=[10, 10])
+                with breed_box.canvas.before:
+                    Color(rgba=get_color_from_hex('#F5F5F5'))
+                    breed_box.bg = RoundedRectangle(pos=breed_box.pos, size=breed_box.size, radius=[8])
+                    breed_box.bind(pos=lambda *args: setattr(breed_box.bg, 'pos', breed_box.pos),
+                                  size=lambda *args: setattr(breed_box.bg, 'size', breed_box.size))
+
+                # Заголовок породы
+                breed_header = f"№{i+1}: {breed_name} ({breed_type_text})"
+                breed_header_label = Label(
+                    text=breed_header,
+                    font_name='Roboto',
+                    font_size='15sp',
+                    bold=True,
+                    color=(0, 0.3, 0.5, 1),
+                    size_hint=(1, None),
+                    height=30,
+                    halign='left'
+                )
+                breed_header_label.bind(size=lambda *args: setattr(breed_header_label, 'text_size', (breed_header_label.width, None)))
+                breed_box.add_widget(breed_header_label)
+
+                # Параметры породы
+                params = []
+                if breed_type == 'coniferous':
+                    do_05 = breed_info.get('do_05', 0)
+                    _05_15 = breed_info.get('05_15', 0)
+                    bolee_15 = breed_info.get('bolee_15', 0)
+                    total_density = do_05 + _05_15 + bolee_15
+                    if total_density > 0:
+                        params.append(f"Густота: {total_density}")
+                    if do_05 > 0:
+                        params.append(f"До 0.5м: {do_05}")
+                    if _05_15 > 0:
+                        params.append(f"0.5-1.5м: {_05_15}")
+                    if bolee_15 > 0:
+                        params.append(f">1.5м: {bolee_15}")
+                else:
+                    density = breed_info.get('density', 0)
+                    if density > 0:
+                        params.append(f"Густота: {density}")
+
+                height = breed_info.get('height', 0)
+                if height > 0:
+                    params.append(f"Высота: {height}м")
+
+                diameter = breed_info.get('diameter', 0)
+                if diameter > 0:
+                    params.append(f"Диаметр: {diameter}см")
+
+                age = breed_info.get('age', 0)
+                if age > 0:
+                    params.append(f"Возраст: {age}л")
+
+                params_text = ", ".join(params) if params else "Нет параметров"
+                params_label = Label(
+                    text=params_text,
+                    font_name='Roboto',
+                    font_size='13sp',
+                    color=(0.2, 0.2, 0.2, 1),
+                    size_hint=(1, None),
+                    height=40,
+                    halign='left',
+                    valign='top'
+                )
+                params_label.bind(size=lambda *args: setattr(params_label, 'text_size', (params_label.width, None)))
+                breed_box.add_widget(params_label)
+
+                # Кнопка Редакция
+                edit_breed_btn = ModernButton(
+                    text='Редакция',
+                    bg_color=get_color_from_hex('#32CD32'),
+                    size_hint=(1, None),
+                    height=35,
+                    font_size='13sp'
+                )
+                edit_breed_btn.bind(on_press=lambda x, p=page_num, r=row_idx, b=i: self.edit_breed_from_plot(p, r, b))
+                breed_box.add_widget(edit_breed_btn)
+
+                breeds_list_layout.add_widget(breed_box)
+
+        breeds_scroll.add_widget(breeds_list_layout)
+        breeds_box.add_widget(breeds_scroll)
+        scroll_content.add_widget(breeds_box)
+
+        # Кнопки управления
+        btn_layout = BoxLayout(orientation='horizontal', spacing=15, size_hint=(1, None), height=60)
+
+        add_breed_btn = ModernButton(
+            text='Добавить',
+            bg_color=get_color_from_hex('#00FF00'),
+            size_hint=(0.5, 1),
+            height=50,
+            font_size='16sp'
+        )
+        add_breed_btn.bind(on_press=lambda x, p=page_num, r=row_idx: self.add_breed_from_plot(p, r))
+        btn_layout.add_widget(add_breed_btn)
+
+        close_btn = ModernButton(
+            text='Закрыть',
+            bg_color=get_color_from_hex('#FF6347'),
+            size_hint=(0.5, 1),
+            height=50,
+            font_size='16sp'
+        )
+        close_btn.bind(on_press=lambda x: self.close_breed_management())
+        btn_layout.add_widget(close_btn)
+
+        scroll_content.add_widget(btn_layout)
+        scroll.add_widget(scroll_content)
+        content.add_widget(scroll)
+
+        self.breed_management_popup = Popup(
+            title=f"Площадка №{plot_num} - Породы",
             content=content,
-            size_hint=(0.8, 0.8)
+            size_hint=(0.95, 0.95)
         )
 
-        cancel_btn.bind(on_press=popup.dismiss)
-        popup.open()
+        self.breed_management_popup.open()
+
+    def close_breed_management(self):
+        """Закрыть меню управления породами"""
+        if hasattr(self, 'breed_management_popup'):
+            self.breed_management_popup.dismiss()
+
+    def parse_breeds_data(self, breeds_text):
+        """Парсинг данных о породах из JSON строки"""
+        if not breeds_text:
+            return []
+        try:
+            breeds_list = json.loads(breeds_text) if isinstance(breeds_text, str) else []
+            return breeds_list if isinstance(breeds_list, list) else []
+        except (json.JSONDecodeError, TypeError):
+            return []
+
+    def edit_breed_from_plot(self, page_num, row_idx, breed_idx):
+        """Редактирование породы из меню площадок"""
+        # Получаем данные породы
+        if page_num not in self.page_data:
+            self.show_error("Страница не найдена!")
+            return
+
+        page_data = self.page_data[page_num]
+        if row_idx >= len(page_data):
+            self.show_error("Строка не найдена!")
+            return
+
+        row = page_data[row_idx]
+        breeds_data = row[3] if len(row) > 3 else ''
+        breeds_list = self.parse_breeds_data(breeds_data)
+
+        if breed_idx >= len(breeds_list):
+            self.show_error("Порода не найдена!")
+            return
+
+        breed_info = breeds_list[breed_idx]
+
+        # Закрываем popup управления породами
+        self.close_breed_management()
+
+        # Открываем popup редактирования породы (используем существующий метод)
+        # Создаем временный input для передачи в show_breed_details_popup
+        temp_input = TextInput(text=breeds_data)
+        temp_input.row_index = row_idx
+
+        breed_type = breed_info.get('type', 'coniferous')
+        breed_name = breed_info.get('name', 'Неизвестная')
+
+        # Открываем popup с параметрами породы
+        self.show_breed_details_popup(temp_input, breed_type, breed_name)
+
+    def add_breed_from_plot(self, page_num, row_idx):
+        """Добавление породы из меню площадок"""
+        # Закрываем popup управления породами
+        self.close_breed_management()
+
+        # Открываем popup выбора типа породы
+        # Создаем временный input для передачи в show_breed_popup
+        temp_input = TextInput(text='')
+        temp_input.row_index = row_idx
+
+        # Открываем popup выбора типа породы
+        self.show_breed_popup(temp_input, True)
+
+    def edit_plot_data_from_management(self, page_num, row_idx):
+        """Редактирование данных площадки из меню управления породами"""
+        # Закрываем popup управления породами
+        self.close_breed_management()
+
+        # Открываем popup редактирования площадки
+        MolodnikiTreeDataInputPopup(self, row_idx).open()
 
     def edit_plot_popup(self, row_index):
         """Открыть popup редактирования для выбранной площадки"""
