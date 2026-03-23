@@ -73,58 +73,58 @@ class TaxationPopup(Popup):
             title='Таксационные показатели участка',
             size_hint=(0.9, 0.9),
             separator_height=0,
-            background_color=(0.5, 0.5, 0.5, 1),
-            overlay_color=(0, 0, 0, 0.5),
             **kwargs
         )
 
-        self.content = FloatLayout()
+        content = BoxLayout(orientation='vertical', spacing=15, padding=15)
 
         # Заголовок
         title_label = Label(
-            text='Создание таксационных характеристик участка молодняков',
+            text='Таксационные показатели участка',
             font_name='Roboto',
             font_size='20sp',
             bold=True,
-            color=(1, 1, 1, 1),
-            pos_hint={'center_x': 0.5, 'center_y': 0.95},
-            size_hint=(None, None),
-            size=(500, 50),
-            halign='center'
+            color=(0, 0.5, 0, 1),
+            size_hint=(1, None),
+            height=50
         )
+        content.add_widget(title_label)
 
         # Кнопки выбора источника данных
         buttons_layout = BoxLayout(
             orientation='horizontal',
-            spacing=20,
-            size_hint=(0.8, None),
-            height=50,
-            pos_hint={'center_x': 0.5, 'center_y': 0.85}
+            spacing=15,
+            size_hint=(1, None),
+            height=70
         )
 
         # Кнопка для текущих данных приложения
         current_btn = ModernButton(
             text='Текущие данные',
-            bg_color=get_color_from_hex('#00FF00'),
-            size_hint=(0.5, 1)
+            bg_color=get_color_from_hex('#32CD32'),
+            size_hint=(0.5, None),
+            height=70,
+            font_size='18sp'
         )
         current_btn.bind(on_press=self.calculate_from_current)
 
         # Кнопка для загрузки из файла
         load_btn = ModernButton(
             text='Загрузить из файла',
-            bg_color=get_color_from_hex('#0000FF'),
-            size_hint=(0.5, 1)
+            bg_color=get_color_from_hex('#4169E1'),
+            size_hint=(0.5, None),
+            height=70,
+            font_size='18sp'
         )
         load_btn.bind(on_press=self.load_from_file)
 
         buttons_layout.add_widget(current_btn)
         buttons_layout.add_widget(load_btn)
+        content.add_widget(buttons_layout)
 
         # Область результатов
         self.results_scroll = ScrollView(
-            size_hint=(0.9, 0.7),
-            pos_hint={'center_x': 0.5, 'center_y': 0.4}
+            size_hint=(1, 1)
         )
 
         self.results_layout = GridLayout(
@@ -135,21 +135,20 @@ class TaxationPopup(Popup):
         self.results_layout.bind(minimum_height=self.results_layout.setter('height'))
 
         self.results_scroll.add_widget(self.results_layout)
+        content.add_widget(self.results_scroll)
 
         # Кнопка закрытия
         close_btn = ModernButton(
             text='Закрыть',
-            bg_color=get_color_from_hex('#FF0000'),
-            size_hint=(None, None),
-            size=(200, 50),
-            pos_hint={'center_x': 0.5, 'center_y': 0.1}
+            bg_color=get_color_from_hex('#FF6347'),
+            size_hint=(1, None),
+            height=60,
+            font_size='18sp'
         )
         close_btn.bind(on_press=self.dismiss)
+        content.add_widget(close_btn)
 
-        self.content.add_widget(title_label)
-        self.content.add_widget(buttons_layout)
-        self.content.add_widget(self.results_scroll)
-        self.content.add_widget(close_btn)
+        self.content = content
 
     def calculate_from_current(self, instance):
         """Расчет из текущих данных в приложении"""
@@ -577,9 +576,45 @@ class TaxationPopup(Popup):
 
     def show_error(self, message):
         """Показать сообщение об ошибке"""
+        content = BoxLayout(orientation='vertical', spacing=15, padding=15)
+        
+        # Заголовок
+        title_label = Label(
+            text='Ошибка',
+            font_name='Roboto',
+            font_size='20sp',
+            bold=True,
+            color=(0, 0.5, 0, 1),
+            size_hint=(1, None),
+            height=50
+        )
+        content.add_widget(title_label)
+        
+        # Сообщение
+        message_label = Label(
+            text=message,
+            font_name='Roboto',
+            font_size='16sp',
+            color=(0.2, 0.2, 0.2, 1),
+            size_hint=(1, None),
+            height=80
+        )
+        content.add_widget(message_label)
+        
+        # Кнопка закрытия
+        close_btn = ModernButton(
+            text='Закрыть',
+            bg_color=get_color_from_hex('#FF6347'),
+            size_hint=(1, None),
+            height=60,
+            font_size='18sp'
+        )
+        content.add_widget(close_btn)
+        
         error_popup = Popup(
             title='Ошибка',
-            content=Label(text=message, color=(1, 0, 0, 1)),
-            size_hint=(0.6, 0.3)
+            content=content,
+            size_hint=(0.6, 0.45)
         )
+        close_btn.bind(on_press=error_popup.dismiss)
         error_popup.open()

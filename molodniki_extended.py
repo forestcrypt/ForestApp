@@ -223,8 +223,6 @@ class MolodnikiTreeDataInputPopup(Popup):
             title='Ввод данных площадки молодняков',
             size_hint=(0.8, 0.9),
             separator_height=0,
-            background_color=(0.5, 0.5, 0.5, 1),  # Серый фон
-            overlay_color=(0, 0, 0, 0.5),
             **kwargs
         )
         self.table_screen = table_screen
@@ -240,24 +238,24 @@ class MolodnikiTreeDataInputPopup(Popup):
         self.create_ui()
 
     def create_ui(self):
-        content = FloatLayout()
+        content = BoxLayout(orientation='vertical', spacing=15, padding=15)
 
-        label = Label(
-            text='Введите данные площадки молодняков:',
+        # Заголовок
+        title_label = Label(
+            text='Ввод данных площадки молодняков',
             font_name='Roboto',
-            font_size='18sp',
-            color=(1, 1, 1, 1),
-            pos_hint={'center_x': 0.5, 'center_y': 0.95},
-            size_hint=(None, None),
-            size=(350, 50)
+            font_size='20sp',
+            bold=True,
+            color=(0, 0.5, 0, 1),
+            size_hint=(1, None),
+            height=50
         )
+        content.add_widget(title_label)
 
-        scroll = ScrollView(size_hint=(0.9, 0.75), pos_hint={'center_x': 0.5, 'center_y': 0.5})
-        layout = GridLayout(cols=1, spacing=10, size_hint_y=None)
-        layout.bind(minimum_height=layout.setter('height'))
-
-        with layout.canvas.before:
-            Color(rgba=(0, 0, 0, 0))
+        # ScrollView для полей ввода
+        scroll = ScrollView(size_hint=(1, 1))
+        scroll_content = GridLayout(cols=1, spacing=15, size_hint_y=None)
+        scroll_content.bind(minimum_height=scroll_content.setter('height'))
 
         self.input_fields = []
         for field_name, col_index in self.fields:
@@ -266,15 +264,16 @@ class MolodnikiTreeDataInputPopup(Popup):
                 text=field_name,
                 font_name='Roboto',
                 font_size='16sp',
-                color=(1, 1, 1, 1),
+                bold=True,
+                color=(0, 0, 0, 1),
                 size_hint_y=None,
-                height=20
+                height=25
             )
             input_field = AutoCompleteTextInput(
                 multiline=False,
                 size_hint_y=None,
                 height=40,
-                background_color=(1, 1, 1, 0.8),
+                background_color=(1, 1, 1, 1),
                 col_index=col_index,
                 font_name='Roboto'
             )
@@ -283,7 +282,7 @@ class MolodnikiTreeDataInputPopup(Popup):
             self.input_fields.append(input_field)
             field_layout.add_widget(field_label)
             field_layout.add_widget(input_field)
-            layout.add_widget(field_layout)
+            scroll_content.add_widget(field_layout)
 
         # Заполняем данными из текущей строки
         if self.table_screen.current_page in self.table_screen.page_data and self.row_index < len(self.table_screen.page_data[self.table_screen.current_page]):
@@ -292,36 +291,34 @@ class MolodnikiTreeDataInputPopup(Popup):
                 if col_index < len(row_data) and row_data[col_index]:
                     self.input_fields[i].text = str(row_data[col_index])
 
-        scroll.add_widget(layout)
+        scroll.add_widget(scroll_content)
+        content.add_widget(scroll)
 
+        # Кнопки управления
         btn_box = BoxLayout(
             orientation='horizontal',
             spacing=10,
             size_hint=(1, None),
-            height=40,
-            pos_hint={'center_x': 0.5, 'center_y': 0.1}
+            height=60
         )
         save_btn = ModernButton(
             text='Сохранить',
-            bg_color=get_color_from_hex('#00FF00'),
+            bg_color=get_color_from_hex('#32CD32'),
             size_hint=(0.5, None),
-            height=40,
-            no_shadow=True
+            height=60,
+            font_size='18sp'
         )
         save_btn.bind(on_press=self.save_data)
         exit_btn = ModernButton(
             text='Выйти',
-            bg_color=get_color_from_hex('#FF0000'),
+            bg_color=get_color_from_hex('#FF6347'),
             size_hint=(0.5, None),
-            height=40,
-            no_shadow=True
+            height=60,
+            font_size='18sp'
         )
         exit_btn.bind(on_press=self.dismiss)
         btn_box.add_widget(save_btn)
         btn_box.add_widget(exit_btn)
-
-        content.add_widget(label)
-        content.add_widget(scroll)
         content.add_widget(btn_box)
 
         self.content = content
@@ -331,21 +328,35 @@ class MolodnikiTreeDataInputPopup(Popup):
         """Показать popup для выбора типа породы"""
         if not value: return
 
-        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        content = BoxLayout(orientation='vertical', spacing=15, padding=15)
+
+        # Заголовок
+        title_label = Label(
+            text='Выберите тип породы',
+            font_name='Roboto',
+            font_size='20sp',
+            bold=True,
+            color=(0, 0.5, 0, 1),
+            size_hint=(1, None),
+            height=50
+        )
+        content.add_widget(title_label)
 
         # Кнопки выбора типа породы
-        type_layout = BoxLayout(orientation='horizontal', spacing=10)
+        type_layout = BoxLayout(orientation='horizontal', spacing=15, size_hint=(1, None), height=120)
         coniferous_btn = ModernButton(
             text='Хвойные',
             bg_color=get_color_from_hex('#228B22'),
             size_hint=(0.5, None),
-            height=50
+            height=60,
+            font_size='18sp'
         )
         deciduous_btn = ModernButton(
             text='Лиственные',
             bg_color=get_color_from_hex('#32CD32'),
             size_hint=(0.5, None),
-            height=50
+            height=60,
+            font_size='18sp'
         )
         type_layout.add_widget(coniferous_btn)
         type_layout.add_widget(deciduous_btn)
@@ -355,8 +366,9 @@ class MolodnikiTreeDataInputPopup(Popup):
         cancel_btn = ModernButton(
             text='Отмена',
             bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(0.5, 1),
-            height=50
+            size_hint=(1, None),
+            height=60,
+            font_size='18sp'
         )
         content.add_widget(cancel_btn)
 
@@ -382,15 +394,17 @@ class MolodnikiTreeDataInputPopup(Popup):
 
     def show_breed_selection_popup(self, instance, breed_type):
         """Показать popup для выбора конкретной породы из словаря"""
-        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        content = BoxLayout(orientation='vertical', spacing=15, padding=15)
 
         # Заголовок
         title_label = Label(
             text=f"Выберите {'хвойную' if breed_type == 'coniferous' else 'лиственную'} породу",
             font_name='Roboto',
+            font_size='20sp',
             bold=True,
+            color=(0, 0.5, 0, 1),
             size_hint=(1, None),
-            height=30
+            height=50
         )
         content.add_widget(title_label)
 
@@ -412,7 +426,7 @@ class MolodnikiTreeDataInputPopup(Popup):
 
         # ScrollView для списка пород
         scroll = ScrollView(size_hint=(1, None), height=300)
-        breeds_layout = GridLayout(cols=1, spacing=5, size_hint_y=None)
+        breeds_layout = GridLayout(cols=1, spacing=10, size_hint_y=None)
         breeds_layout.bind(minimum_height=breeds_layout.setter('height'))
 
         for breed in all_breeds:
@@ -420,8 +434,8 @@ class MolodnikiTreeDataInputPopup(Popup):
                 text=breed,
                 bg_color=get_color_from_hex('#87CEEB'),
                 size_hint=(1, None),
-                height=50,
-                font_size='14sp'
+                height=55,
+                font_size='16sp'
             )
             btn.bind(on_press=lambda x, b=breed: self.select_breed(instance, breed_type, b))
             breeds_layout.add_widget(btn)
@@ -429,34 +443,41 @@ class MolodnikiTreeDataInputPopup(Popup):
         scroll.add_widget(breeds_layout)
         content.add_widget(scroll)
 
+        # Кнопки управления
+        buttons_layout = BoxLayout(orientation='vertical', spacing=10, size_hint=(1, None), height=190)
+
         # Кнопка "Новая"
         other_btn = ModernButton(
             text='Новая',
             bg_color=get_color_from_hex('#DDA0DD'),
             size_hint=(1, None),
-            height=50
+            height=55,
+            font_size='16sp'
         )
         other_btn.bind(on_press=lambda x: self.select_breed(instance, breed_type, 'other'))
-        content.add_widget(other_btn)
+        buttons_layout.add_widget(other_btn)
 
         # Кнопка "Очистить"
         clear_btn = ModernButton(
             text='Очистить',
             bg_color=get_color_from_hex('#FFA500'),
             size_hint=(1, None),
-            height=50
+            height=55,
+            font_size='16sp'
         )
         clear_btn.bind(on_press=lambda x: App.get_running_app().root.get_screen('molodniki').show_clear_breeds_popup(breed_type))
-        content.add_widget(clear_btn)
+        buttons_layout.add_widget(clear_btn)
 
         # Кнопка отмены
         cancel_btn = ModernButton(
             text='Отмена',
             bg_color=get_color_from_hex('#FF6347'),
             size_hint=(1, None),
-            height=50
+            height=55,
+            font_size='16sp'
         )
-        content.add_widget(cancel_btn)
+        buttons_layout.add_widget(cancel_btn)
+        content.add_widget(buttons_layout)
 
         popup = Popup(
             title=f"Выбор {'хвойной' if breed_type == 'coniferous' else 'лиственной'} породы",
@@ -551,15 +572,17 @@ class MolodnikiTreeDataInputPopup(Popup):
 
     def show_breed_details_popup(self, instance, breed_type, selected_breed=None):
         """Показать popup для управления множественными породами"""
-        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        content = BoxLayout(orientation='vertical', spacing=15, padding=15)
 
         # Заголовок
         title_label = Label(
             text=f"Управление породами - {selected_breed}",
             font_name='Roboto',
+            font_size='20sp',
             bold=True,
+            color=(0, 0.5, 0, 1),
             size_hint=(1, None),
-            height=30
+            height=50
         )
         content.add_widget(title_label)
 
@@ -569,33 +592,33 @@ class MolodnikiTreeDataInputPopup(Popup):
             size_hint=(1, None),
             height=200,
             padding=[10, 10],
-            spacing=5
+            spacing=10
         )
         with plot_breeds_box.canvas.before:
-            Color(rgba=get_color_from_hex('#F0F8FF'))
+            Color(rgba=get_color_from_hex('#E8F4FD'))
             plot_breeds_box.bg = RoundedRectangle(pos=plot_breeds_box.pos, size=plot_breeds_box.size, radius=[10])
             plot_breeds_box.bind(pos=lambda *args: setattr(plot_breeds_box.bg, 'pos', plot_breeds_box.pos),
                                 size=lambda *args: setattr(plot_breeds_box.bg, 'size', plot_breeds_box.size))
-        
+
         # Получаем номер площадки из row_index
         plot_number = self.row_index + 1
-        
+
         plot_breeds_title = Label(
             text=f'Площадка №{plot_number} - Сохраненные породы:',
             font_name='Roboto',
-            font_size='14sp',
+            font_size='16sp',
             bold=True,
             color=(0, 0.3, 0.5, 1),
             size_hint=(1, None),
-            height=25,
+            height=30,
             halign='left'
         )
         plot_breeds_title.bind(size=lambda *args: setattr(plot_breeds_title, 'text_size', (plot_breeds_title.width, None)))
         plot_breeds_box.add_widget(plot_breeds_title)
-        
+
         # ScrollView для списка пород на площадке
-        plot_breeds_scroll = ScrollView(size_hint=(1, None), height=160)
-        plot_breeds_list = GridLayout(cols=1, spacing=3, size_hint_y=None)
+        plot_breeds_scroll = ScrollView(size_hint=(1, None), height=150)
+        plot_breeds_list = GridLayout(cols=1, spacing=5, size_hint_y=None)
         plot_breeds_list.bind(minimum_height=plot_breeds_list.setter('height'))
         
         # Получаем существующие породы для этой площадки из instance.text (поле ввода породы)
@@ -673,39 +696,39 @@ class MolodnikiTreeDataInputPopup(Popup):
         content.add_widget(scroll_fields)
 
         # Кнопки управления - четыре отдельные кнопки
-        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
+        btn_layout = BoxLayout(orientation='horizontal', spacing=15, size_hint=(1, None), height=70)
 
         add_btn = ModernButton(
             text='Добавить',
             bg_color=get_color_from_hex('#32CD32'),
-            size_hint=(0.25, 1),
-            height=50,
-            font_size='14sp'
+            size_hint=(0.25, None),
+            height=70,
+            font_size='16sp'
         )
 
         save_btn = ModernButton(
             text='Сохранить',
             bg_color=get_color_from_hex('#00FF00'),
-            size_hint=(0.25, 1),
-            height=50,
-            font_size='14sp',
+            size_hint=(0.25, None),
+            height=70,
+            font_size='16sp',
             bold=True
         )
 
         delete_btn = ModernButton(
             text='Удалить',
             bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(0.25, 1),
-            height=50,
-            font_size='14sp'
+            size_hint=(0.25, None),
+            height=70,
+            font_size='16sp'
         )
 
         exit_btn = ModernButton(
             text='Выйти',
             bg_color=get_color_from_hex('#FF0000'),
-            size_hint=(0.25, 1),
-            height=50,
-            font_size='14sp'
+            size_hint=(0.25, None),
+            height=70,
+            font_size='16sp'
         )
 
         btn_layout.add_widget(add_btn)
@@ -955,79 +978,85 @@ class MolodnikiTreeDataInputPopup(Popup):
         """Показать popup для удаления пород"""
         # Получаем список пород
         existing_breeds = self.table_screen.parse_breeds_data(instance.text)
-        
+
         if not existing_breeds:
             self.table_screen.show_error("Нет пород для удаления!")
             return
-        
-        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
-        
+
+        content = BoxLayout(orientation='vertical', spacing=15, padding=15)
+
+        # Заголовок
         title_label = Label(
             text="Выберите породы для удаления:",
             font_name='Roboto',
+            font_size='20sp',
             bold=True,
             size_hint=(1, None),
-            height=40,
-            color=(0.5, 0, 0, 1)
+            height=50,
+            color=(0, 0.5, 0, 1)
         )
         content.add_widget(title_label)
-        
+
         # ScrollView для списка пород
-        scroll = ScrollView(size_hint=(1, None), height=300)
-        breeds_layout = GridLayout(cols=1, spacing=5, size_hint_y=None)
+        scroll = ScrollView(size_hint=(1, None), height=350)
+        breeds_layout = GridLayout(cols=1, spacing=10, size_hint_y=None)
         breeds_layout.bind(minimum_height=breeds_layout.setter('height'))
-        
+
         # Чекбоксы для выбора пород
         self.breed_checkboxes = {}
         for i, breed_info in enumerate(existing_breeds):
             breed_name = breed_info.get('name', 'Неизвестная')
-            
+
             # Создаём строку с чекбоксом и названием породы
-            breed_row = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=40)
-            
+            breed_row = BoxLayout(orientation='horizontal', spacing=15, size_hint=(1, None), height=50)
+
             # Чекбокс (используем Button как чекбокс)
             from kivy.uix.checkbox import CheckBox
-            checkbox = CheckBox(size_hint=(None, None), size=(40, 40), active=False)
+            checkbox = CheckBox(size_hint=(None, None), size=(50, 50), active=False)
             self.breed_checkboxes[i] = checkbox
-            
+
             # Название породы
             breed_label = Label(
                 text=f"{breed_name}",
                 font_name='Roboto',
+                font_size='16sp',
                 size_hint=(1, None),
-                height=40,
+                height=50,
                 halign='left'
             )
-            
+
             breed_row.add_widget(checkbox)
             breed_row.add_widget(breed_label)
             breeds_layout.add_widget(breed_row)
-        
+
         scroll.add_widget(breeds_layout)
         content.add_widget(scroll)
 
         # Кнопки управления
-        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
+        btn_layout = BoxLayout(orientation='horizontal', spacing=15, size_hint=(1, None), height=70)
 
         confirm_btn = ModernButton(
             text='Удалить выбранные',
             bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(0.34, 1),
-            height=50
+            size_hint=(0.34, None),
+            height=70,
+            font_size='16sp'
         )
 
         clear_all_btn = ModernButton(
             text='Очистить все',
             bg_color=get_color_from_hex('#FFA500'),
-            size_hint=(0.33, 1),
-            height=50
+            size_hint=(0.33, None),
+            height=70,
+            font_size='16sp'
         )
 
         cancel_btn = ModernButton(
             text='Отмена',
             bg_color=get_color_from_hex('#808080'),
-            size_hint=(0.33, 1),
-            height=50
+            size_hint=(0.33, None),
+            height=70,
+            font_size='16sp'
         )
 
         btn_layout.add_widget(confirm_btn)
@@ -1106,40 +1135,45 @@ class MolodnikiTreeDataInputPopup(Popup):
 
     def show_breed_choice_popup(self, instance, selected_breed):
         """Показать popup с выбором после добавления первой породы"""
-        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        content = BoxLayout(orientation='vertical', spacing=15, padding=15)
 
+        # Заголовок
         title_label = Label(
-            text=f"Порода '{selected_breed}' добавлена!\nВыберите действие:",
+            text=f"Порода '{selected_breed}' добавлена!",
             font_name='Roboto',
+            font_size='20sp',
             bold=True,
             size_hint=(1, None),
-            height=60,
+            height=40,
             color=(0, 0.5, 0, 1)
         )
         content.add_widget(title_label)
 
         # Информация о номере породы
         info_label = Label(
-            text="Автоматически присвоен номер: 1 порода",
+            text="Выберите действие:",
             font_name='Roboto',
+            font_size='16sp',
             size_hint=(1, None),
             height=30,
             color=(0.3, 0.3, 0.3, 1)
         )
         content.add_widget(info_label)
 
-        btn_layout = BoxLayout(orientation='vertical', spacing=10, size_hint=(1, None), height=120)
+        btn_layout = BoxLayout(orientation='vertical', spacing=15, size_hint=(1, None), height=150)
         add_more_btn = ModernButton(
             text='Добавить еще породу',
             bg_color=get_color_from_hex('#00FF00'),
             size_hint=(1, None),
-            height=50
+            height=65,
+            font_size='18sp'
         )
         save_exit_btn = ModernButton(
             text='Сохранить и выйти',
             bg_color=get_color_from_hex('#32CD32'),
             size_hint=(1, None),
-            height=50
+            height=65,
+            font_size='18sp'
         )
         btn_layout.add_widget(add_more_btn)
         btn_layout.add_widget(save_exit_btn)
@@ -1166,14 +1200,17 @@ class MolodnikiTreeDataInputPopup(Popup):
 
     def show_custom_breed_popup(self, instance, breed_type):
         """Показать popup для ввода названия другой породы"""
-        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        content = BoxLayout(orientation='vertical', spacing=15, padding=15)
 
+        # Заголовок
         title_label = Label(
             text="Введите название другой породы",
             font_name='Roboto',
+            font_size='20sp',
             bold=True,
             size_hint=(1, None),
-            height=30
+            height=50,
+            color=(0, 0.5, 0, 1)
         )
         content.add_widget(title_label)
 
@@ -1181,23 +1218,26 @@ class MolodnikiTreeDataInputPopup(Popup):
             hint_text="Название породы",
             multiline=False,
             size_hint=(1, None),
-            height=40,
-            font_name='Roboto'
+            height=50,
+            font_name='Roboto',
+            font_size='16sp'
         )
         content.add_widget(self.custom_breed_input)
 
-        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
+        btn_layout = BoxLayout(orientation='horizontal', spacing=15, size_hint=(1, None), height=70)
         save_btn = ModernButton(
             text='Сохранить',
-            bg_color=get_color_from_hex('#00FF00'),
-            size_hint=(0.5, 1),
-            height=50
+            bg_color=get_color_from_hex('#32CD32'),
+            size_hint=(0.5, None),
+            height=70,
+            font_size='18sp'
         )
         cancel_btn = ModernButton(
             text='Отмена',
             bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(0.5, 1),
-            height=50
+            size_hint=(0.5, None),
+            height=70,
+            font_size='18sp'
         )
         btn_layout.add_widget(save_btn)
         btn_layout.add_widget(cancel_btn)
@@ -1206,7 +1246,7 @@ class MolodnikiTreeDataInputPopup(Popup):
         popup = Popup(
             title=f"Ввод {'хвойной' if breed_type == 'coniferous' else 'лиственной'} породы",
             content=content,
-            size_hint=(0.8, 0.6)
+            size_hint=(0.8, 0.5)
         )
 
         def save_custom_breed(btn):
@@ -1487,16 +1527,17 @@ class ExtendedMolodnikiTableScreen(Screen):
 
     def show_clear_breeds_popup(self, breed_type):
         """Показать popup для очистки пользовательских пород с выбором через галочки"""
-        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        content = BoxLayout(orientation='vertical', spacing=15, padding=15)
 
         # Заголовок
         title_label = Label(
             text=f"Очистка {'хвойных' if breed_type == 'coniferous' else 'лиственных'} пород",
             font_name='Roboto',
+            font_size='20sp',
             bold=True,
             size_hint=(1, None),
-            height=40,
-            color=(0.2, 0.2, 0.2, 1)
+            height=50,
+            color=(0, 0.5, 0, 1)
         )
         content.add_widget(title_label)
 
@@ -1504,8 +1545,9 @@ class ExtendedMolodnikiTableScreen(Screen):
         desc_label = Label(
             text="Отметьте породы для удаления:",
             font_name='Roboto',
+            font_size='16sp',
             size_hint=(1, None),
-            height=30,
+            height=35,
             color=(0.3, 0.3, 0.3, 1),
             halign='left'
         )
@@ -1519,6 +1561,7 @@ class ExtendedMolodnikiTableScreen(Screen):
             no_breeds_label = Label(
                 text="Нет пользовательских пород для удаления",
                 font_name='Roboto',
+                font_size='16sp',
                 size_hint=(1, None),
                 height=40,
                 color=(0.5, 0.5, 0.5, 1)
@@ -1527,7 +1570,7 @@ class ExtendedMolodnikiTableScreen(Screen):
         else:
             # ScrollView для списка пород
             scroll = ScrollView(size_hint=(1, None), height=300)
-            breeds_layout = GridLayout(cols=1, spacing=5, size_hint_y=None)
+            breeds_layout = GridLayout(cols=1, spacing=10, size_hint_y=None)
             breeds_layout.bind(minimum_height=breeds_layout.setter('height'))
 
             # Хранилище для чекбоксов
@@ -1535,24 +1578,25 @@ class ExtendedMolodnikiTableScreen(Screen):
 
             for breed in custom_breeds:
                 # Создаем горизонтальный layout для чекбокса и названия
-                breed_row = BoxLayout(orientation='horizontal', size_hint_y=None, height=40, spacing=10)
-                
+                breed_row = BoxLayout(orientation='horizontal', size_hint_y=None, height=50, spacing=15)
+
                 # Чекбокс (используем Button как чекбокс)
                 from kivy.uix.checkbox import CheckBox
-                checkbox = CheckBox(active=False, size_hint=(None, None), size=(40, 40))
+                checkbox = CheckBox(active=False, size_hint=(None, None), size=(50, 50))
                 self.breed_checkboxes[breed] = checkbox
-                
+
                 # Название породы
                 breed_label = Label(
                     text=breed,
                     font_name='Roboto',
+                    font_size='16sp',
                     size_hint=(1, None),
-                    height=40,
+                    height=50,
                     halign='left',
                     color=(0.2, 0.2, 0.2, 1)
                 )
                 breed_label.bind(size=breed_label.setter('text_size'))
-                
+
                 breed_row.add_widget(checkbox)
                 breed_row.add_widget(breed_label)
                 breeds_layout.add_widget(breed_row)
@@ -1561,30 +1605,33 @@ class ExtendedMolodnikiTableScreen(Screen):
             content.add_widget(scroll)
 
         # Кнопки управления
-        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
+        btn_layout = BoxLayout(orientation='horizontal', spacing=15, size_hint=(1, None), height=70)
 
         # Кнопка "Выбрать все"
         select_all_btn = ModernButton(
             text='Выбрать все',
             bg_color=get_color_from_hex('#4169E1'),
-            size_hint=(0.33, 1),
-            height=50
+            size_hint=(0.33, None),
+            height=70,
+            font_size='16sp'
         )
 
         # Кнопка "Удалить"
         delete_btn = ModernButton(
             text='Удалить',
             bg_color=get_color_from_hex('#FF0000'),
-            size_hint=(0.33, 1),
-            height=50
+            size_hint=(0.33, None),
+            height=70,
+            font_size='16sp'
         )
 
         # Кнопка "Отмена"
         cancel_btn = ModernButton(
             text='Отмена',
             bg_color=get_color_from_hex('#808080'),
-            size_hint=(0.33, 1),
-            height=50
+            size_hint=(0.33, None),
+            height=70,
+            font_size='16sp'
         )
 
         btn_layout.add_widget(select_all_btn)
@@ -1614,6 +1661,7 @@ class ExtendedMolodnikiTableScreen(Screen):
                     content=Label(
                         text="Не выбрано ни одной породы для удаления",
                         font_name='Roboto',
+                        font_size='16sp',
                         color=(0.2, 0.2, 0.2, 1)
                     ),
                     size_hint=(0.5, 0.3),
@@ -1623,26 +1671,44 @@ class ExtendedMolodnikiTableScreen(Screen):
                 return
 
             # Подтверждение удаления
-            confirm_content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+            confirm_content = BoxLayout(orientation='vertical', spacing=15, padding=15)
+            
+            # Заголовок
+            confirm_title = Label(
+                text="Подтверждение удаления",
+                font_name='Roboto',
+                font_size='18sp',
+                bold=True,
+                color=(0, 0.5, 0, 1),
+                size_hint=(1, None),
+                height=40
+            )
+            confirm_content.add_widget(confirm_title)
+            
             confirm_label = Label(
                 text=f"Вы уверены, что хотите удалить {len(breeds_to_delete)} пород(ы)?",
                 font_name='Roboto',
-                color=(0.2, 0.2, 0.2, 1)
+                font_size='16sp',
+                color=(0.2, 0.2, 0.2, 1),
+                size_hint=(1, None),
+                height=50
             )
             confirm_content.add_widget(confirm_label)
 
-            confirm_btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
+            confirm_btn_layout = BoxLayout(orientation='horizontal', spacing=15, size_hint=(1, None), height=70)
             confirm_yes_btn = ModernButton(
                 text='Да, удалить',
-                bg_color=get_color_from_hex('#FF0000'),
-                size_hint=(0.5, 1),
-                height=50
+                bg_color=get_color_from_hex('#FF6347'),
+                size_hint=(0.5, None),
+                height=70,
+                font_size='16sp'
             )
             confirm_no_btn = ModernButton(
                 text='Отмена',
-                bg_color=get_color_from_hex('#00FF00'),
-                size_hint=(0.5, 1),
-                height=50
+                bg_color=get_color_from_hex('#32CD32'),
+                size_hint=(0.5, None),
+                height=70,
+                font_size='16sp'
             )
             confirm_btn_layout.add_widget(confirm_yes_btn)
             confirm_btn_layout.add_widget(confirm_no_btn)
@@ -1651,7 +1717,7 @@ class ExtendedMolodnikiTableScreen(Screen):
             confirm_popup = Popup(
                 title="Подтверждение удаления",
                 content=confirm_content,
-                size_hint=(0.6, 0.4)
+                size_hint=(0.6, 0.45)
             )
 
             def do_delete(instance):
@@ -2151,6 +2217,7 @@ class ExtendedMolodnikiTableScreen(Screen):
                 ('0.5-1.5м (шт):', '05_15'),
                 ('>1.5м (шт):', 'bolee_15'),
                 ('Высота (м):', 'height'),
+                ('Диаметр (см):', 'diameter'),  # ✅ ДОБАВЛЕНО
                 ('Густота (авто):', 'density'),
                 ('Возраст (лет):', 'age')
             ]
@@ -2158,6 +2225,7 @@ class ExtendedMolodnikiTableScreen(Screen):
             fields = [
                 ('Густота (шт):', 'density'),
                 ('Высота (м):', 'height'),
+                ('Диаметр (см):', 'diameter'),  # ✅ ДОБАВЛЕНО
                 ('Возраст (лет):', 'age')
             ]
 
@@ -2254,7 +2322,7 @@ class ExtendedMolodnikiTableScreen(Screen):
                     try:
                         if key in ['density', 'age']:
                             breed_data[key] = int(inp.text)
-                        elif key == 'height':
+                        elif key in ['height', 'diameter']:  # ✅ ДОБАВЛЕНО: diameter как float
                             breed_data[key] = float(inp.text)
                         else:
                             breed_data[key] = float(inp.text)
@@ -2590,6 +2658,8 @@ class ExtendedMolodnikiTableScreen(Screen):
                         params_text.append(f"Густота: {breed_info['density']}")
                     if 'height' in breed_info and breed_info['height']:
                         params_text.append(f"Высота: {breed_info['height']}м")
+                    if 'diameter' in breed_info and breed_info['diameter']:  # ✅ ДОБАВЛЕНО
+                        params_text.append(f"Диаметр: {breed_info['diameter']}см")
                     if 'age' in breed_info and breed_info['age']:
                         params_text.append(f"Возраст: {breed_info['age']} лет")
 
@@ -4479,7 +4549,8 @@ class ExtendedMolodnikiTableScreen(Screen):
                         plot_data = {
                             'density': density,
                             'height': height,
-                            'age': age
+                            'age': age,
+                            'diameter': diameter  # ✅ ДОБАВЛЕНО: сохраняем диаметр в plot_data
                         }
 
                         if breed_type == 'coniferous':
@@ -4654,67 +4725,103 @@ class ExtendedMolodnikiTableScreen(Screen):
                             print(f"[DEBUG] Интенсивность: {avg_overall_density_for_intensity:.1f} - {avg_remaining_density:.0f} / {avg_overall_density_for_intensity:.1f} = {intensity:.1f}%")
 
             # Расчет средних значений по участку (ОБЩАЯ густота, высота, диаметр, возраст)
-            # Используем среднюю густоту по площадкам, а не по породам
-            # Для каждой площадки считаем: общую густоту (сумма по породам), средние высоту/диаметр/возраст (по породам)
-            plot_densities = []
-            plot_height_sums = []
-            plot_height_counts = []
-            plot_diameter_sums = []
-            plot_diameter_counts = []
-            plot_age_sums = []
-            plot_age_counts = []
-
-            for breed_name, data in breeds_data.items():
-                if data['plots']:
-                    # Для каждой породы обрабатываем данные по площадкам
-                    for i, p in enumerate(data['plots']):
-                        # Если это новая площадка, создаём запись
-                        while i >= len(plot_densities):
-                            plot_densities.append(0)
-                            plot_height_sums.append(0)
-                            plot_height_counts.append(0)
-                            plot_diameter_sums.append(0)
-                            plot_diameter_counts.append(0)
-                            plot_age_sums.append(0)
-                            plot_age_counts.append(0)
-
-                        # Густота - суммируем по породам
-                        plot_densities[i] += p['density']
-                        
-                        # Высота - суммируем и считаем количество для усреднения
-                        if p['height'] > 0:
-                            plot_height_sums[i] += p['height']
-                            plot_height_counts[i] += 1
-                        
-                        # Диаметр - суммируем и считаем количество для усреднения
-                        if p.get('diameter', 0) > 0:
-                            plot_diameter_sums[i] += p['diameter']
-                            plot_diameter_counts[i] += 1
-                        
-                        # Возраст - суммируем и считаем количество для усреднения
-                        if p['age'] > 0:
-                            plot_age_sums[i] += p['age']
-                            plot_age_counts[i] += 1
-
-            # Рассчитываем средние значения по площадкам
-            avg_overall_density = sum(plot_densities) / len(plot_densities) if plot_densities else 0
+            # ВАЖНО: Считаем по ПЛОЩАДКАМ, а не по породам!
+            # 1. Для каждой площадки: суммируем густоту по всем породам
+            # 2. Для каждой площадки: средние высота/диаметр/возраст по породам
+            # 3. Среднее по всем площадкам
             
-            # Для высоты/диаметра/возраста сначала считаем средние по каждой площадке, потом общее среднее
-            plot_avg_heights = []
-            plot_avg_diameters = []
-            plot_avg_ages = []
+            # Сначала собираем данные по площадкам из исходных строк
+            plot_data_list = []  # Список данных по каждой площадке
             
-            for i in range(len(plot_densities)):
-                if plot_height_counts[i] > 0:
-                    plot_avg_heights.append(plot_height_sums[i] / plot_height_counts[i])
-                if plot_diameter_counts[i] > 0:
-                    plot_avg_diameters.append(plot_diameter_sums[i] / plot_diameter_counts[i])
-                if plot_age_counts[i] > 0:
-                    plot_avg_ages.append(plot_age_sums[i] / plot_age_counts[i])
+            for page_num, page_rows in self.page_data.items():
+                for row_idx, row in enumerate(page_rows):
+                    if len(row) < 4:
+                        continue
+                    
+                    breeds_text = row[3]
+                    if not breeds_text:
+                        continue
+                    
+                    # Данные по этой площадке
+                    plot_total_density = 0
+                    plot_height_sum = 0
+                    plot_height_count = 0
+                    plot_diameter_sum = 0
+                    plot_diameter_count = 0
+                    plot_age_sum = 0
+                    plot_age_count = 0
+                    
+                    try:
+                        breeds_list = json.loads(breeds_text) if isinstance(breeds_text, str) else []
+                        
+                        for breed_info in breeds_list:
+                            if not isinstance(breed_info, dict):
+                                continue
+                            
+                            breed_type = breed_info.get('type', 'deciduous')
+                            
+                            # Расчёт густоты
+                            if breed_type == 'coniferous':
+                                do_05 = breed_info.get('do_05', 0)
+                                _05_15 = breed_info.get('05_15', 0)
+                                bolee_15 = breed_info.get('bolee_15', 0)
+                                total_trees = do_05 + _05_15 + bolee_15
+                                density = total_trees / plot_area_ha if plot_area_ha > 0 else 0
+                                
+                                # Высота для хвойных по градациям
+                                if bolee_15 > 0:
+                                    height = 2.0
+                                elif _05_15 > 0:
+                                    height = 1.0
+                                elif do_05 > 0:
+                                    height = 0.3
+                                else:
+                                    height = breed_info.get('height', 0) or 0
+                            else:
+                                density_value = breed_info.get('density', 0)
+                                density = density_value / plot_area_ha if plot_area_ha > 0 else 0
+                                height = breed_info.get('height', 0) or 0
+                            
+                            diameter = breed_info.get('diameter', 0) or 0
+                            age = breed_info.get('age', 0) or 0
+                            
+                            # Суммируем по площадке
+                            plot_total_density += density
+                            if height > 0:
+                                plot_height_sum += height
+                                plot_height_count += 1
+                            if diameter > 0:
+                                plot_diameter_sum += diameter
+                                plot_diameter_count += 1
+                            if age > 0:
+                                plot_age_sum += age
+                                plot_age_count += 1
+                        
+                        # Сохраняем данные площадки
+                        plot_data_list.append({
+                            'density': plot_total_density,
+                            'height': plot_height_sum / plot_height_count if plot_height_count > 0 else 0,
+                            'diameter': plot_diameter_sum / plot_diameter_count if plot_diameter_count > 0 else 0,
+                            'age': plot_age_sum / plot_age_count if plot_age_count > 0 else 0
+                        })
+                        
+                    except (json.JSONDecodeError, TypeError) as e:
+                        print(f"[WARNING] Ошибка обработки строки: {e}")
+                        continue
             
-            avg_overall_height = sum(plot_avg_heights) / len(plot_avg_heights) if plot_avg_heights else 0
-            avg_overall_diameter = sum(plot_avg_diameters) / len(plot_avg_diameters) if plot_avg_diameters else 0
-            avg_overall_age = sum(plot_avg_ages) / len(plot_avg_ages) if plot_avg_ages else 0
+            # Рассчитываем средние по ВСЕМ ПЛОЩАДКАМ
+            num_plots = len(plot_data_list)
+            
+            if num_plots > 0:
+                avg_overall_density = sum(p['density'] for p in plot_data_list) / num_plots
+                avg_overall_height = sum(p['height'] for p in plot_data_list) / num_plots
+                avg_overall_diameter = sum(p['diameter'] for p in plot_data_list) / num_plots
+                avg_overall_age = sum(p['age'] for p in plot_data_list) / num_plots
+            else:
+                avg_overall_density = 0
+                avg_overall_height = 0
+                avg_overall_diameter = 0
+                avg_overall_age = 0
 
             # Формируем итоговые данные
             total_data = {
@@ -5335,6 +5442,9 @@ class ExtendedMolodnikiTableScreen(Screen):
 
     def save_to_json(self, instance=None):
         """Сохранение данных в JSON формате"""
+        # Получаем итоговые данные (total_data) из меню Итого
+        total_data = self.get_total_data_from_db()
+        
         data = {
             'page_data': self.page_data,
             'section': self.current_section,
@@ -5343,6 +5453,7 @@ class ExtendedMolodnikiTableScreen(Screen):
             'forestry': self.current_forestry,
             'radius': self.current_radius,
             'project_data': self.project_data,  # Данные проекта
+            'total_data': total_data,  # ✅ ДОБАВЛЕНО: итоговые данные с породами
             'export_date': datetime.datetime.now().isoformat()
         }
 
@@ -8826,29 +8937,30 @@ class ExtendedMolodnikiTableScreen(Screen):
 
     def show_file_popup(self, instance):
         """Показать popup с операциями над файлами"""
-        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        content = BoxLayout(orientation='vertical', spacing=15, padding=15)
 
+        # Заголовок
         title_label = Label(
             text="Операции с файлами",
             font_name='Roboto',
-            font_size='18sp',
+            font_size='20sp',
             bold=True,
             color=(0, 0.5, 0, 1),
             size_hint=(1, None),
-            height=40
+            height=50
         )
         content.add_widget(title_label)
 
         # Кнопки для операций с файлами
-        buttons_layout = GridLayout(cols=2, spacing=10, size_hint=(1, None), height=200)
+        buttons_layout = GridLayout(cols=2, spacing=15, size_hint=(1, None), height=380)
 
         # Кнопка Создать
         create_plot_btn = ModernButton(
             text='Создать',
             bg_color=get_color_from_hex('#32CD32'),
             size_hint=(1, None),
-            height=50,
-            font_size='14sp'
+            height=60,
+            font_size='16sp'
         )
         create_plot_btn.bind(on_press=self.create_new_plot)
         buttons_layout.add_widget(create_plot_btn)
@@ -8858,8 +8970,8 @@ class ExtendedMolodnikiTableScreen(Screen):
             text='Сохранить',
             bg_color=get_color_from_hex('#FFD700'),
             size_hint=(1, None),
-            height=50,
-            font_size='14sp'
+            height=60,
+            font_size='16sp'
         )
         save_btn.bind(on_press=self.save_all_formats)
         buttons_layout.add_widget(save_btn)
@@ -8869,8 +8981,8 @@ class ExtendedMolodnikiTableScreen(Screen):
             text='Загрузить',
             bg_color=get_color_from_hex('#006400'),
             size_hint=(1, None),
-            height=50,
-            font_size='14sp'
+            height=60,
+            font_size='16sp'
         )
         load_btn.bind(on_press=self.load_section)
         buttons_layout.add_widget(load_btn)
@@ -8880,8 +8992,8 @@ class ExtendedMolodnikiTableScreen(Screen):
             text='Изменить',
             bg_color=get_color_from_hex('#FF6347'),
             size_hint=(1, None),
-            height=50,
-            font_size='14sp'
+            height=60,
+            font_size='16sp'
         )
         edit_btn.bind(on_press=self.show_edit_plots_popup)
         buttons_layout.add_widget(edit_btn)
@@ -8889,10 +9001,10 @@ class ExtendedMolodnikiTableScreen(Screen):
         # Кнопка Открыть
         open_folder_btn = ModernButton(
             text='Открыть',
-            bg_color=get_color_from_hex('#0000FF'),
+            bg_color=get_color_from_hex('#4169E1'),
             size_hint=(1, None),
-            height=50,
-            font_size='14sp'
+            height=60,
+            font_size='16sp'
         )
         open_folder_btn.bind(on_press=self.open_excel_file)
         buttons_layout.add_widget(open_folder_btn)
@@ -8902,8 +9014,8 @@ class ExtendedMolodnikiTableScreen(Screen):
             text='Очистить',
             bg_color=get_color_from_hex('#800000'),
             size_hint=(1, None),
-            height=50,
-            font_size='14sp'
+            height=60,
+            font_size='16sp'
         )
         clear_btn.bind(on_press=self.clear_table_data)
         buttons_layout.add_widget(clear_btn)
@@ -8915,7 +9027,8 @@ class ExtendedMolodnikiTableScreen(Screen):
             text='Закрыть',
             bg_color=get_color_from_hex('#FF6347'),
             size_hint=(1, None),
-            height=50
+            height=60,
+            font_size='18sp'
         )
         content.add_widget(close_btn)
 

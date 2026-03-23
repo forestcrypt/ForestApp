@@ -243,10 +243,8 @@ class TreeDataInputPopup(Popup):
     def __init__(self, table_screen, row_index, **kwargs):
         super().__init__(
             title='Ввод данных дерева',
-            size_hint=(0.7, 0.8),
+            size_hint=(0.8, 0.9),
             separator_height=0,
-            background_color=(0.5, 0.5, 0.5, 1),  # Серый фон
-            overlay_color=(0, 0, 0, 0.5),
             **kwargs
         )
         self.table_screen = table_screen
@@ -265,24 +263,24 @@ class TreeDataInputPopup(Popup):
         self.create_ui()
 
     def create_ui(self):
-        content = FloatLayout()
+        content = BoxLayout(orientation='vertical', spacing=15, padding=15)
 
-        label = Label(
-            text='Введите данные дерева:',
+        # Заголовок
+        title_label = Label(
+            text='Ввод данных дерева',
             font_name='Roboto',
-            font_size='18sp',
-            color=(1, 1, 1, 1),
-            pos_hint={'center_x': 0.5, 'center_y': 0.9},
-            size_hint=(None, None),
-            size=(250, 50)
+            font_size='20sp',
+            bold=True,
+            color=(0, 0.5, 0, 1),
+            size_hint=(1, None),
+            height=50
         )
+        content.add_widget(title_label)
 
-        scroll = ScrollView(size_hint=(0.9, 0.7), pos_hint={'center_x': 0.5, 'center_y': 0.5})
-        layout = GridLayout(cols=1, spacing=10, size_hint_y=None)
-        layout.bind(minimum_height=layout.setter('height'))
-
-        with layout.canvas.before:
-            Color(rgba=(0, 0, 0, 0))
+        # ScrollView для полей ввода
+        scroll = ScrollView(size_hint=(1, 1))
+        scroll_content = GridLayout(cols=1, spacing=15, size_hint_y=None)
+        scroll_content.bind(minimum_height=scroll_content.setter('height'))
 
         self.input_fields = []
         for field_name, col_index in self.fields:
@@ -291,53 +289,52 @@ class TreeDataInputPopup(Popup):
                 text=field_name,
                 font_name='Roboto',
                 font_size='16sp',
-                color=(1, 1, 1, 1),
+                bold=True,
+                color=(0, 0, 0, 1),
                 size_hint_y=None,
-                height=20
+                height=25
             )
             input_field = AutoCompleteTextInput(
                 multiline=False,
                 size_hint_y=None,
                 height=40,
-                background_color=(1, 1, 1, 0.8),
+                background_color=(1, 1, 1, 1),
                 col_index=col_index,
                 font_name='Roboto'
             )
             self.input_fields.append(input_field)
             field_layout.add_widget(field_label)
             field_layout.add_widget(input_field)
-            layout.add_widget(field_layout)
+            scroll_content.add_widget(field_layout)
 
-        scroll.add_widget(layout)
+        scroll.add_widget(scroll_content)
+        content.add_widget(scroll)
 
+        # Кнопки управления
         btn_box = BoxLayout(
             orientation='horizontal',
             spacing=10,
             size_hint=(1, None),
-            height=40,
-            pos_hint={'center_x': 0.5, 'center_y': 0.1}
+            height=60
         )
         save_btn = ModernButton(
             text='Сохранить',
-            bg_color=get_color_from_hex('#00FF00'),
+            bg_color=get_color_from_hex('#32CD32'),
             size_hint=(0.5, None),
-            height=40,
-            no_shadow=True
+            height=60,
+            font_size='18sp'
         )
         save_btn.bind(on_press=self.save_data)
         exit_btn = ModernButton(
             text='Выйти',
-            bg_color=get_color_from_hex('#FF0000'),
+            bg_color=get_color_from_hex('#FF6347'),
             size_hint=(0.5, None),
-            height=40,
-            no_shadow=True
+            height=60,
+            font_size='18sp'
         )
         exit_btn.bind(on_press=self.dismiss)
         btn_box.add_widget(save_btn)
         btn_box.add_widget(exit_btn)
-
-        content.add_widget(label)
-        content.add_widget(scroll)
         content.add_widget(btn_box)
 
         self.content = content
@@ -388,64 +385,61 @@ class ExitConfirmPopup(Popup):
         super().__init__(
             title='',
             separator_height=0,
-            size_hint=(0.4, 0.3),
-            background='atlas://data/images/defaulttheme/modalview-background',
-            overlay_color=(0, 0, 0, 0.5)
+            size_hint=(0.6, 0.45),
+            **kwargs
         )
 
-        content = FloatLayout()
+        content = BoxLayout(orientation='vertical', spacing=15, padding=15)
 
-        close_btn = ModernButton(
-            text='X',
-            size_hint=(None, None),
-            size=(40, 40),
-            pos_hint={'right': 0.95, 'top': 0.95},
-            bg_color=(1, 0, 0, 1),
-            no_shadow=True
+        # Заголовок
+        title_label = Label(
+            text='Подтверждение выхода',
+            font_name='Roboto',
+            font_size='20sp',
+            bold=True,
+            color=(0, 0.5, 0, 1),
+            size_hint=(1, None),
+            height=50
         )
-        close_btn.bind(on_press=self.dismiss)
+        content.add_widget(title_label)
 
+        # Сообщение
         label = Label(
             text='Вы уверены, что хотите выйти?',
             font_name='Roboto',
             font_size='18sp',
             color=(0.2, 0.2, 0.2, 1),
-            pos_hint={'center_x': 0.5, 'center_y': 0.65},
-            size_hint=(None, None),
-            size=(250, 50)
+            size_hint=(1, None),
+            height=60
         )
+        content.add_widget(label)
 
+        # Кнопки управления
         btn_box = BoxLayout(
             orientation='horizontal',
             spacing=15,
-            size_hint=(None, None),
-            size=(200, 45),
-            pos_hint={'center_x': 0.5, 'center_y': 0.25}
+            size_hint=(1, None),
+            height=70
         )
         yes_btn = ModernButton(
             text='Выход',
-            bg_color=get_color_from_hex('#FF0000'),
-            color=get_color_from_hex('#000000'),
+            bg_color=get_color_from_hex('#FF6347'),
             size_hint=(0.5, None),
-            height=45,
-            no_shadow=True
+            height=70,
+            font_size='18sp'
         )
         no_btn = ModernButton(
             text='Отмена',
-            bg_color=get_color_from_hex('#00FF00'),
-            color=get_color_from_hex('#000000'),
+            bg_color=get_color_from_hex('#32CD32'),
             size_hint=(0.5, None),
-            height=45,
-            no_shadow=True
+            height=70,
+            font_size='18sp'
         )
         yes_btn.bind(on_press=lambda x: App.get_running_app().stop())
         no_btn.bind(on_press=self.dismiss)
 
         btn_box.add_widget(yes_btn)
         btn_box.add_widget(no_btn)
-
-        content.add_widget(close_btn)
-        content.add_widget(label)
         content.add_widget(btn_box)
 
         self.content = content
@@ -544,20 +538,22 @@ class MainMenu(Screen):
         ThemeChooser().open()
 
     def show_add_section(self, instance):
-        content = FloatLayout()
+        content = BoxLayout(orientation='vertical', spacing=15, padding=15)
 
-        close_btn = ModernButton(
-            text='X',
-            size_hint=(None, None),
-            size=(40, 40),
-            pos_hint={'right': 0.95, 'top': 0.95},
-            bg_color=(1, 0, 0, 1),
-            no_shadow=True
+        # Заголовок
+        title_label = Label(
+            text='Управление участками',
+            font_name='Roboto',
+            font_size='20sp',
+            bold=True,
+            color=(0, 0.5, 0, 1),
+            size_hint=(1, None),
+            height=50
         )
-        close_btn.bind(on_press=lambda x: self.section_popup.dismiss())
+        content.add_widget(title_label)
 
         # Поля для адреса
-        scroll = ScrollView(size_hint=(0.9, 0.8), pos_hint={'center_x': 0.5, 'center_y': 0.5})
+        scroll = ScrollView(size_hint=(1, 1))
         layout = BoxLayout(orientation='vertical', spacing=10, size_hint_y=None, padding=[10, 10])
         layout.bind(minimum_height=layout.setter('height'))
 
@@ -672,18 +668,19 @@ class MainMenu(Screen):
         layout.add_widget(district_forestry_layout)
 
         scroll.add_widget(layout)
+        content.add_widget(scroll)
 
+        # Кнопки управления
         btn_box = BoxLayout(
             orientation='horizontal',
-            spacing=10,
+            spacing=15,
             size_hint=(1, None),
-            height=50,
-            pos_hint={'center_x': 0.5, 'center_y': 0.1}
+            height=70
         )
         buttons = [
-            ('Сохранить', '#00FF00', self.save_section),
-            ('Загрузить', '#0000FF', self.show_load_popup),
-            ('Отмена', '#FF0000', lambda x: self.section_popup.dismiss())
+            ('Сохранить', '#FFD700', self.save_section),
+            ('Загрузить', '#4169E1', self.show_load_popup),
+            ('Отмена', '#FF6347', lambda x: self.section_popup.dismiss())
         ]
 
         for text, color, callback in buttons:
@@ -691,23 +688,19 @@ class MainMenu(Screen):
                 text=text,
                 bg_color=get_color_from_hex(color),
                 size_hint=(0.33, None),
-                height=45,
-                no_shadow=False
+                height=70,
+                font_size='18sp'
             )
             btn.bind(on_press=callback)
             btn_box.add_widget(btn)
 
-        content.add_widget(close_btn)
-        content.add_widget(scroll)
         content.add_widget(btn_box)
 
         self.section_popup = Popup(
             title="Управление участками",
             content=content,
-            size_hint=(0.7, 0.8),
-            separator_height=0,
-            background='atlas://data/images/defaulttheme/modalview-background',
-            overlay_color=(0, 0, 0, 0.5)
+            size_hint=(0.7, 0.85),
+            separator_height=0
         )
         self.section_popup.open()
 
@@ -766,48 +759,54 @@ class MainMenu(Screen):
         finally:
             conn.close()
 
-        content = FloatLayout()
+        content = BoxLayout(orientation='vertical', spacing=15, padding=15)
 
-        close_btn = ModernButton(
-            text='X',
-            size_hint=(None, None),
-            size=(40, 40),
-            pos_hint={'right': 0.95, 'top': 0.95},
-            bg_color=(1, 0, 0, 1),
-            no_shadow=True
+        # Заголовок
+        title_label = Label(
+            text='Управление участками молодняков',
+            font_name='Roboto',
+            font_size='20sp',
+            bold=True,
+            color=(0, 0.5, 0, 1),
+            size_hint=(1, None),
+            height=50
         )
-        close_btn.bind(on_press=lambda x: self.molodniki_popup.dismiss())
+        content.add_widget(title_label)
 
+        # Поле ввода номера участка
+        input_layout = BoxLayout(orientation='vertical', size_hint_y=None, height=80, spacing=10)
         label = Label(
             text='Введите номер участка молодняков:',
             font_name='Roboto',
-            font_size='18sp',
+            font_size='16sp',
             color=(0.2, 0.2, 0.2, 1),
-            pos_hint={'center_x': 0.5, 'center_y': 0.7},
-            size_hint=(None, None),
-            size=(300, 50)
+            size_hint_y=None,
+            height=30
         )
-
         self.molodniki_section_input = TextInput(
             hint_text="Введите номер участка молодняков",
             multiline=False,
-            size_hint=(None, None),
-            size=(300, 40),
-            pos_hint={'center_x': 0.5, 'center_y': 0.55},
-            background_color=(1, 1, 1, 0.8)
+            size_hint_y=None,
+            height=50,
+            background_color=(1, 1, 1, 1),
+            font_name='Roboto',
+            font_size='16sp'
         )
+        input_layout.add_widget(label)
+        input_layout.add_widget(self.molodniki_section_input)
+        content.add_widget(input_layout)
 
+        # Кнопки управления
         btn_box = BoxLayout(
             orientation='horizontal',
-            spacing=10,
-            size_hint=(None, None),
-            size=(300, 50),
-            pos_hint={'center_x': 0.5, 'center_y': 0.3}
+            spacing=15,
+            size_hint=(1, None),
+            height=70
         )
         buttons = [
-            ('Загрузить', '#00FF00', self.load_molodniki_json),
-            ('Сохранить', '#0000FF', self.save_molodniki_section),
-            ('Отмена', '#FF0000', lambda x: self.molodniki_popup.dismiss())
+            ('Загрузить', '#32CD32', self.load_molodniki_json),
+            ('Сохранить', '#FFD700', self.save_molodniki_section),
+            ('Отмена', '#FF6347', lambda x: self.molodniki_popup.dismiss())
         ]
 
         for text, color, callback in buttons:
@@ -815,24 +814,19 @@ class MainMenu(Screen):
                 text=text,
                 bg_color=get_color_from_hex(color),
                 size_hint=(0.33, None),
-                height=45,
-                no_shadow=False
+                height=70,
+                font_size='18sp'
             )
             btn.bind(on_press=callback)
             btn_box.add_widget(btn)
 
-        content.add_widget(close_btn)
-        content.add_widget(label)
-        content.add_widget(self.molodniki_section_input)
         content.add_widget(btn_box)
 
         self.molodniki_popup = Popup(
             title="Управление участками молодняков",
             content=content,
-            size_hint=(0.6, 0.5),
-            separator_height=0,
-            background='atlas://data/images/defaulttheme/modalview-background',
-            overlay_color=(0, 0, 0, 0.5)
+            size_hint=(0.7, 0.5),
+            separator_height=0
         )
         self.molodniki_popup.open()
 
@@ -931,43 +925,55 @@ class MainMenu(Screen):
         if not sections:
             self.show_error("Нет сохраненных участков!")
             return
-        content = FloatLayout()
+        
+        content = BoxLayout(orientation='vertical', spacing=15, padding=15)
 
-        close_btn = ModernButton(
-            text='X',
-            size_hint=(None, None),
-            size=(40, 40),
-            pos_hint={'right': 0.95, 'top': 0.95},
-            bg_color=(1, 0, 0, 1),
-            no_shadow=True
+        # Заголовок
+        title_label = Label(
+            text='Выберите участок',
+            font_name='Roboto',
+            font_size='20sp',
+            bold=True,
+            color=(0, 0.5, 0, 1),
+            size_hint=(1, None),
+            height=50
         )
-        close_btn.bind(on_press=lambda x: self.load_popup.dismiss())
+        content.add_widget(title_label)
 
-        scroll = ScrollView(size_hint=(1, 0.9), pos_hint={'center_x': 0.5, 'center_y': 0.45})
-        layout = GridLayout(cols=1, spacing=5, size_hint_y=None)
+        # Список участков
+        scroll = ScrollView(size_hint=(1, 1))
+        layout = GridLayout(cols=1, spacing=10, size_hint_y=None)
         layout.bind(minimum_height=layout.setter('height'))
         for section in sections:
             btn = ModernButton(
                 text=section[0],
                 size_hint_y=None,
-                height=40,
-                bg_color=(0, 1, 0, 1),
+                height=55,
+                bg_color=get_color_from_hex('#32CD32'),
                 color=(0, 0, 0, 1),
-                no_shadow=True
+                font_size='16sp'
             )
             btn.bind(on_release=lambda b, s=section[0]: self.load_saved_section(s))
             layout.add_widget(btn)
         scroll.add_widget(layout)
-
-        content.add_widget(close_btn)
         content.add_widget(scroll)
+
+        # Кнопка закрытия
+        close_btn = ModernButton(
+            text='Закрыть',
+            bg_color=get_color_from_hex('#FF6347'),
+            size_hint=(1, None),
+            height=60,
+            font_size='18sp'
+        )
+        close_btn.bind(on_press=self.load_popup.dismiss)
+        content.add_widget(close_btn)
+
         self.load_popup = Popup(
             title="Выберите участок",
             content=content,
-            size_hint=(0.5, 0.6),
-            separator_height=0,
-            background_color=(0.5, 0.5, 0.5, 1),
-            overlay_color=(0, 0, 0, 0.5)
+            size_hint=(0.6, 0.65),
+            separator_height=0
         )
         self.load_popup.open()
 
@@ -1009,43 +1015,55 @@ class MainMenu(Screen):
         if not sections:
             self.show_error("Нет сохраненных участков молодняков!")
             return
-        content = FloatLayout()
+        
+        content = BoxLayout(orientation='vertical', spacing=15, padding=15)
 
-        close_btn = ModernButton(
-            text='X',
-            size_hint=(None, None),
-            size=(40, 40),
-            pos_hint={'right': 0.95, 'top': 0.95},
-            bg_color=(1, 0, 0, 1),
-            no_shadow=True
+        # Заголовок
+        title_label = Label(
+            text='Выберите участок молодняков',
+            font_name='Roboto',
+            font_size='20sp',
+            bold=True,
+            color=(0, 0.5, 0, 1),
+            size_hint=(1, None),
+            height=50
         )
-        close_btn.bind(on_press=lambda x: self.load_molodniki_popup.dismiss())
+        content.add_widget(title_label)
 
-        scroll = ScrollView(size_hint=(1, 0.9), pos_hint={'center_x': 0.5, 'center_y': 0.45})
-        layout = GridLayout(cols=1, spacing=5, size_hint_y=None)
+        # Список участков
+        scroll = ScrollView(size_hint=(1, 1))
+        layout = GridLayout(cols=1, spacing=10, size_hint_y=None)
         layout.bind(minimum_height=layout.setter('height'))
         for section in sections:
             btn = ModernButton(
                 text=section[0],
                 size_hint_y=None,
-                height=40,
-                bg_color=(0, 1, 0, 1),
+                height=55,
+                bg_color=get_color_from_hex('#32CD32'),
                 color=(0, 0, 0, 1),
-                no_shadow=True
+                font_size='16sp'
             )
             btn.bind(on_release=lambda b, s=section[0]: self.load_saved_molodniki_section(s))
             layout.add_widget(btn)
         scroll.add_widget(layout)
-
-        content.add_widget(close_btn)
         content.add_widget(scroll)
+
+        # Кнопка закрытия
+        close_btn = ModernButton(
+            text='Закрыть',
+            bg_color=get_color_from_hex('#FF6347'),
+            size_hint=(1, None),
+            height=60,
+            font_size='18sp'
+        )
+        close_btn.bind(on_press=self.load_molodniki_popup.dismiss)
+        content.add_widget(close_btn)
+
         self.load_molodniki_popup = Popup(
             title="Выберите участок молодняков",
             content=content,
-            size_hint=(0.5, 0.6),
-            separator_height=0,
-            background_color=(0.5, 0.5, 0.5, 1),
-            overlay_color=(0, 0, 0, 0.5)
+            size_hint=(0.6, 0.65),
+            separator_height=0
         )
         self.load_molodniki_popup.open()
 
