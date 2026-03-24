@@ -39,9 +39,11 @@ LabelBase.register(name='Roboto',
 class ModernButton(Button):
     bg_color = ListProperty([1, 1, 1, 1])
     no_shadow = BooleanProperty(False)
+    auto_width = BooleanProperty(True)
 
     def __init__(self, **kwargs):
         self.no_shadow = kwargs.pop('no_shadow', False)
+        self.auto_width = kwargs.pop('auto_width', True)
         super().__init__(**kwargs)
         self.background_color = (0, 0, 0, 0)
         self.font_name = 'Roboto'
@@ -67,7 +69,15 @@ class ModernButton(Button):
             )
 
         self.bind(pos=self.update_graphics, size=self.update_graphics)
-        self.bind(text=self.update_width)
+        if self.auto_width:
+            self.bind(text=self.update_width)
+        
+        # Обновляем text_size при изменении размера для поддержки halign/valign
+        self.bind(size=self._update_text_size)
+
+    def _update_text_size(self, *args):
+        """Обновляем text_size при изменении размера кнопки"""
+        self.text_size = (self.width - self.padding[0] * 2, self.height)
 
     def update_width(self, instance, value):
         self.width = self.texture_size[0] + 60
@@ -1388,7 +1398,8 @@ class ExtendedMolodnikiTableScreen(Screen):
                 'care_date': '',
                 'technology': '',
                 'forest_purpose': ''
-            }
+            },
+            'document_name': 'Проект'
         }
 
         # Убираем вызов update_section_label, так как section_label больше не существует
@@ -2250,6 +2261,16 @@ class ExtendedMolodnikiTableScreen(Screen):
             fields_layout.add_widget(inp)
             self.breed_inputs[field_key] = inp
 
+        # Заполняем поля данными из существующей породы, если она есть
+        if existing_breeds_for_plot:
+            for existing_breed in existing_breeds_for_plot:
+                if existing_breed.get('name') == selected_breed:
+                    # Заполняем поля данными
+                    for key, inp in self.breed_inputs.items():
+                        if key in existing_breed:
+                            inp.text = str(existing_breed[key])
+                    break
+
         fields_scroll.add_widget(fields_layout)
         content.add_widget(fields_scroll)
 
@@ -2265,40 +2286,50 @@ class ExtendedMolodnikiTableScreen(Screen):
             )
             content.add_widget(hint_label)
 
-        # Кнопки управления - добавление, удаление и выход
+        # Кнопки управления - добавление, удаление, сохранить и выход
         btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
 
         # Главная кнопка - "Добавить"
         save_add_btn = ModernButton(
             text='Добавить',
             bg_color=get_color_from_hex('#00FF00'),
-            size_hint=(0.33, 1),
+            size_hint=(0.25, 1),
             height=50,
             font_size='16sp',
             bold=True
+        )
+
+        # Кнопка "Сохранить"
+        save_btn = ModernButton(
+            text='Сохранить',
+            bg_color=get_color_from_hex('#32CD32'),
+            size_hint=(0.25, 1),
+            height=50,
+            font_size='16sp'
         )
 
         # Кнопка удаления
         delete_btn = ModernButton(
             text='Удалить',
             bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(0.33, 1),
+            size_hint=(0.25, 1),
             height=50,
             font_size='14sp'
         )
 
-        # Кнопка отмены
-        cancel_btn = ModernButton(
-            text='Отмена',
-            bg_color=get_color_from_hex('#FF0000'),
-            size_hint=(0.34, 1),
+        # Кнопка выхода
+        exit_btn = ModernButton(
+            text='Выход',
+            bg_color=get_color_from_hex('#FFA500'),
+            size_hint=(0.25, 1),
             height=50,
             font_size='14sp'
         )
 
         btn_layout.add_widget(save_add_btn)
+        btn_layout.add_widget(save_btn)
         btn_layout.add_widget(delete_btn)
-        btn_layout.add_widget(cancel_btn)
+        btn_layout.add_widget(exit_btn)
         content.add_widget(btn_layout)
 
         popup = Popup(
@@ -2335,7 +2366,7 @@ class ExtendedMolodnikiTableScreen(Screen):
                     do_05 = breed_data.get('do_05', 0)
                     _05_15 = breed_data.get('05_15', 0)
                     bolee_15 = breed_data.get('bolee_15', 0)
-                    
+
                     if bolee_15 > 0:
                         breed_data['age'] = 20
                     elif _05_15 > 0:
@@ -2360,13 +2391,83 @@ class ExtendedMolodnikiTableScreen(Screen):
 
             # Показываем результат и предлагаем добавить еще породу
             popup.dismiss()
-            
+
             # Показываем выбор следующего действия
             self.show_after_add_popup(instance, selected_breed, len(existing_breeds))
 
+        def save_only(btn):
+            """Сохранить данные без добавления новой породы"""
+            # Собираем данные из полей ввода
+            breed_data = {
+                'name': selected_breed,
+                'type': breed_type
+            }
+
+            has_data = False
+            for key, inp in self.breed_inputs.items():
+                if inp.text.strip():
+                    has_data = True
+                    try:
+                        if key in ['density', 'age']:
+                            breed_data[key] = int(inp.text)
+                        elif key in ['height', 'diameter']:
+                            breed_data[key] = float(inp.text)
+                        else:
+                            breed_data[key] = float(inp.text)
+                    except ValueError:
+                        breed_data[key] = 0
+
+            # Для хвойных рассчитываем возраст, если не введен
+            if breed_type == 'coniferous':
+                if 'age' not in breed_data or breed_data['age'] == 0:
+                    do_05 = breed_data.get('do_05', 0)
+                    _05_15 = breed_data.get('05_15', 0)
+                    bolee_15 = breed_data.get('bolee_15', 0)
+
+                    if bolee_15 > 0:
+                        breed_data['age'] = 20
+                    elif _05_15 > 0:
+                        breed_data['age'] = 10
+                    elif do_05 > 0:
+                        breed_data['age'] = 5
+                    else:
+                        breed_data['age'] = 10
+
+            # Обновляем существующую породу или добавляем новую
+            existing_breeds = self.parse_breeds_data(instance.text)
+            
+            # Ищем существующую породу с таким именем
+            found = False
+            for i, b in enumerate(existing_breeds):
+                if b.get('name') == selected_breed:
+                    existing_breeds[i] = breed_data
+                    found = True
+                    break
+            
+            if not found:
+                existing_breeds.append(breed_data)
+            
+            instance.text = json.dumps(existing_breeds, ensure_ascii=False, indent=2) if existing_breeds else ''
+
+            # Обновляем page_data
+            if self.current_page not in self.page_data:
+                self.page_data[self.current_page] = [['', '', '', '', '', ''] for _ in range(self.rows_per_page)]
+            if hasattr(instance, 'row_index') and instance.row_index < len(self.page_data[self.current_page]):
+                self.page_data[self.current_page][instance.row_index][3] = instance.text
+
+            self.update_plot_total(instance, instance.text)
+            self.show_success(f"Порода '{selected_breed}' сохранена!")
+
+        def exit_to_plot_menu(btn):
+            """Выход в меню заполнения площадок"""
+            # Сохраняем данные перед выходом
+            save_only(btn)
+            popup.dismiss()
+
         save_add_btn.bind(on_press=save_and_add)
+        save_btn.bind(on_press=save_only)
         delete_btn.bind(on_press=lambda x: self.show_delete_breed_popup(instance, plot_breeds_list))
-        cancel_btn.bind(on_press=popup.dismiss)
+        exit_btn.bind(on_press=exit_to_plot_menu)
 
         popup.open()
 
@@ -2742,7 +2843,11 @@ class ExtendedMolodnikiTableScreen(Screen):
 
     def save_totals_to_excel(self, breeds_data, current_radius, plot_area_ha, plot_count, total_plot_area_ha):
         """Сохранить итоговые данные в Excel на новом листе"""
-        filename = f"Итоги_молодняков_{self.current_section}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M')}.xlsx"
+        timestamp = datetime.datetime.now().strftime('%M%S')  # Только минуты и секунды
+        document_name = self.project_data.get('document_name', 'Проект')
+        # Очень короткое имя файла на основе названия проекта (макс 10 символов)
+        short_name = document_name.replace(' ', '').replace('/', '_').replace('.', '')[:10]
+        filename = f"{short_name}_{self.current_section}_{timestamp}.xlsx"
         full_path = os.path.join(self.reports_dir, filename)
 
         try:
@@ -2765,48 +2870,50 @@ class ExtendedMolodnikiTableScreen(Screen):
 
             # Расчет коэффициента состава
             total_densities = {}
+            total_density_all = 0  # Общая густота всех пород (сумма средних)
+            
             for breed_name, data in breeds_data.items():
                 if data['plots']:
-                    if data['plots'][0].get('type') == 'coniferous':
-                        total_density = 0
-                        for p in data['plots']:
-                            conif_density = (p.get('do_05_density', 0) + p.get('05_15_density', 0) + p.get('bolee_15_density', 0))
-                            total_density += conif_density
-                    else:
-                        total_density = sum(p.get('density', 0) for p in data['plots'])
-                    if total_density > 0:
-                        total_densities[breed_name] = total_density
+                    # Рассчитываем СРЕДНЮЮ густоту породы (сумма плотностей / кол-во площадок)
+                    # Плотности уже в шт/га, делим на 1000 для перевода в тыс.шт/га
+                    avg_density = sum(p.get('density', 0) for p in data['plots']) / len(data['plots'])
+                    avg_density_thousands = avg_density / 1000  # переводим в тыс.шт/га
+                    total_density_all += avg_density_thousands
+                    if avg_density_thousands > 0:
+                        total_densities[breed_name] = avg_density_thousands
 
             if total_densities:
-                total_all_density = sum(total_densities.values())
-                composition_parts = []
+                # Метод наибольшего остатка для распределения коэффициентов
+                # Сначала рассчитываем точные коэффициенты
+                exact_coeffs = []
                 for breed_name, density in sorted(total_densities.items(), key=lambda x: x[1], reverse=True):
-                    if total_all_density > 0:
-                        coeff = max(1, round(density / total_all_density * 10))
-                    else:
-                        coeff = 1
-                    breed_letter = self.get_breed_letter(breed_name)
-                    composition_parts.append(f"{coeff}{breed_letter}")
-
-                coeffs_only = [int(''.join(filter(str.isdigit, part))) for part in composition_parts]
-                total_coeffs = sum(coeffs_only)
-                iterations = 0
-                while total_coeffs != 10 and iterations < 100:
-                    if total_coeffs > 10:
-                        max_idx = coeffs_only.index(max(coeffs_only))
-                        coeffs_only[max_idx] -= 1
-                    elif total_coeffs < 10:
-                        max_idx = coeffs_only.index(max(coeffs_only))
-                        coeffs_only[max_idx] += 1
-                    total_coeffs = sum(coeffs_only)
-                    iterations += 1
-
+                    exact_coeff = (density / total_density_all * 10) if total_density_all > 0 else 1
+                    exact_coeffs.append(exact_coeff)
+                
+                # Округляем вниз
+                coeffs_floor = [int(coeff) for coeff in exact_coeffs]
+                # Считаем остатки
+                remainders = [(exact_coeffs[i] - coeffs_floor[i], i) for i in range(len(exact_coeffs))]
+                # Сортируем по убыванию остатков
+                remainders.sort(reverse=True)
+                
+                # Распределяем единицы начиная с наибольших остатков
+                coeffs = coeffs_floor[:]
+                total = sum(coeffs)
+                i = 0
+                while total < 10 and i < len(remainders):
+                    idx = remainders[i][1]
+                    coeffs[idx] += 1
+                    total += 1
+                    i += 1
+                
+                # Формируем формулу состава
                 sorted_breeds = sorted(total_densities.items(), key=lambda x: x[1], reverse=True)
                 composition_parts = []
                 for i, (breed_name, _) in enumerate(sorted_breeds):
-                    if i < len(coeffs_only):
+                    if i < len(coeffs):
                         breed_letter = self.get_breed_letter(breed_name)
-                        composition_parts.append(f"{coeffs_only[i]}{breed_letter}")
+                        composition_parts.append(f"{coeffs[i]}{breed_letter}")
 
                 composition_text = ''.join(composition_parts) + "Др"
                 ws['A7'] = f"Формула состава: {composition_text}"
@@ -2822,9 +2929,16 @@ class ExtendedMolodnikiTableScreen(Screen):
                     has_coniferous = True
                     row += 1
                     zones = data.get('coniferous_zones', {})
-                    avg_do_05 = zones.get('do_05', 0) / len(data['plots']) if data['plots'] else 0
-                    avg_05_15 = zones.get('05_15', 0) / len(data['plots']) if data['plots'] else 0
-                    avg_bolee_15 = zones.get('bolee_15', 0) / len(data['plots']) if data['plots'] else 0
+                    # Густота по градациям = общее кол-во деревьев в градации / общая площадь всех площадок в га
+                    plot_area_ha = 3.14159 * (float(current_radius) if current_radius else 1.78) ** 2 / 10000
+                    total_area_ha = plot_area_ha * plot_count
+                    total_do_05 = sum(p.get('do_05', 0) for p in data['plots'])
+                    total_05_15 = sum(p.get('05_15', 0) for p in data['plots'])
+                    total_bolee_15 = sum(p.get('bolee_15', 0) for p in data['plots'])
+                    avg_do_05 = total_do_05 / total_area_ha if total_area_ha > 0 else 0
+                    avg_05_15 = total_05_15 / total_area_ha if total_area_ha > 0 else 0
+                    avg_bolee_15 = total_bolee_15 / total_area_ha if total_area_ha > 0 else 0
+                    # Высота = средняя только на тех площадках, где есть порода
                     avg_height_total = sum(p['height'] for p in data['plots'] if p['height'] > 0) / len([p for p in data['plots'] if p['height'] > 0]) if any(p['height'] > 0 for p in data['plots']) else 0
 
                     ws[f'A{row}'] = f"{breed_name}:"
@@ -2848,9 +2962,15 @@ class ExtendedMolodnikiTableScreen(Screen):
                 if data['type'] == 'deciduous' and data['plots']:
                     has_deciduous = True
                     row += 1
-                    avg_density = sum(p['density'] for p in data['plots']) / len(data['plots'])
+                    # Густота = общее количество деревьев / общая площадь всех площадок в га
+                    total_trees = sum(p.get('density_raw', 0) for p in data['plots'])
+                    plot_area_ha = 3.14159 * (float(current_radius) if current_radius else 1.78) ** 2 / 10000
+                    total_area_ha = plot_area_ha * plot_count
+                    avg_density = total_trees / total_area_ha if total_area_ha > 0 else 0
+                    # Высота = средняя только на тех площадках, где есть высота
                     avg_heights = [p['height'] for p in data['plots'] if p['height'] > 0]
                     avg_height = sum(avg_heights) / len(avg_heights) if avg_heights else 0
+                    # Возраст = средний только на тех площадках, где есть возраст
                     avg_ages = [p['age'] for p in data['plots'] if p['age'] > 0]
                     avg_age = sum(avg_ages) / len(avg_ages) if avg_ages else 0
 
@@ -2886,7 +3006,11 @@ class ExtendedMolodnikiTableScreen(Screen):
             from docx import Document
             from docx.shared import Inches
 
-            filename = f"Итоги_молодняков_{self.current_section}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M')}.docx"
+            timestamp = datetime.datetime.now().strftime('%M%S')  # Только минуты и секунды
+            document_name = self.project_data.get('document_name', 'Проект')
+            # Очень короткое имя файла на основе названия проекта (макс 10 символов)
+            short_name = document_name.replace(' ', '').replace('/', '_').replace('.', '')[:10]
+            filename = f"{short_name}_{self.current_section}_{timestamp}.docx"
             full_path = os.path.join(self.reports_dir, filename)
 
             doc = Document()
@@ -2900,48 +3024,50 @@ class ExtendedMolodnikiTableScreen(Screen):
             doc.add_heading('КОЭФФИЦИЕНТ СОСТАВА НАСАЖДЕНИЯ', level=2)
 
             total_densities = {}
+            total_density_all = 0  # Общая густота всех пород (сумма средних)
+            
             for breed_name, data in breeds_data.items():
                 if data['plots']:
-                    if data['plots'][0].get('type') == 'coniferous':
-                        total_density = 0
-                        for p in data['plots']:
-                            conif_density = (p.get('do_05_density', 0) + p.get('05_15_density', 0) + p.get('bolee_15_density', 0))
-                            total_density += conif_density
-                    else:
-                        total_density = sum(p.get('density', 0) for p in data['plots'])
-                    if total_density > 0:
-                        total_densities[breed_name] = total_density
+                    # Рассчитываем СРЕДНЮЮ густоту породы (сумма плотностей / кол-во площадок)
+                    # Плотности уже в шт/га, делим на 1000 для перевода в тыс.шт/га
+                    avg_density = sum(p.get('density', 0) for p in data['plots']) / len(data['plots'])
+                    avg_density_thousands = avg_density / 1000  # переводим в тыс.шт/га
+                    total_density_all += avg_density_thousands
+                    if avg_density_thousands > 0:
+                        total_densities[breed_name] = avg_density_thousands
 
             if total_densities:
-                total_all_density = sum(total_densities.values())
-                composition_parts = []
+                # Метод наибольшего остатка для распределения коэффициентов
+                # Сначала рассчитываем точные коэффициенты
+                exact_coeffs = []
                 for breed_name, density in sorted(total_densities.items(), key=lambda x: x[1], reverse=True):
-                    if total_all_density > 0:
-                        coeff = max(1, round(density / total_all_density * 10))
-                    else:
-                        coeff = 1
-                    breed_letter = self.get_breed_letter(breed_name)
-                    composition_parts.append(f"{coeff}{breed_letter}")
-
-                coeffs_only = [int(''.join(filter(str.isdigit, part))) for part in composition_parts]
-                total_coeffs = sum(coeffs_only)
-                iterations = 0
-                while total_coeffs != 10 and iterations < 100:
-                    if total_coeffs > 10:
-                        max_idx = coeffs_only.index(max(coeffs_only))
-                        coeffs_only[max_idx] -= 1
-                    elif total_coeffs < 10:
-                        max_idx = coeffs_only.index(max(coeffs_only))
-                        coeffs_only[max_idx] += 1
-                    total_coeffs = sum(coeffs_only)
-                    iterations += 1
-
+                    exact_coeff = (density / total_density_all * 10) if total_density_all > 0 else 1
+                    exact_coeffs.append(exact_coeff)
+                
+                # Округляем вниз
+                coeffs_floor = [int(coeff) for coeff in exact_coeffs]
+                # Считаем остатки
+                remainders = [(exact_coeffs[i] - coeffs_floor[i], i) for i in range(len(exact_coeffs))]
+                # Сортируем по убыванию остатков
+                remainders.sort(reverse=True)
+                
+                # Распределяем единицы начиная с наибольших остатков
+                coeffs = coeffs_floor[:]
+                total = sum(coeffs)
+                i = 0
+                while total < 10 and i < len(remainders):
+                    idx = remainders[i][1]
+                    coeffs[idx] += 1
+                    total += 1
+                    i += 1
+                
+                # Формируем формулу состава
                 sorted_breeds = sorted(total_densities.items(), key=lambda x: x[1], reverse=True)
                 composition_parts = []
                 for i, (breed_name, _) in enumerate(sorted_breeds):
-                    if i < len(coeffs_only):
+                    if i < len(coeffs):
                         breed_letter = self.get_breed_letter(breed_name)
-                        composition_parts.append(f"{coeffs_only[i]}{breed_letter}")
+                        composition_parts.append(f"{coeffs[i]}{breed_letter}")
 
                 composition_text = ''.join(composition_parts) + "Др"
                 doc.add_paragraph(f"Формула состава: {composition_text}")
@@ -2954,9 +3080,16 @@ class ExtendedMolodnikiTableScreen(Screen):
                 if data['type'] == 'coniferous' and data['plots']:
                     has_coniferous = True
                     zones = data.get('coniferous_zones', {})
-                    avg_do_05 = zones.get('do_05', 0) / len(data['plots']) if data['plots'] else 0
-                    avg_05_15 = zones.get('05_15', 0) / len(data['plots']) if data['plots'] else 0
-                    avg_bolee_15 = zones.get('bolee_15', 0) / len(data['plots']) if data['plots'] else 0
+                    # Густота по градациям = общее кол-во деревьев в градации / общая площадь всех площадок в га
+                    plot_area_ha = 3.14159 * (float(current_radius) if current_radius else 1.78) ** 2 / 10000
+                    total_area_ha = plot_area_ha * plot_count
+                    total_do_05 = sum(p.get('do_05', 0) for p in data['plots'])
+                    total_05_15 = sum(p.get('05_15', 0) for p in data['plots'])
+                    total_bolee_15 = sum(p.get('bolee_15', 0) for p in data['plots'])
+                    avg_do_05 = total_do_05 / total_area_ha if total_area_ha > 0 else 0
+                    avg_05_15 = total_05_15 / total_area_ha if total_area_ha > 0 else 0
+                    avg_bolee_15 = total_bolee_15 / total_area_ha if total_area_ha > 0 else 0
+                    # Высота = средняя только на тех площадках, где есть порода
                     avg_height_total = sum(p['height'] for p in data['plots'] if p['height'] > 0) / len([p for p in data['plots'] if p['height'] > 0]) if any(p['height'] > 0 for p in data['plots']) else 0
 
                     p = doc.add_paragraph()
@@ -2973,9 +3106,15 @@ class ExtendedMolodnikiTableScreen(Screen):
             for breed_name, data in sorted(breeds_data.items()):
                 if data['type'] == 'deciduous' and data['plots']:
                     has_deciduous = True
-                    avg_density = sum(p['density'] for p in data['plots']) / len(data['plots'])
+                    # Густота = общее количество деревьев / общая площадь всех площадок в га
+                    total_trees = sum(p.get('density_raw', 0) for p in data['plots'])
+                    plot_area_ha = 3.14159 * (float(current_radius) if current_radius else 1.78) ** 2 / 10000
+                    total_area_ha = plot_area_ha * plot_count
+                    avg_density = total_trees / total_area_ha if total_area_ha > 0 else 0
+                    # Высота = средняя только на тех площадках, где есть высота
                     avg_heights = [p['height'] for p in data['plots'] if p['height'] > 0]
                     avg_height = sum(avg_heights) / len(avg_heights) if avg_heights else 0
+                    # Возраст = средний только на тех площадках, где есть возраст
                     avg_ages = [p['age'] for p in data['plots'] if p['age'] > 0]
                     avg_age = sum(avg_ages) / len(avg_ages) if avg_ages else 0
 
@@ -4568,62 +4707,69 @@ class ExtendedMolodnikiTableScreen(Screen):
                             breeds_data[breed_name]['coniferous_zones']['05_15'] += plot_data['05_15_density']
                             breeds_data[breed_name]['coniferous_zones']['bolee_15'] += plot_data['bolee_15_density']
 
-            # Расчет коэффициента состава на основе суммарной густоты пород
+            # Расчет коэффициента состава на основе СРЕДНЕЙ густоты пород
             total_densities = {}
+            total_density_all = 0  # Общая густота всех пород (сумма средних)
+            
             for breed_name, data in breeds_data.items():
                 if data['plots']:
+                    # Рассчитываем СРЕДНЮЮ густоту породы (сумма плотностей / кол-во площадок)
                     if data['plots'][0].get('type') == 'coniferous':
-                        # Для хвойных суммируем густоту по градациям
-                        total_density = 0
-                        for p in data['plots']:
-                            conif_density = (p.get('do_05_density', 0) + p.get('05_15_density', 0) + p.get('bolee_15_density', 0))
-                            total_density += conif_density
+                        # Для хвойных суммируем густоту по градациям и делим на кол-во площадок
+                        total_density = sum(
+                            (p.get('do_05_density', 0) + p.get('05_15_density', 0) + p.get('bolee_15_density', 0))
+                            for p in data['plots']
+                        ) / len(data['plots'])
                     else:
-                        # Для лиственных обычная густота
-                        total_density = sum(p.get('density', 0) for p in data['plots'])
+                        # Для лиственных обычная средняя густота
+                        total_density = sum(p.get('density', 0) for p in data['plots']) / len(data['plots'])
+                    
+                    total_density_all += total_density
                     if total_density > 0:
                         total_densities[breed_name] = total_density
 
             # Расчет коэффициентов состава
             composition_text = ""
             if total_densities:
-                total_all_density = sum(total_densities.values())
                 composition_parts = []
 
                 # Сортируем по убыванию плотности
                 for breed_name, density in sorted(total_densities.items(), key=lambda x: x[1], reverse=True):
-                    if total_all_density > 0:
-                        # Коэффициент пропорционален плотности, сумма всех коэффициентов = 10
-                        coeff = max(1, round(density / total_all_density * 10))
-                    else:
-                        coeff = 1
                     breed_letter = self.get_breed_letter(breed_name)
-                    composition_parts.append(f"{coeff}{breed_letter}")
+                    # Просто добавляем букву, коэффициент будет рассчитан ниже
+                    composition_parts.append(f"0{breed_letter}")
 
-                # Корректировка чтобы сумма равнялась 10
-                coeffs_only = [int(''.join(filter(str.isdigit, part))) for part in composition_parts]
-                total_coeffs = sum(coeffs_only)
-                iterations = 0
-                while total_coeffs != 10 and iterations < 100:
-                    if total_coeffs > 10:
-                        # Уменьшаем самый большой коэффициент
-                        max_idx = coeffs_only.index(max(coeffs_only))
-                        coeffs_only[max_idx] -= 1
-                    elif total_coeffs < 10:
-                        # Увеличиваем самый большой коэффициент
-                        max_idx = coeffs_only.index(max(coeffs_only))
-                        coeffs_only[max_idx] += 1
-
-                    total_coeffs = sum(coeffs_only)
-                    iterations += 1
-
+                # Корректировка чтобы сумма равнялась 10 (метод наибольшего остатка)
+                # Сначала рассчитываем точные коэффициенты
+                exact_coeffs = []
+                for breed_name, density in sorted(total_densities.items(), key=lambda x: x[1], reverse=True):
+                    exact_coeff = (density / total_density_all * 10) if total_density_all > 0 else 1
+                    exact_coeffs.append(exact_coeff)
+                
+                # Округляем вниз
+                coeffs_floor = [int(coeff) for coeff in exact_coeffs]
+                # Считаем остатки
+                remainders = [(exact_coeffs[i] - coeffs_floor[i], i) for i in range(len(exact_coeffs))]
+                # Сортируем по убыванию остатков
+                remainders.sort(reverse=True)
+                
+                # Распределяем единицы начиная с наибольших остатков
+                coeffs = coeffs_floor[:]
+                total = sum(coeffs)
+                i = 0
+                while total < 10 and i < len(remainders):
+                    idx = remainders[i][1]
+                    coeffs[idx] += 1
+                    total += 1
+                    i += 1
+                
                 # Обновляем composition_parts
                 sorted_breeds = sorted(total_densities.items(), key=lambda x: x[1], reverse=True)
                 composition_parts = []
                 for i, (breed_name, _) in enumerate(sorted_breeds):
-                    if i < len(coeffs_only):
+                    if i < len(coeffs):
                         breed_letter = self.get_breed_letter(breed_name)
-                        composition_parts.append(f"{coeffs_only[i]}{breed_letter}")
+                        composition_parts.append(f"{coeffs[i]}{breed_letter}")
 
                 composition_text = ''.join(composition_parts) + "Др"
 
@@ -5335,17 +5481,27 @@ class ExtendedMolodnikiTableScreen(Screen):
         add_breed_btn = ModernButton(
             text='Добавить',
             bg_color=get_color_from_hex('#00FF00'),
-            size_hint=(0.5, 1),
+            size_hint=(0.33, 1),
             height=50,
             font_size='16sp'
         )
         add_breed_btn.bind(on_press=lambda x, p=page_num, r=row_idx: self.add_breed_from_plot(p, r))
         btn_layout.add_widget(add_breed_btn)
 
+        edit_breed_main_btn = ModernButton(
+            text='Изменить',
+            bg_color=get_color_from_hex('#FFA500'),
+            size_hint=(0.33, 1),
+            height=50,
+            font_size='16sp'
+        )
+        edit_breed_main_btn.bind(on_press=lambda x, p=page_num, r=row_idx: self.edit_breed_list_from_plot(p, r))
+        btn_layout.add_widget(edit_breed_main_btn)
+
         close_btn = ModernButton(
             text='Закрыть',
             bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(0.5, 1),
+            size_hint=(0.34, 1),
             height=50,
             font_size='16sp'
         )
@@ -5368,6 +5524,86 @@ class ExtendedMolodnikiTableScreen(Screen):
         """Закрыть меню управления породами"""
         if hasattr(self, 'breed_management_popup'):
             self.breed_management_popup.dismiss()
+
+    def edit_breed_list_from_plot(self, page_num, row_idx):
+        """Редактирование списка пород (выбор конкретной породы для изменения)"""
+        if page_num not in self.page_data:
+            self.show_error("Страница не найдена!")
+            return
+
+        page_data = self.page_data[page_num]
+        if row_idx >= len(page_data):
+            self.show_error("Строка не найдена!")
+            return
+
+        row = page_data[row_idx]
+        breeds_data = row[3] if len(row) > 3 else ''
+        breeds_list = self.parse_breeds_data(breeds_data)
+
+        if not breeds_list:
+            self.show_error("Нет пород для редактирования!")
+            return
+
+        # Закрываем popup управления породами
+        self.close_breed_management()
+
+        # Открываем popup выбора породы для редактирования
+        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+
+        title_label = Label(
+            text=f"Площадка №{row_idx + 1} - Выберите породу для редактирования:",
+            font_name='Roboto',
+            font_size='16sp',
+            bold=True,
+            color=(0, 0.5, 0, 1),
+            size_hint=(1, None),
+            height=40
+        )
+        content.add_widget(title_label)
+
+        scroll = ScrollView(size_hint=(1, None), height=300)
+        breeds_layout = GridLayout(cols=1, spacing=5, size_hint_y=None)
+        breeds_layout.bind(minimum_height=breeds_layout.setter('height'))
+
+        for i, breed_info in enumerate(breeds_list):
+            breed_name = breed_info.get('name', 'Неизвестная')
+            breed_type = breed_info.get('type', 'unknown')
+            breed_type_text = 'Хвойная' if breed_type == 'coniferous' else 'Лиственная'
+
+            btn = ModernButton(
+                text=f"№{i+1}: {breed_name} ({breed_type_text})",
+                bg_color=get_color_from_hex('#87CEEB'),
+                size_hint=(1, None),
+                height=50,
+                font_size='14sp'
+            )
+            btn.bind(on_press=lambda x, p=page_num, r=row_idx, b=i: self.edit_breed_from_plot(p, r, b))
+            breeds_layout.add_widget(btn)
+
+        scroll.add_widget(breeds_layout)
+        content.add_widget(scroll)
+
+        cancel_btn = ModernButton(
+            text='Отмена',
+            bg_color=get_color_from_hex('#FF6347'),
+            size_hint=(1, None),
+            height=50,
+            font_size='16sp'
+        )
+        cancel_btn.bind(on_press=lambda x: self.close_breed_selection_popup())
+        content.add_widget(cancel_btn)
+
+        self.breed_selection_popup = Popup(
+            title="Выбор породы",
+            content=content,
+            size_hint=(0.9, 0.8)
+        )
+        self.breed_selection_popup.open()
+
+    def close_breed_selection_popup(self):
+        """Закрыть popup выбора породы"""
+        if hasattr(self, 'breed_selection_popup'):
+            self.breed_selection_popup.dismiss()
 
     def parse_breeds_data(self, breeds_text):
         """Парсинг данных о породах из JSON строки"""
@@ -5444,7 +5680,7 @@ class ExtendedMolodnikiTableScreen(Screen):
         """Сохранение данных в JSON формате"""
         # Получаем итоговые данные (total_data) из меню Итого
         total_data = self.get_total_data_from_db()
-        
+
         data = {
             'page_data': self.page_data,
             'section': self.current_section,
@@ -5457,8 +5693,11 @@ class ExtendedMolodnikiTableScreen(Screen):
             'export_date': datetime.datetime.now().isoformat()
         }
 
-        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M')
-        filename = f"Молодняки_{self.current_section}_{timestamp}.json"
+        timestamp = datetime.datetime.now().strftime('%M%S')  # Только минуты и секунды
+        document_name = self.project_data.get('document_name', 'Проект')
+        # Очень короткое имя файла на основе названия проекта (макс 10 символов)
+        short_name = document_name.replace(' ', '').replace('/', '_').replace('.', '')[:10]
+        filename = f"{short_name}_{self.current_section}_{timestamp}.json"
         full_path = os.path.join(self.reports_dir, filename)
 
         try:
@@ -5470,8 +5709,11 @@ class ExtendedMolodnikiTableScreen(Screen):
 
     def save_to_excel_without_dialog(self):
         """Сохранение в Excel без диалога"""
-        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M')
-        filename = f"Молодняки_{self.current_section}_{timestamp}.xlsx"
+        timestamp = datetime.datetime.now().strftime('%M%S')  # Только минуты и секунды
+        document_name = self.project_data.get('document_name', 'Проект')
+        # Очень короткое имя файла на основе названия проекта (макс 10 символов)
+        short_name = document_name.replace(' ', '').replace('/', '_').replace('.', '')[:10]
+        filename = f"{short_name}_{self.current_section}_{timestamp}.xlsx"
         full_path = os.path.join(self.reports_dir, filename)
 
         try:
@@ -5593,8 +5835,11 @@ class ExtendedMolodnikiTableScreen(Screen):
         try:
             from docx import Document
 
-            timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M')
-            filename = f"Молодняки_{self.current_section}_{timestamp}.docx"
+            timestamp = datetime.datetime.now().strftime('%M%S')  # Только минуты и секунды
+            document_name = self.project_data.get('document_name', 'Проект')
+            # Очень короткое имя файла на основе названия проекта (макс 10 символов)
+            short_name = document_name.replace(' ', '').replace('/', '_').replace('.', '')[:10]
+            filename = f"{short_name}_{self.current_section}_{timestamp}.docx"
             full_path = os.path.join(self.reports_dir, filename)
 
             doc = Document()
@@ -6025,7 +6270,7 @@ class ExtendedMolodnikiTableScreen(Screen):
             plot_breeds_list.add_widget(no_breeds_label)
 
     def update_address_display(self):
-        """Обновить отображение адреса везде"""
+        """Обновить отображение адреса"""
         # Обновляем адресную строку в интерфейсе
         address_parts = []
         if self.current_quarter:
@@ -6038,6 +6283,11 @@ class ExtendedMolodnikiTableScreen(Screen):
             address_parts.append(f"Р: {self.current_radius}")
         if hasattr(self, 'plot_area_input') and self.plot_area_input:
             address_parts.append(f"П: {self.plot_area_input} га")
+
+        # Добавляем название документа
+        doc_name = self.project_data.get('document_name', 'Проект')
+        if doc_name:
+            address_parts.append(f"Д: {doc_name}")
 
         address_text = " | ".join(address_parts) if address_parts else ""
         self.address_label.text = address_text
@@ -6100,6 +6350,7 @@ class ExtendedMolodnikiTableScreen(Screen):
         """Обновить отображение адреса в открытом popup Настройки адреса"""
         if hasattr(self, 'current_address_info') and self.current_address_info:
             self.current_address_info.text = (
+                f"Название проекта: {self.project_data.get('document_name', 'Проект')}\n"
                 f"Квартал: {self.project_data['address'].get('quarter', 'Не указан')}\n"
                 f"Выдел: {self.project_data['address'].get('plot', 'Не указан')}\n"
                 f"Лесничество: {self.project_data['address'].get('forestry', 'Не указано')}\n"
@@ -6703,6 +6954,9 @@ class ExtendedMolodnikiTableScreen(Screen):
             # Словарь для сбора данных по породам
             breeds_data = {}
             forest_types_set = set()
+            
+            # Подсчитываем общее количество площадок
+            total_plots_count = sum(len(page) for page in self.page_data.values() if page)
 
             # Обрабатываем все страницы для сбора данных
             for page_num, page_rows in self.page_data.items():
@@ -6774,16 +7028,21 @@ class ExtendedMolodnikiTableScreen(Screen):
                             }
 
                         plot_data = {
-                            'density': density,
+                            'density': density,  # в шт/га
+                            'density_raw': breed_info.get('density', 0) if breed_type == 'deciduous' else (do_05 + _05_15 + bolee_15),  # исходное кол-во деревьев
                             'height': height,
-                            'age': age
+                            'age': age,
+                            'diameter': diameter  # ✅ ДОБАВЛЕНО: диаметр
                         }
 
                         if breed_type == 'coniferous':
                             plot_data.update({
                                 'do_05_density': do_05 / plot_area_ha if plot_area_ha > 0 else 0,
                                 '05_15_density': _05_15 / plot_area_ha if plot_area_ha > 0 else 0,
-                                'bolee_15_density': bolee_15 / plot_area_ha if plot_area_ha > 0 else 0
+                                'bolee_15_density': bolee_15 / plot_area_ha if plot_area_ha > 0 else 0,
+                                'do_05': do_05,  # исходное кол-во
+                                '05_15': _05_15,  # исходное кол-во
+                                'bolee_15': bolee_15  # исходное кол-во
                             })
 
                         breeds_data[breed_name]['plots'].append(plot_data)
@@ -6833,7 +7092,8 @@ class ExtendedMolodnikiTableScreen(Screen):
                                   size=lambda *args: setattr(address_inner.bg, 'size', address_inner.size))
 
             address_text = Label(
-                text=f"Квартал: {self.current_quarter or 'Не указан'}\n"
+                text=f"Название проекта: {self.project_data.get('document_name', 'Проект')}\n"
+                     f"Квартал: {self.current_quarter or 'Не указан'}\n"
                      f"Выдел: {getattr(self, 'current_plot', '') or 'Не указан'}\n"
                      f"Лесничество: {self.current_forestry or 'Не указано'}\n"
                      f"Участковое лесничество: {self.project_data['address'].get('district_forestry', '') or 'Не указано'}\n"
@@ -6937,42 +7197,50 @@ class ExtendedMolodnikiTableScreen(Screen):
                                       size=lambda *args: setattr(composition_inner.bg, 'size', composition_inner.size))
 
             total_densities = {}
+            total_density_all = 0  # Общая густота всех пород (сумма средних)
+            
             for breed_name, data in breeds_data.items():
                 if data['plots']:
-                    if data['plots'][0].get('type') == 'coniferous':
-                        total_density = sum(p.get('do_05_density', 0) + p.get('05_15_density', 0) + p.get('bolee_15_density', 0) for p in data['plots'])
-                    else:
-                        total_density = sum(p.get('density', 0) for p in data['plots'])
-                    if total_density > 0:
-                        total_densities[breed_name] = total_density
+                    # Рассчитываем СРЕДНЮЮ густоту породы (сумма плотностей / кол-во площадок)
+                    # Плотности уже в шт/га, делим на 1000 для перевода в тыс.шт/га
+                    avg_density = sum(p.get('density', 0) for p in data['plots']) / len(data['plots'])
+                    avg_density_thousands = avg_density / 1000  # переводим в тыс.шт/га
+                    total_density_all += avg_density_thousands
+                    if avg_density_thousands > 0:
+                        total_densities[breed_name] = avg_density_thousands
 
             if total_densities:
-                total_all_density = sum(total_densities.values())
-                composition_parts = []
+                # Метод наибольшего остатка для распределения коэффициентов
+                # Сначала рассчитываем точные коэффициенты
+                exact_coeffs = []
                 for breed_name, density in sorted(total_densities.items(), key=lambda x: x[1], reverse=True):
-                    coeff = max(1, round(density / total_all_density * 10)) if total_all_density > 0 else 1
-                    breed_letter = self.get_breed_letter(breed_name)
-                    composition_parts.append(f"{coeff}{breed_letter}")
-
-                coeffs_only = [int(''.join(filter(str.isdigit, part))) for part in composition_parts]
-                total_coeffs = sum(coeffs_only)
-                iterations = 0
-                while total_coeffs != 10 and iterations < 100:
-                    if total_coeffs > 10:
-                        max_idx = coeffs_only.index(max(coeffs_only))
-                        coeffs_only[max_idx] -= 1
-                    elif total_coeffs < 10:
-                        max_idx = coeffs_only.index(max(coeffs_only))
-                        coeffs_only[max_idx] += 1
-                    total_coeffs = sum(coeffs_only)
-                    iterations += 1
-
+                    exact_coeff = (density / total_density_all * 10) if total_density_all > 0 else 1
+                    exact_coeffs.append(exact_coeff)
+                
+                # Округляем вниз
+                coeffs_floor = [int(coeff) for coeff in exact_coeffs]
+                # Считаем остатки
+                remainders = [(exact_coeffs[i] - coeffs_floor[i], i) for i in range(len(exact_coeffs))]
+                # Сортируем по убыванию остатков
+                remainders.sort(reverse=True)
+                
+                # Распределяем единицы начиная с наибольших остатков
+                coeffs = coeffs_floor[:]
+                total = sum(coeffs)
+                i = 0
+                while total < 10 and i < len(remainders):
+                    idx = remainders[i][1]
+                    coeffs[idx] += 1
+                    total += 1
+                    i += 1
+                
+                # Формируем формулу состава
                 sorted_breeds = sorted(total_densities.items(), key=lambda x: x[1], reverse=True)
                 composition_parts = []
                 for i, (breed_name, _) in enumerate(sorted_breeds):
-                    if i < len(coeffs_only):
+                    if i < len(coeffs):
                         breed_letter = self.get_breed_letter(breed_name)
-                        composition_parts.append(f"{coeffs_only[i]}{breed_letter}")
+                        composition_parts.append(f"{coeffs[i]}{breed_letter}")
 
                 composition_text = ''.join(composition_parts) + "Др"
                 composition_label = Label(
@@ -7038,13 +7306,24 @@ class ExtendedMolodnikiTableScreen(Screen):
                 if data['type'] == 'coniferous' and data['plots']:
                     has_coniferous = True
                     zones = data.get('coniferous_zones', {})
-                    avg_do_05 = zones.get('do_05', 0) / len(data['plots']) if data['plots'] else 0
-                    avg_05_15 = zones.get('05_15', 0) / len(data['plots']) if data['plots'] else 0
-                    avg_bolee_15 = zones.get('bolee_15', 0) / len(data['plots']) if data['plots'] else 0
+                    # Густота по градациям = общее кол-во деревьев в градации / общая площадь всех площадок в га
+                    plot_area_ha = 3.14159 * (float(self.current_radius) if self.current_radius else 1.78) ** 2 / 10000
+                    total_area_ha = plot_area_ha * total_plots_count
+                    # zones содержит сумму в шт/га, нужно перевести обратно в кол-во деревьев
+                    total_do_05 = sum(p.get('do_05', 0) for p in data['plots'])
+                    total_05_15 = sum(p.get('05_15', 0) for p in data['plots'])
+                    total_bolee_15 = sum(p.get('bolee_15', 0) for p in data['plots'])
+                    avg_do_05 = total_do_05 / total_area_ha if total_area_ha > 0 else 0
+                    avg_05_15 = total_05_15 / total_area_ha if total_area_ha > 0 else 0
+                    avg_bolee_15 = total_bolee_15 / total_area_ha if total_area_ha > 0 else 0
 
+                    # Высота = средняя высота только на тех площадках, где есть высота (> 1.5м)
                     avg_heights_over_15 = [p['height'] for p in data['plots'] if p['height'] > 1.5]
                     avg_height_total = sum(avg_heights_over_15) / len(avg_heights_over_15) if avg_heights_over_15 else 0
-                    avg_diameter = sum(data['diameters']) / len(data['diameters']) if data['diameters'] else 0
+                    # Диаметр = средний диаметр только на тех площадках, где есть диаметр (> 0)
+                    avg_diameters = [d for d in data['diameters'] if d > 0]
+                    avg_diameter = sum(avg_diameters) / len(avg_diameters) if avg_diameters else 0
+                    # Возраст = средний возраст только на тех площадках, где есть возраст (> 0)
                     avg_ages = [p['age'] for p in data['plots'] if p['age'] > 0]
                     avg_age = sum(avg_ages) / len(avg_ages) if avg_ages else 0
 
@@ -7110,12 +7389,22 @@ class ExtendedMolodnikiTableScreen(Screen):
             for breed_name, data in sorted(breeds_data.items()):
                 if data['type'] == 'deciduous' and data['plots']:
                     has_deciduous = True
-                    avg_density = sum(p['density'] for p in data['plots']) / len(data['plots'])
+                    # Густота = общее количество деревьев / общая площадь всех площадок в га
+                    total_trees = sum(p.get('density_raw', 0) for p in data['plots'])
+                    # Площадь одной площадки в га (при стандартном радиусе)
+                    plot_area_ha = 3.14159 * (float(self.current_radius) if self.current_radius else 1.78) ** 2 / 10000
+                    # Общая площадь = площадь одной площадки * кол-во всех площадок
+                    total_area_ha = plot_area_ha * total_plots_count
+                    avg_density = total_trees / total_area_ha if total_area_ha > 0 else 0
+                    # Высота = средняя высота только на тех площадках, где есть высота (> 0)
                     avg_heights = [p['height'] for p in data['plots'] if p['height'] > 0]
                     avg_height = sum(avg_heights) / len(avg_heights) if avg_heights else 0
+                    # Возраст = средний возраст только на тех площадках, где есть возраст (> 0)
                     avg_ages = [p['age'] for p in data['plots'] if p['age'] > 0]
                     avg_age = sum(avg_ages) / len(avg_ages) if avg_ages else 0
-                    avg_diameter = sum(data['diameters']) / len(data['diameters']) if data['diameters'] else 0
+                    # Диаметр = средний диаметр только на тех площадках, где есть диаметр (> 0)
+                    avg_diameters = [d for d in data['diameters'] if d > 0]
+                    avg_diameter = sum(avg_diameters) / len(avg_diameters) if avg_diameters else 0
 
                     breed_label = Label(
                         text=f"🍃 {breed_name}:\nГустота: {avg_density:.1f} шт/га | Высота: {avg_height:.1f}м | Возраст: {avg_age:.1f} лет | Диаметр: {avg_diameter:.1f} см",
@@ -7180,16 +7469,26 @@ class ExtendedMolodnikiTableScreen(Screen):
             all_ages = []
             all_diameters = []
 
+            # Собираем данные для расчёта средних показателей
+            total_trees_all = 0  # Общее количество всех деревьев
             for breed_name, data in breeds_data.items():
                 if data['plots']:
-                    all_densities.extend([p['density'] for p in data['plots'] if p['density'] > 0])
+                    # Суммируем исходное количество деревьев
+                    total_trees_all += sum(p.get('density_raw', 0) for p in data['plots'])
+                    # Высота, возраст и диаметр собираем только с тех площадок, где они есть
                     all_heights.extend([p['height'] for p in data['plots'] if p['height'] > 0])
                     all_ages.extend([p['age'] for p in data['plots'] if p['age'] > 0])
                     all_diameters.extend([d for d in data['diameters'] if d > 0])
 
-            avg_overall_density = sum(all_densities) / len(all_densities) if all_densities else 0
+            # Средняя густота = общее количество деревьев / общая площадь всех площадок в га
+            plot_area_ha = 3.14159 * (float(self.current_radius) if self.current_radius else 1.78) ** 2 / 10000
+            total_area_ha = plot_area_ha * total_plots_count
+            avg_overall_density = total_trees_all / total_area_ha if total_area_ha > 0 else 0
+            # Средняя высота = сумма высот / количество площадок с высотой
             avg_overall_height = sum(all_heights) / len(all_heights) if all_heights else 0
+            # Средний возраст = сумма возрастов / количество площадок с возрастом
             avg_overall_age = sum(all_ages) / len(all_ages) if all_ages else 0
+            # Средний диаметр = сумма диаметров / количество площадок с диаметром
             avg_overall_diameter = sum(all_diameters) / len(all_diameters) if all_diameters else 0
 
             overall_text = Label(
@@ -7920,8 +8219,11 @@ class ExtendedMolodnikiTableScreen(Screen):
             height=40,
             font_name='Roboto'
         )
-        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M')
-        default_name = f"Молодняки_{self.current_section}_{timestamp}"
+        timestamp = datetime.datetime.now().strftime('%M%S')  # Только минуты и секунды
+        document_name = self.project_data.get('document_name', 'Проект')
+        # Очень короткое имя файла на основе названия проекта (макс 10 символов)
+        short_name = document_name.replace(' ', '').replace('/', '_').replace('.', '')[:10]
+        default_name = f"{short_name}_{self.current_section}_{timestamp}"
         self.filename_input.text = default_name
         content.add_widget(self.filename_input)
 
@@ -8058,8 +8360,11 @@ class ExtendedMolodnikiTableScreen(Screen):
         try:
             from docx import Document
 
-            timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M')
-            filename = f"Молодняки_{self.current_section}_{timestamp}.docx"
+            timestamp = datetime.datetime.now().strftime('%M%S')  # Только минуты и секунды
+            document_name = self.project_data.get('document_name', 'Проект')
+            # Очень короткое имя файла на основе названия проекта (макс 10 символов)
+            short_name = document_name.replace(' ', '').replace('/', '_').replace('.', '')[:10]
+            filename = f"{short_name}_{self.current_section}_{timestamp}.docx"
             full_path = os.path.join(self.reports_dir, filename)
 
             doc = Document()
@@ -8329,7 +8634,7 @@ class ExtendedMolodnikiTableScreen(Screen):
             size=(400, 50)
         )
 
-        scroll = ScrollView(size_hint=(0.9, 0.75), pos_hint={'center_x': 0.5, 'center_y': 0.5})
+        scroll = ScrollView(size_hint=(1, 0.75), pos_hint={'center_x': 0.5, 'center_y': 0.5})
         files_layout = GridLayout(cols=1, spacing=5, size_hint_y=None)
         files_layout.bind(minimum_height=files_layout.setter('height'))
 
@@ -8384,7 +8689,11 @@ class ExtendedMolodnikiTableScreen(Screen):
                     bg_color=get_color_from_hex('#87CEEB'),
                     size_hint=(1, None),
                     height=50,
-                    font_size='14sp'
+                    font_size='13sp',
+                    auto_width=False,
+                    halign='left',
+                    valign='middle',
+                    padding=(15, 5)
                 )
                 btn.bind(on_press=lambda x, f=filename: self.select_json_file(os.path.join(self.reports_dir, f)))
                 files_layout.add_widget(btn)
@@ -8399,7 +8708,7 @@ class ExtendedMolodnikiTableScreen(Screen):
             pos_hint={'center_x': 0.5, 'center_y': 0.08}
         )
         load_manual_btn = ModernButton(
-            text='Загрузить указанный файл',
+            text='Загрузить',
             bg_color=get_color_from_hex('#00FF00'),
             size_hint=(0.35, 1),
             height=60
@@ -8522,6 +8831,10 @@ class ExtendedMolodnikiTableScreen(Screen):
                             if key in self.project_data['details']:
                                 self.project_data['details'][key] = str(value) if value else ''
 
+                    # Загружаем название документа
+                    if 'document_name' in loaded_project_data:
+                        self.project_data['document_name'] = str(loaded_project_data['document_name']) if loaded_project_data['document_name'] else 'Проект'
+
             # Ожидаем, что JSON содержит page_data как словарь
             if isinstance(data, dict) and 'page_data' in data:
                 self.page_data = data['page_data']
@@ -8626,7 +8939,7 @@ class ExtendedMolodnikiTableScreen(Screen):
 
         btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
         save_btn = ModernButton(
-            text='Сохранить радиус',
+            text='Сохранить',
             bg_color=get_color_from_hex('#00FF00'),
             size_hint=(0.5, 1),
             height=50
@@ -8830,7 +9143,8 @@ class ExtendedMolodnikiTableScreen(Screen):
 
         # Сохраняем ссылку на label для обновления при каждом открытии
         self.current_address_info = Label(
-            text=f"Квартал: {self.project_data['address'].get('quarter', 'Не указан')}\n"
+            text=f"Название проекта: {self.project_data.get('document_name', 'Проект')}\n"
+                 f"Квартал: {self.project_data['address'].get('quarter', 'Не указан')}\n"
                  f"Выдел: {self.project_data['address'].get('plot', 'Не указан')}\n"
                  f"Лесничество: {self.project_data['address'].get('forestry', 'Не указано')}\n"
                  f"Участковое лесничество: {self.project_data['address'].get('district_forestry', 'Не указано')}\n"
@@ -8907,6 +9221,17 @@ class ExtendedMolodnikiTableScreen(Screen):
         plot_area_btn.bind(on_press=self.show_plot_area_input_popup)
         buttons_layout.add_widget(plot_area_btn)
 
+        # Кнопка Название
+        doc_name_btn = ModernButton(
+            text='Название',
+            bg_color=get_color_from_hex('#32CD32'),
+            size_hint=(1, None),
+            height=60,
+            font_size='18sp'
+        )
+        doc_name_btn.bind(on_press=self.show_document_name_popup)
+        buttons_layout.add_widget(doc_name_btn)
+
         scroll_content.add_widget(buttons_layout)
 
         scroll.add_widget(scroll_content)
@@ -8934,6 +9259,76 @@ class ExtendedMolodnikiTableScreen(Screen):
 
         close_btn.bind(on_press=self.address_popup.dismiss)
         self.address_popup.open()
+
+    def show_document_name_popup(self, instance):
+        """Показать popup для ввода названия документа"""
+        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+
+        title_label = Label(
+            text="Введите название документа",
+            font_name='Roboto',
+            bold=True,
+            size_hint=(1, None),
+            height=30
+        )
+        content.add_widget(title_label)
+
+        self.document_name_input = TextInput(
+            hint_text="Название документа",
+            multiline=False,
+            size_hint=(1, None),
+            height=40,
+            font_name='Roboto',
+            text=self.project_data.get('document_name', 'Проект')
+        )
+        content.add_widget(self.document_name_input)
+
+        info_label = Label(
+            text="Это название будет использоваться в имени файла при сохранении",
+            font_name='Roboto',
+            font_size='14sp',
+            color=(0.5, 0.5, 0.5, 1),
+            size_hint=(1, None),
+            height=40
+        )
+        content.add_widget(info_label)
+
+        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
+        save_btn = ModernButton(
+            text='Сохранить',
+            bg_color=get_color_from_hex('#00FF00'),
+            size_hint=(0.5, 1),
+            height=50
+        )
+        cancel_btn = ModernButton(
+            text='Отмена',
+            bg_color=get_color_from_hex('#FF6347'),
+            size_hint=(0.5, 1),
+            height=50
+        )
+        btn_layout.add_widget(save_btn)
+        btn_layout.add_widget(cancel_btn)
+        content.add_widget(btn_layout)
+
+        popup = Popup(
+            title="Название документа",
+            content=content,
+            size_hint=(0.6, 0.5)
+        )
+
+        def save_document_name(btn):
+            doc_name = self.document_name_input.text.strip()
+            if doc_name:
+                self.project_data['document_name'] = doc_name
+                self.show_success(f"Название документа установлено: {doc_name}")
+                popup.dismiss()
+            else:
+                self.show_error("Название документа не может быть пустым!")
+
+        save_btn.bind(on_press=save_document_name)
+        cancel_btn.bind(on_press=popup.dismiss)
+
+        popup.open()
 
     def show_file_popup(self, instance):
         """Показать popup с операциями над файлами"""

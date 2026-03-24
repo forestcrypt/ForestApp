@@ -18,9 +18,11 @@ import os
 class ModernButton(Button):
     bg_color = ListProperty([1, 1, 1, 1])
     no_shadow = BooleanProperty(False)
+    auto_width = BooleanProperty(True)
 
     def __init__(self, **kwargs):
         self.no_shadow = kwargs.pop('no_shadow', False)
+        self.auto_width = kwargs.pop('auto_width', True)
         super().__init__(**kwargs)
         self.background_color = (0, 0, 0, 0)
         self.font_name = 'Roboto'
@@ -46,7 +48,15 @@ class ModernButton(Button):
             )
 
         self.bind(pos=self.update_graphics, size=self.update_graphics)
-        self.bind(text=self.update_width)
+        if self.auto_width:
+            self.bind(text=self.update_width)
+        
+        # Обновляем text_size при изменении размера для поддержки halign/valign
+        self.bind(size=self._update_text_size)
+
+    def _update_text_size(self, *args):
+        """Обновляем text_size при изменении размера кнопки"""
+        self.text_size = (self.width - self.padding[0] * 2, self.height)
 
     def update_width(self, instance, value):
         self.width = self.texture_size[0] + 60
