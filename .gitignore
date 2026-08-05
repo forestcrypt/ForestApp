@@ -8,3 +8,9 @@ reports/
 *.xlsx
 *.docx
 er.namegit add .
+node_modules/
+cache/
+stdout.txt
+stdout8.txt
+stderr.txt
+test_output.txt

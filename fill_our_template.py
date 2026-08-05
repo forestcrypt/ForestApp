@@ -138,7 +138,7 @@ class OurTemplateFiller:
     def parse_care_subject_density(self, care_text):
         """
         Парсит предмет ухода и возвращает густоту по породам {порода: густоту тыс. шт/га}
-        Примеры: "3000шт/гаС", "3С2Б", "300шт/гаС + 50шт/гаБ"
+        Примеры: "3000шт/гаС", "2.5тыс/гаБ", "3С2Б", "300шт/гаС + 50шт/гаБ"
         Возвращает: {порода: густота в тыс. шт/га}
         """
         if not care_text:
@@ -147,18 +147,20 @@ class OurTemplateFiller:
         result = {}
         care_text = care_text.strip()
 
-        # Паттерн 1: "3000шт/гаС" или "3000 шт/га С"
-        # Ищем числа с возможными "шт/га" и буквой породы
-        matches = re.findall(r'(\d+(?:\.\d+)?)\s*(?:шт/га)?\s*([А-ЯA-Z][а-яa-z]*)', care_text)
+        # Паттерн 1: "2.5тыс/гаБ" или "3000шт/гаС" или "3000 шт/га С"
+        # Ищем числа с возможными "тыс/га", "шт/га" и буквой породы
+        matches = re.findall(r'(\d+(?:\.\d+)?)\s*(тыс/га|шт/га)?\s*([А-ЯA-Z][а-яa-z]*)', care_text)
 
-        for density_str, breed_str in matches:
+        for density_str, unit, breed_str in matches:
             density_val = float(density_str)
-            
-            # Если число большое (>100), значит это шт/га, делим на 1000 для тыс.шт/га
-            if density_val > 100:
-                density = density_val / 1000  # Переводим в тыс. шт/га
+
+            if unit == 'тыс/га':
+                density = density_val
+            elif unit == 'шт/га':
+                density = density_val / 1000
+            elif density_val > 100:
+                density = density_val / 1000
             else:
-                # Это коэффициент состава (1-10)
                 density = density_val
 
             # Определяем породу по коду (первая заглавная буква)
@@ -242,6 +244,102 @@ class OurTemplateFiller:
         
         print(f"[INFO] Распарсены характеристики: {result}")
         return result
+
+    def parse_care_subject_by_breeds(self, care_text):
+        """
+        Парсит предмет ухода и возвращает словарь {порода: коэффициент состава}
+        Примеры: "3С2Б" → {'Сосна': 3, 'Берёза': 2}
+        """
+        if not care_text:
+            return {}
+
+        result = {}
+        care_text = care_text.strip()
+
+        # Паттерн: "3С2Б" или "3С 2Б" (коэффициенты состава)
+        matches = re.findall(r'(\d+(?:\.\d+)?)([А-ЯA-Z][а-яa-z]*)', care_text)
+        
+        for coeff_str, breed_str in matches:
+            coeff = int(float(coeff_str))  # Коэффициент состава (1-10)
+            
+            # Определяем породу по коду (первая заглавная буква)
+            breed_code = breed_str[0].upper() if breed_str else ''
+            
+            # Ищем полное название породы по коду
+            breed_name = BREED_DATABASE.get(breed_code, None)
+            
+            if not breed_name:
+                for code, name in BREED_DATABASE.items():
+                    if code.lower() in breed_str.lower():
+                        breed_name = name
+                        break
+            
+            if breed_name:
+                result[breed_name] = coeff
+
+        print(f"[INFO] Распарсен предмет ухода по породам: {result}")
+        return result
+
+    def calculate_project_composition(self, breed_name, care_density_by_breed):
+        """
+        Рассчитывает проектный состав породы из предмета ухода
+        Возвращает: строку вида "3С" или "2Б"
+        """
+        if not care_density_by_breed:
+            print(f"[DEBUG] calculate_project_composition: care_density_by_breed пуст для {breed_name}")
+            return ''
+
+        # Рассчитываем общую густоту по предмету ухода
+        total_density = sum(care_density_by_breed.values())
+
+        if total_density <= 0:
+            print(f"[DEBUG] calculate_project_composition: total_density=0 для {breed_name}")
+            return ''
+
+        # Получаем код породы из названия
+        breed_code = 'Др'
+        for full_name, code in BREED_TO_CODE.items():
+            if full_name.lower() in breed_name.lower() or breed_name.lower().startswith(full_name.lower()[:3]):
+                breed_code = code
+                break
+
+        if breed_code == 'Др':
+            if breed_name.startswith('Ос'):
+                breed_code = 'Ос'
+            elif breed_name.startswith('Ол'):
+                breed_code = 'Ол'
+            elif breed_name.startswith('Мож'):
+                breed_code = 'Мж'
+            else:
+                breed_code = breed_name[0].upper()
+
+        # Ищем густоту для этой породы из предмета ухода по коду
+        breed_density = care_density_by_breed.get(breed_code, None)
+
+        # Если не нашли по коду, ищем по названию породы
+        if breed_density is None:
+            for care_key, care_value in care_density_by_breed.items():
+                if care_key in breed_name or breed_name.startswith(care_key):
+                    breed_density = care_value
+                    break
+
+        if breed_density is None:
+            print(f"[DEBUG] calculate_project_composition: breed_density не найден для {breed_name} (код={breed_code})")
+            return ''  # Нет данных для этой породы в предмете ухода
+
+        # Рассчитываем коэффициент состава (метод наибольшего остатка)
+        # Точный коэффициент
+        exact_coeff = (breed_density / total_density) * 10 if total_density > 0 else 1
+
+        # Округляем до целого
+        coeff = round(exact_coeff)
+
+        # Гарантируем, что коэффициент не меньше 1
+        if coeff < 1:
+            coeff = 1
+
+        print(f"[DEBUG] calculate_project_composition: {breed_name} -> {breed_code}, density={breed_density}, total={total_density}, coeff={coeff}")
+        return f"{coeff}{breed_code}"
 
     def calculate_project_values(self, breed, intensity):
         """Рассчитывает проектируемые значения (после рубки)"""
@@ -341,7 +439,9 @@ class OurTemplateFiller:
             care_queue_clean = re.sub(r'\s+', ' ', care_queue_clean).strip()
             
             # Формируем правильный текст
-            care_activity_text = f"{activity_name}, {care_queue_clean}"
+            care_activity_text = activity_name
+            if care_queue_clean:
+                care_activity_text += f", {care_queue_clean}"
 
             # Склоняем названия лесничеств
             forestry = self.address_data.get('forestry', '')
@@ -357,9 +457,13 @@ class OurTemplateFiller:
             # Парсим предмет ухода для густоты
             care_subject = self.details_data.get('care_subject', '')
             care_density_by_breed = self.parse_care_subject_density(care_subject)
-            
+
             # Общая густота из предмета ухода (в тыс. шт/га)
             total_care_density = sum(care_density_by_breed.values())
+
+            print(f"[DEBUG] Предмет ухода: {care_subject}")
+            print(f"[DEBUG] care_density_by_breed: {care_density_by_breed}")
+            print(f"[DEBUG] total_care_density: {total_care_density}")
 
             # Словарь общих замен
             replacements = {
@@ -386,7 +490,7 @@ class OurTemplateFiller:
 
                 # ОБЩИЕ ДАННЫЕ ИЗ МЕНЮ ИТОГО
                 '{total_composition_isx}': self.total_data.get('composition', ''),
-                '{total_composition_project}': self.total_data.get('composition', ''),
+                '{total_composition_project}': self.total_data.get('composition_project', ''),
                 '{total_age_isx}': self.format_number(self.total_data.get('avg_age')),
                 '{total_age_project}': self.format_number(self.total_data.get('avg_age')),
                 '{total_height_isx}': self.format_number(self.total_data.get('avg_height')),
@@ -450,26 +554,46 @@ class OurTemplateFiller:
 
                         # ИСПРАВЛЕНИЕ 6: Рассчитываем состав правильно
                         composition_isx = self.calculate_breed_composition(breed_name, density, total_density)
-                        composition_project = composition_isx
+                        
+                        # ✅ ИСПРАВЛЕНО: Проектный состав из предмета ухода
+                        composition_project = self.calculate_project_composition(breed_name, care_density_by_breed)
+                        if not composition_project:
+                            composition_project = composition_isx  # Если нет в предмете ухода, оставляем исходный
 
                         # Рассчитываем проектируемые значения
                         project_values = self.calculate_project_values(breed, intensity)
 
                         # ИСПРАВЛЕНИЕ 4: Густота проектируемая из предмета ухода
-                        # Ищем густоту по частичному совпадению названия породы
-                        project_density = None
-                        for care_breed, care_dens in care_density_by_breed.items():
-                            # Если название породы содержит код из предмета ухода
-                            if care_breed in breed_name or breed_name.startswith(care_breed):
-                                project_density = care_dens
+                        # Сначала получаем код породы
+                        breed_code = 'Др'
+                        for full_name, code in BREED_TO_CODE.items():
+                            if full_name.lower() in breed_name.lower() or breed_name.lower().startswith(full_name.lower()[:3]):
+                                breed_code = code
                                 break
-                            # Или если код породы совпадает с первым словом
-                            breed_name_first_word = breed_name.split()[0].lower() if ' ' in breed_name else breed_name.lower()
-                            if care_breed.lower() == breed_name_first_word:
-                                project_density = care_dens
-                                break
-                        
+
+                        if breed_code == 'Др':
+                            if breed_name.startswith('Ос'):
+                                breed_code = 'Ос'
+                            elif breed_name.startswith('Ол'):
+                                breed_code = 'Ол'
+                            elif breed_name.startswith('Мож'):
+                                breed_code = 'Мж'
+                            else:
+                                breed_code = breed_name[0].upper()
+
+                        # Ищем густоту по коду породы
+                        project_density = care_density_by_breed.get(breed_code, None)
+
+                        # Если не нашли по коду, ищем по названию
+                        if project_density is None:
+                            for care_breed, care_dens in care_density_by_breed.items():
+                                if care_breed in breed_name or breed_name.startswith(care_breed):
+                                    project_density = care_dens
+                                    break
+
                         project_density_str = self.format_number(project_density) if project_density is not None else ''
+
+                        print(f"[DEBUG] {breed_name}: код={breed_code}, project_density={project_density}, composition_project={composition_project}")
 
                         # Добавляем новую строку
                         row = breeds_table.add_row()

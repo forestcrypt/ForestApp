@@ -1,4 +1,4 @@
-from kivy.app import App
+from kivymd.app import MDApp
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.screenmanager import ScreenManager, Screen
@@ -463,7 +463,7 @@ class MainMenu(Screen):
         
     def setup_ui(self):
         self.clear_widgets()
-        theme = App.get_running_app().theme_manager.current_theme
+            theme = MDApp.get_running_app().theme_manager.current_theme
         
         with self.canvas.before:
             if theme['type'] == 'color':
@@ -2679,7 +2679,7 @@ class ThemeChooser(Popup):
             self.update_theme_icons()
 
 
-class ForestryApp(App):
+class ForestryApp(MDApp):
     theme_manager = ThemeManager()
     
     def build(self):

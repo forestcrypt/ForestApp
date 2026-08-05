@@ -315,7 +315,7 @@ class WordDocumentFiller:
                 
                 # Данные из Итого
                 '(Итого-состав исх)': self.total_data.get('composition', 'Н/Д'),
-                '(Итого-состав проект)': self.total_data.get('composition', 'Н/Д'),
+                '(Итого-состав проект)': self.total_data.get('composition_project', 'Н/Д'),
                 '(Итого-возраст)': format_number(self.total_data.get('avg_age')),
                 '(Итого-диаметр)': format_number(self.total_data.get('avg_diameter', self.total_data.get('avg_height', 'Н/Д'))),
                 '(Итого-высота)': format_number(self.total_data.get('avg_height')),
@@ -482,10 +482,12 @@ class WordDocumentFiller:
                     row.cells[1].text = plot_info  # Площадь
 
                 # Колонки 2-3: Состав древостоя
+                composition_isx = self.total_data.get('composition', 'Не определен')
+                composition_project = self.total_data.get('composition_project', 'Не определен')
                 if 2 < len(row.cells):
-                    row.cells[2].text = composition  # исходный
+                    row.cells[2].text = composition_isx  # исходный
                 if 3 < len(row.cells):
-                    row.cells[3].text = composition  # проектируемый
+                    row.cells[3].text = composition_project  # проектируемый
 
                 # Колонки 4-5: Возраст по породам
                 age_value = format_number(self.total_data.get('avg_age'))

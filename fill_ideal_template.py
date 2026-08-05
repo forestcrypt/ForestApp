@@ -116,7 +116,7 @@ class IdealWordFiller:
                 
                 # Данные из Итого
                 '(Итого-состав исх)': self.total_data.get('composition', 'Н/Д'),
-                '(Итого-состав проект)': self.total_data.get('composition', 'Н/Д'),
+                '(Итого-состав проект)': self.total_data.get('composition_project', 'Н/Д'),
                 '(Итого-возраст)': self.format_number(self.total_data.get('avg_age')),
                 '(Итого-диаметр)': self.format_number(self.total_data.get('avg_diameter')),
                 '(Итого-высота)': self.format_number(self.total_data.get('avg_height')),

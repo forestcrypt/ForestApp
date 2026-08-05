@@ -1,7 +1,8 @@
-# Расширенная таблица молодняков по новой структуре
+﻿# Расширенная таблица молодняков по новой структуре
         # Структура: 6 основных столбцов + динамические подстолбцы для пород
 
 from kivy.app import App
+from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.screenmanager import Screen
@@ -31,6 +32,17 @@ import sys
 import openpyxl
 from openpyxl import Workbook
 from tkinter import Tk, filedialog
+
+from kivymd.uix.boxlayout import MDBoxLayout
+from kivymd.uix.gridlayout import MDGridLayout
+from kivymd.uix.card import MDCard
+from kivymd.uix.button import MDButton, MDButtonText, MDIconButton
+from kivymd.uix.label import MDLabel, MDIcon
+from kivymd.uix.scrollview import MDScrollView
+from kivymd.uix.appbar import MDTopAppBar, MDTopAppBarLeadingButtonContainer, MDTopAppBarTrailingButtonContainer, MDTopAppBarTitle, MDActionTopAppBarButton
+from kivymd.uix.textfield import MDTextField
+
+from ui_styles import Colors, Spacing, Fonts
 
 LabelBase.register(name='Roboto',
                  fn_regular='fonts/Roboto-Medium.ttf',
@@ -150,6 +162,8 @@ class AutoCompleteTextInput(TextInput):
         if direction == 'right' and self.next_widget:
             self.next_widget.focus = True
         elif direction == 'down':
+            if not hasattr(table_screen, 'inputs'):
+                return
             next_row = self.row_index + 1
             if next_row < len(table_screen.inputs):
                 table_screen.inputs[next_row][self.col_index].focus = True
@@ -159,6 +173,8 @@ class AutoCompleteTextInput(TextInput):
         if direction == 'left' and self.prev_widget:
             self.prev_widget.focus = True
         elif direction == 'up':
+            if not hasattr(table_screen, 'inputs'):
+                return
             prev_row = self.row_index - 1
             if prev_row >= 0:
                 table_screen.inputs[prev_row][self.col_index].focus = True
@@ -230,9 +246,12 @@ class Joypad(FloatLayout):
 class MolodnikiTreeDataInputPopup(Popup):
     def __init__(self, table_screen, row_index, **kwargs):
         super().__init__(
-            title='Ввод данных площадки молодняков',
-            size_hint=(0.8, 0.9),
+            title="",
+            size_hint=(0.85, None),
+            height=dp(520),
             separator_height=0,
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3],
             **kwargs
         )
         self.table_screen = table_screen
@@ -248,53 +267,46 @@ class MolodnikiTreeDataInputPopup(Popup):
         self.create_ui()
 
     def create_ui(self):
-        content = BoxLayout(orientation='vertical', spacing=15, padding=15)
+        content = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, padding=Spacing.MD,
+                              md_bg_color=Colors.DARK_SURFACE, adaptive_height=True)
 
-        # Заголовок
-        title_label = Label(
-            text='Ввод данных площадки молодняков',
-            font_name='Roboto',
-            font_size='20sp',
-            bold=True,
-            color=(0, 0.5, 0, 1),
-            size_hint=(1, None),
-            height=50
+        title_label = MDLabel(
+            text=f"Площадка №{self.row_index + 1}",
+            font_style='Headline', role='medium',
+            theme_text_color='Custom', text_color=Colors.GREEN,
+            size_hint_y=None, height=dp(40)
         )
         content.add_widget(title_label)
 
-        # ScrollView для полей ввода
-        scroll = ScrollView(size_hint=(1, 1))
-        scroll_content = GridLayout(cols=1, spacing=15, size_hint_y=None)
-        scroll_content.bind(minimum_height=scroll_content.setter('height'))
+        scroll = ScrollView(size_hint=(1, None), height=dp(320))
+        scroll_content = MDGridLayout(cols=1, spacing=Spacing.MD, adaptive_height=True,
+                                      size_hint_y=None, padding=[0, 0])
 
         self.input_fields = []
         for field_name, col_index in self.fields:
-            field_layout = BoxLayout(orientation='vertical', size_hint_y=None, height=70, spacing=5)
-            field_label = Label(
+            field_label = MDLabel(
                 text=field_name,
-                font_name='Roboto',
-                font_size='16sp',
-                bold=True,
-                color=(0, 0, 0, 1),
-                size_hint_y=None,
-                height=25
+                font_style='Label', role='medium',
+                theme_text_color='Custom', text_color=[1,1,1,1],
+                size_hint_y=None, height=dp(24)
             )
             input_field = AutoCompleteTextInput(
                 multiline=False,
                 size_hint_y=None,
-                height=40,
-                background_color=(1, 1, 1, 1),
+                height=dp(44),
+                background_color=[0.15,0.15,0.15,1],
+                foreground_color=[1,1,1,1],
+                cursor_color=[0.3,0.8,0.3,1],
                 col_index=col_index,
-                font_name='Roboto'
+                font_name='Roboto',
+                padding=[dp(8), dp(10)]
             )
-            if col_index == 3:  # Порода - открываем popup выбора типа
+            if col_index == 3:
                 input_field.bind(focus=self.show_breed_popup)
             self.input_fields.append(input_field)
-            field_layout.add_widget(field_label)
-            field_layout.add_widget(input_field)
-            scroll_content.add_widget(field_layout)
+            scroll_content.add_widget(field_label)
+            scroll_content.add_widget(input_field)
 
-        # Заполняем данными из текущей строки
         if self.table_screen.current_page in self.table_screen.page_data and self.row_index < len(self.table_screen.page_data[self.table_screen.current_page]):
             row_data = self.table_screen.page_data[self.table_screen.current_page][self.row_index]
             for i, (field_name, col_index) in enumerate(self.fields):
@@ -304,32 +316,19 @@ class MolodnikiTreeDataInputPopup(Popup):
         scroll.add_widget(scroll_content)
         content.add_widget(scroll)
 
-        # Кнопки управления
-        btn_box = BoxLayout(
-            orientation='horizontal',
-            spacing=10,
-            size_hint=(1, None),
-            height=60
-        )
-        save_btn = ModernButton(
-            text='Сохранить',
-            bg_color=get_color_from_hex('#32CD32'),
-            size_hint=(0.5, None),
-            height=60,
-            font_size='18sp'
-        )
-        save_btn.bind(on_press=self.save_data)
-        exit_btn = ModernButton(
-            text='Выйти',
-            bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(0.5, None),
-            height=60,
-            font_size='18sp'
-        )
-        exit_btn.bind(on_press=self.dismiss)
-        btn_box.add_widget(save_btn)
-        btn_box.add_widget(exit_btn)
-        content.add_widget(btn_box)
+        btn_layout = MDBoxLayout(orientation='horizontal', spacing=Spacing.MD, adaptive_height=True)
+        save_btn = MDButton(style='filled', md_bg_color=Colors.BTN_SUCCESS,
+                            size_hint=(0.5, None), height=dp(48))
+        save_btn.add_widget(MDButtonText(text='Сохранить'))
+        save_btn.bind(on_release=self.save_data)
+        cancel_btn = MDButton(style='outlined', size_hint=(0.5, None), height=dp(48),
+                              line_color=Colors.DANGER)
+        cancel_btn.add_widget(MDButtonText(text='Отмена',
+                              theme_text_color='Custom', text_color=Colors.DANGER))
+        cancel_btn.bind(on_release=self.dismiss)
+        btn_layout.add_widget(save_btn)
+        btn_layout.add_widget(cancel_btn)
+        content.add_widget(btn_layout)
 
         self.content = content
         self.open()
@@ -338,54 +337,38 @@ class MolodnikiTreeDataInputPopup(Popup):
         """Показать popup для выбора типа породы"""
         if not value: return
 
-        content = BoxLayout(orientation='vertical', spacing=15, padding=15)
+        content = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, padding=Spacing.MD,
+                              md_bg_color=Colors.DARK_SURFACE, adaptive_height=True)
 
-        # Заголовок
-        title_label = Label(
+        title_label = MDLabel(
             text='Выберите тип породы',
-            font_name='Roboto',
-            font_size='20sp',
-            bold=True,
-            color=(0, 0.5, 0, 1),
-            size_hint=(1, None),
-            height=50
+            font_style='Headline', role='medium',
+            theme_text_color='Custom', text_color=Colors.GREEN,
+            size_hint_y=None, height=dp(44)
         )
         content.add_widget(title_label)
 
-        # Кнопки выбора типа породы
-        type_layout = BoxLayout(orientation='horizontal', spacing=15, size_hint=(1, None), height=120)
-        coniferous_btn = ModernButton(
-            text='Хвойные',
-            bg_color=get_color_from_hex('#228B22'),
-            size_hint=(0.5, None),
-            height=60,
-            font_size='18sp'
-        )
-        deciduous_btn = ModernButton(
-            text='Лиственные',
-            bg_color=get_color_from_hex('#32CD32'),
-            size_hint=(0.5, None),
-            height=60,
-            font_size='18sp'
-        )
+        type_layout = MDBoxLayout(orientation='horizontal', spacing=Spacing.MD,
+                                  adaptive_height=True)
+        coniferous_btn = MDButton(style='filled', md_bg_color=Colors.BTN_SUCCESS,
+                                  size_hint=(0.5, None), height=dp(56))
+        coniferous_btn.add_widget(MDButtonText(text='Хвойные'))
+        deciduous_btn = MDButton(style='filled', md_bg_color=Colors.GREEN,
+                                 size_hint=(0.5, None), height=dp(56))
+        deciduous_btn.add_widget(MDButtonText(text='Лиственные'))
         type_layout.add_widget(coniferous_btn)
         type_layout.add_widget(deciduous_btn)
         content.add_widget(type_layout)
 
-        # Кнопка отмены
-        cancel_btn = ModernButton(
-            text='Отмена',
-            bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(1, None),
-            height=60,
-            font_size='18sp'
-        )
+        cancel_btn = MDButton(style='outlined', size_hint=(1, None), height=dp(48),
+                              line_color=Colors.DANGER)
+        cancel_btn.add_widget(MDButtonText(text='Отмена',
+                              theme_text_color='Custom', text_color=Colors.DANGER))
         content.add_widget(cancel_btn)
 
         popup = Popup(
-            title="Выберите тип породы",
-            content=content,
-            size_hint=(0.8, 0.5)
+            title="", content=content, size_hint=(0.7, None), height=dp(220),
+            separator_height=0, background_color=[0,0,0,0.3], overlay_color=[0,0,0,0.3]
         )
 
         def select_coniferous(btn):
@@ -396,106 +379,75 @@ class MolodnikiTreeDataInputPopup(Popup):
             self.show_breed_selection_popup(instance, 'deciduous')
             popup.dismiss()
 
-        coniferous_btn.bind(on_press=select_coniferous)
-        deciduous_btn.bind(on_press=select_deciduous)
-        cancel_btn.bind(on_press=popup.dismiss)
+        coniferous_btn.bind(on_release=select_coniferous)
+        deciduous_btn.bind(on_release=select_deciduous)
+        cancel_btn.bind(on_release=popup.dismiss)
 
         popup.open()
 
     def show_breed_selection_popup(self, instance, breed_type):
         """Показать popup для выбора конкретной породы из словаря"""
-        content = BoxLayout(orientation='vertical', spacing=15, padding=15)
+        content = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, padding=Spacing.MD,
+                              md_bg_color=Colors.DARK_SURFACE, adaptive_height=True)
 
-        # Заголовок
-        title_label = Label(
+        title_label = MDLabel(
             text=f"Выберите {'хвойную' if breed_type == 'coniferous' else 'лиственную'} породу",
-            font_name='Roboto',
-            font_size='20sp',
-            bold=True,
-            color=(0, 0.5, 0, 1),
-            size_hint=(1, None),
-            height=50
+            font_style='Headline', role='medium',
+            theme_text_color='Custom', text_color=Colors.GREEN,
+            size_hint_y=None, height=dp(40)
         )
         content.add_widget(title_label)
 
-        # Списки пород
         if breed_type == 'coniferous':
-            breeds = [
-                'Сосна', 'Ель', 'Лиственница', 'Кедр', 'Пихта'
-            ]
+            breeds = ['Сосна', 'Ель', 'Лиственница', 'Кедр', 'Пихта']
         else:
-            breeds = [
-                'Берёза', 'Осина', 'Ольха чёрная', 'Ольха серая',
-                'Ива'
-            ]
+            breeds = ['Берёза', 'Осина', 'Ольха чёрная', 'Ольха серая', 'Ива']
 
-        # Загружаем пользовательские породы из базы данных
         custom_breeds = self.load_custom_breeds(breed_type)
-        # Добавляем пользовательские породы к стандартным
         all_breeds = breeds + custom_breeds
 
-        # ScrollView для списка пород
-        scroll = ScrollView(size_hint=(1, None), height=300)
-        breeds_layout = GridLayout(cols=1, spacing=10, size_hint_y=None)
-        breeds_layout.bind(minimum_height=breeds_layout.setter('height'))
+        scroll = ScrollView(size_hint=(1, None), height=dp(300))
+        breeds_layout = MDGridLayout(cols=1, spacing=Spacing.SM, adaptive_height=True,
+                                     size_hint_y=None, padding=[0, 0])
 
         for breed in all_breeds:
-            btn = ModernButton(
-                text=breed,
-                bg_color=get_color_from_hex('#87CEEB'),
-                size_hint=(1, None),
-                height=55,
-                font_size='16sp'
-            )
-            btn.bind(on_press=lambda x, b=breed: self.select_breed(instance, breed_type, b))
+            btn = MDButton(style='filled', md_bg_color=get_color_from_hex('#37474F'),
+                           size_hint=(1, None), height=dp(48))
+            btn.add_widget(MDButtonText(text=breed, theme_text_color='Custom', text_color=[1,1,1,1]))
+            btn.bind(on_release=lambda x, b=breed: self.select_breed(instance, breed_type, b))
             breeds_layout.add_widget(btn)
 
         scroll.add_widget(breeds_layout)
         content.add_widget(scroll)
 
-        # Кнопки управления
-        buttons_layout = BoxLayout(orientation='vertical', spacing=10, size_hint=(1, None), height=190)
+        buttons_layout = MDBoxLayout(orientation='vertical', spacing=Spacing.SM,
+                                     adaptive_height=True)
 
-        # Кнопка "Новая"
-        other_btn = ModernButton(
-            text='Новая',
-            bg_color=get_color_from_hex('#DDA0DD'),
-            size_hint=(1, None),
-            height=55,
-            font_size='16sp'
-        )
-        other_btn.bind(on_press=lambda x: self.select_breed(instance, breed_type, 'other'))
+        other_btn = MDButton(style='filled', md_bg_color=Colors.BTN_PURPLE,
+                             size_hint=(1, None), height=dp(48))
+        other_btn.add_widget(MDButtonText(text='Новая'))
+        other_btn.bind(on_release=lambda x: self.select_breed(instance, breed_type, 'other'))
         buttons_layout.add_widget(other_btn)
 
-        # Кнопка "Очистить"
-        clear_btn = ModernButton(
-            text='Очистить',
-            bg_color=get_color_from_hex('#FFA500'),
-            size_hint=(1, None),
-            height=55,
-            font_size='16sp'
-        )
-        clear_btn.bind(on_press=lambda x: App.get_running_app().root.get_screen('molodniki').show_clear_breeds_popup(breed_type))
+        clear_btn = MDButton(style='filled', md_bg_color=Colors.BTN_WARNING,
+                             size_hint=(1, None), height=dp(48))
+        clear_btn.add_widget(MDButtonText(text='Очистить'))
+        clear_btn.bind(on_release=lambda x: App.get_running_app().root.get_screen('molodniki').show_clear_breeds_popup(breed_type))
         buttons_layout.add_widget(clear_btn)
 
-        # Кнопка отмены
-        cancel_btn = ModernButton(
-            text='Отмена',
-            bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(1, None),
-            height=55,
-            font_size='16sp'
-        )
+        cancel_btn = MDButton(style='outlined', size_hint=(1, None), height=dp(48),
+                              line_color=Colors.DANGER)
+        cancel_btn.add_widget(MDButtonText(text='Отмена',
+                              theme_text_color='Custom', text_color=Colors.DANGER))
         buttons_layout.add_widget(cancel_btn)
         content.add_widget(buttons_layout)
 
         popup = Popup(
-            title=f"Выбор {'хвойной' if breed_type == 'coniferous' else 'лиственной'} породы",
-            content=content,
-            size_hint=(0.85, 0.85)
+            title="", content=content, size_hint=(0.85, 0.85),
+            separator_height=0, background_color=[0,0,0,0.3], overlay_color=[0,0,0,0.3]
         )
 
-        cancel_btn.bind(on_press=popup.dismiss)
+        cancel_btn.bind(on_release=popup.dismiss)
         popup.open()
 
     def update_plot_breeds_display(self, plot_breeds_list, existing_breeds_for_plot):
@@ -582,53 +534,47 @@ class MolodnikiTreeDataInputPopup(Popup):
 
     def show_breed_details_popup(self, instance, breed_type, selected_breed=None):
         """Показать popup для управления множественными породами"""
-        content = BoxLayout(orientation='vertical', spacing=15, padding=15)
+        content = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, padding=Spacing.MD, md_bg_color=Colors.DARK_SURFACE, adaptive_height=True)
 
         # Заголовок
-        title_label = Label(
+        title_label = MDLabel(
             text=f"Управление породами - {selected_breed}",
-            font_name='Roboto',
-            font_size='20sp',
-            bold=True,
-            color=(0, 0.5, 0, 1),
+            font_style='Headline',
+            role='medium',
+            theme_text_color='Custom',
+            text_color=Colors.GREEN,
             size_hint=(1, None),
             height=50
         )
         content.add_widget(title_label)
 
         # Бокс для отображения сохраненных пород по площадке (в начале popup)
-        plot_breeds_box = BoxLayout(
+        plot_breeds_box = MDBoxLayout(
             orientation='vertical',
             size_hint=(1, None),
             height=200,
             padding=[10, 10],
-            spacing=10
+            spacing=Spacing.SM,
+            md_bg_color=get_color_from_hex('#1E3A2E')
         )
-        with plot_breeds_box.canvas.before:
-            Color(rgba=get_color_from_hex('#E8F4FD'))
-            plot_breeds_box.bg = RoundedRectangle(pos=plot_breeds_box.pos, size=plot_breeds_box.size, radius=[10])
-            plot_breeds_box.bind(pos=lambda *args: setattr(plot_breeds_box.bg, 'pos', plot_breeds_box.pos),
-                                size=lambda *args: setattr(plot_breeds_box.bg, 'size', plot_breeds_box.size))
 
         # Получаем номер площадки из row_index
         plot_number = self.row_index + 1
 
-        plot_breeds_title = Label(
+        plot_breeds_title = MDLabel(
             text=f'Площадка №{plot_number} - Сохраненные породы:',
-            font_name='Roboto',
-            font_size='16sp',
-            bold=True,
-            color=(0, 0.3, 0.5, 1),
+            font_style='Title',
+            role='small',
+            theme_text_color='Custom',
+            text_color=[1,1,1,1],
             size_hint=(1, None),
-            height=30,
-            halign='left'
+            height=30
         )
-        plot_breeds_title.bind(size=lambda *args: setattr(plot_breeds_title, 'text_size', (plot_breeds_title.width, None)))
         plot_breeds_box.add_widget(plot_breeds_title)
 
         # ScrollView для списка пород на площадке
         plot_breeds_scroll = ScrollView(size_hint=(1, None), height=150)
-        plot_breeds_list = GridLayout(cols=1, spacing=5, size_hint_y=None)
+        plot_breeds_list = MDGridLayout(cols=1, spacing=Spacing.SM, adaptive_height=True, size_hint_y=None, padding=[0, 0])
         plot_breeds_list.bind(minimum_height=plot_breeds_list.setter('height'))
         
         # Получаем существующие породы для этой площадки из instance.text (поле ввода породы)
@@ -664,7 +610,7 @@ class MolodnikiTreeDataInputPopup(Popup):
 
         # Поля ввода для параметров породы с прокруткой
         scroll_fields = ScrollView(size_hint=(1, None), height=200)
-        fields_layout = GridLayout(cols=2, spacing=5, size_hint_y=None)
+        fields_layout = MDGridLayout(cols=2, spacing=5, size_hint_y=None, md_bg_color=Colors.DARK_SURFACE)
         fields_layout.bind(minimum_height=fields_layout.setter('height'))
 
         if breed_type == 'coniferous':
@@ -687,9 +633,13 @@ class MolodnikiTreeDataInputPopup(Popup):
 
         self.breed_inputs = {}
         for label_text, field_key in fields:
-            lbl = Label(text=label_text, font_name='Roboto', size_hint=(None, None), size=(120, 40), halign='left', valign='middle')
-            lbl.bind(size=lambda *args: setattr(lbl, 'text_size', (lbl.width, None)))
-            inp = TextInput(multiline=False, size_hint=(None, None), size=(120, 40))
+            lbl = MDLabel(text=label_text, font_style='Title', role='small', theme_text_color='Custom', text_color=[1,1,1,1], size_hint=(None, None), size=(120, 40))
+            inp = MDTextField(
+                mode="outlined",
+                size_hint=(None, None),
+                size=(120, 40),
+                line_color_focus=Colors.GREEN
+            )
             if field_key in ['density', 'age']:
                 inp.input_filter = 'int'
             elif field_key == 'height':
@@ -706,40 +656,19 @@ class MolodnikiTreeDataInputPopup(Popup):
         content.add_widget(scroll_fields)
 
         # Кнопки управления - четыре отдельные кнопки
-        btn_layout = BoxLayout(orientation='horizontal', spacing=15, size_hint=(1, None), height=70)
+        btn_layout = MDBoxLayout(orientation='horizontal', spacing=Spacing.MD, size_hint=(1, None), height=70, md_bg_color=Colors.DARK_SURFACE)
 
-        add_btn = ModernButton(
-            text='Добавить',
-            bg_color=get_color_from_hex('#32CD32'),
-            size_hint=(0.25, None),
-            height=70,
-            font_size='16sp'
-        )
+        add_btn = MDButton(style='filled', size_hint=(0.25, None), height=dp(70))
+        add_btn.add_widget(MDButtonText(text='Добавить', theme_text_color='Custom', text_color=Colors.GREEN))
 
-        save_btn = ModernButton(
-            text='Сохранить',
-            bg_color=get_color_from_hex('#00FF00'),
-            size_hint=(0.25, None),
-            height=70,
-            font_size='16sp',
-            bold=True
-        )
+        save_btn = MDButton(style='filled', size_hint=(0.25, None), height=dp(70))
+        save_btn.add_widget(MDButtonText(text='Сохранить', theme_text_color='Custom', text_color=Colors.GREEN))
 
-        delete_btn = ModernButton(
-            text='Удалить',
-            bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(0.25, None),
-            height=70,
-            font_size='16sp'
-        )
+        delete_btn = MDButton(style='filled', size_hint=(0.25, None), height=dp(70))
+        delete_btn.add_widget(MDButtonText(text='Удалить', theme_text_color='Custom', text_color=[1,0.3,0.3,1]))
 
-        exit_btn = ModernButton(
-            text='Выйти',
-            bg_color=get_color_from_hex('#FF0000'),
-            size_hint=(0.25, None),
-            height=70,
-            font_size='16sp'
-        )
+        exit_btn = MDButton(style='filled', size_hint=(0.25, None), height=dp(70))
+        exit_btn.add_widget(MDButtonText(text='Выйти', theme_text_color='Custom', text_color=[0.7,0.7,0.7,1]))
 
         btn_layout.add_widget(add_btn)
         btn_layout.add_widget(save_btn)
@@ -748,9 +677,12 @@ class MolodnikiTreeDataInputPopup(Popup):
         content.add_widget(btn_layout)
 
         popup = Popup(
-            title=f"Параметры породы: {selected_breed}",
+            title="",
             content=content,
-            size_hint=(0.9, 0.95)
+            size_hint=(0.85, 0.85),
+            separator_height=0,
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3]
         )
 
         def add_breed(btn):
@@ -806,9 +738,10 @@ class MolodnikiTreeDataInputPopup(Popup):
 
                 # Update page_data
                 if self.table_screen.current_page not in self.table_screen.page_data:
-                    self.table_screen.page_data[self.table_screen.current_page] = [['', '', '', '', '', ''] for _ in range(self.table_screen.rows_per_page)]
-                if self.row_index < len(self.table_screen.page_data[self.table_screen.current_page]):
-                    self.table_screen.page_data[self.table_screen.current_page][self.row_index][3] = instance.text
+                    self.table_screen.page_data[self.table_screen.current_page] = []
+                while len(self.table_screen.page_data[self.table_screen.current_page]) <= self.row_index:
+                    self.table_screen.page_data[self.table_screen.current_page].append(['', '', '', '', '', ''])
+                self.table_screen.page_data[self.table_screen.current_page][self.row_index][3] = instance.text
 
                 self.table_screen.update_plot_total(instance, instance.text)
 
@@ -884,9 +817,10 @@ class MolodnikiTreeDataInputPopup(Popup):
 
                 # Update page_data
                 if self.table_screen.current_page not in self.table_screen.page_data:
-                    self.table_screen.page_data[self.table_screen.current_page] = [['', '', '', '', '', ''] for _ in range(self.table_screen.rows_per_page)]
-                if self.row_index < len(self.table_screen.page_data[self.table_screen.current_page]):
-                    self.table_screen.page_data[self.table_screen.current_page][self.row_index][3] = instance.text
+                    self.table_screen.page_data[self.table_screen.current_page] = []
+                while len(self.table_screen.page_data[self.table_screen.current_page]) <= self.row_index:
+                    self.table_screen.page_data[self.table_screen.current_page].append(['', '', '', '', '', ''])
+                self.table_screen.page_data[self.table_screen.current_page][self.row_index][3] = instance.text
 
                 self.table_screen.update_plot_total(instance, instance.text)
 
@@ -897,7 +831,7 @@ class MolodnikiTreeDataInputPopup(Popup):
             # Получаем актуальный список пород для обновления отображения
             existing_breeds = self.table_screen.parse_breeds_data(instance.text)
 
-            # Обновляем отображение сохраненных пород с градациями по высоте для хвойных
+            # Обновляем отображение сохраненных пород с градациями по высоте
             self.update_plot_breeds_display(plot_breeds_list, existing_breeds)
 
             # Сохраняем в базу данных
@@ -958,9 +892,10 @@ class MolodnikiTreeDataInputPopup(Popup):
 
                 # Update page_data
                 if self.table_screen.current_page not in self.table_screen.page_data:
-                    self.table_screen.page_data[self.table_screen.current_page] = [['', '', '', '', '', ''] for _ in range(self.table_screen.rows_per_page)]
-                if self.row_index < len(self.table_screen.page_data[self.table_screen.current_page]):
-                    self.table_screen.page_data[self.table_screen.current_page][self.row_index][3] = instance.text
+                    self.table_screen.page_data[self.table_screen.current_page] = []
+                while len(self.table_screen.page_data[self.table_screen.current_page]) <= self.row_index:
+                    self.table_screen.page_data[self.table_screen.current_page].append(['', '', '', '', '', ''])
+                self.table_screen.page_data[self.table_screen.current_page][self.row_index][3] = instance.text
 
                 self.table_screen.update_plot_total(instance, instance.text)
 
@@ -977,10 +912,10 @@ class MolodnikiTreeDataInputPopup(Popup):
 
             popup.dismiss()
 
-        add_btn.bind(on_press=add_breed)
-        save_btn.bind(on_press=save_data)
-        delete_btn.bind(on_press=lambda x: self.show_delete_breed_popup(instance, plot_breeds_list))
-        exit_btn.bind(on_press=exit_popup)
+        add_btn.bind(on_release=add_breed)
+        save_btn.bind(on_release=save_data)
+        delete_btn.bind(on_release=lambda x: self.show_delete_breed_popup(instance, plot_breeds_list))
+        exit_btn.bind(on_release=exit_popup)
 
         popup.open()
 
@@ -993,24 +928,23 @@ class MolodnikiTreeDataInputPopup(Popup):
             self.table_screen.show_error("Нет пород для удаления!")
             return
 
-        content = BoxLayout(orientation='vertical', spacing=15, padding=15)
+        content = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, padding=Spacing.MD, md_bg_color=Colors.DARK_SURFACE, adaptive_height=True)
 
         # Заголовок
-        title_label = Label(
+        title_label = MDLabel(
             text="Выберите породы для удаления:",
-            font_name='Roboto',
-            font_size='20sp',
-            bold=True,
+            font_style='Headline',
+            role='medium',
+            theme_text_color='Custom',
+            text_color=Colors.GREEN,
             size_hint=(1, None),
-            height=50,
-            color=(0, 0.5, 0, 1)
+            height=50
         )
         content.add_widget(title_label)
 
         # ScrollView для списка пород
         scroll = ScrollView(size_hint=(1, None), height=350)
-        breeds_layout = GridLayout(cols=1, spacing=10, size_hint_y=None)
-        breeds_layout.bind(minimum_height=breeds_layout.setter('height'))
+        breeds_layout = MDGridLayout(cols=1, spacing=Spacing.SM, adaptive_height=True, size_hint_y=None, padding=[0, 0])
 
         # Чекбоксы для выбора пород
         self.breed_checkboxes = {}
@@ -1018,7 +952,7 @@ class MolodnikiTreeDataInputPopup(Popup):
             breed_name = breed_info.get('name', 'Неизвестная')
 
             # Создаём строку с чекбоксом и названием породы
-            breed_row = BoxLayout(orientation='horizontal', spacing=15, size_hint=(1, None), height=50)
+            breed_row = MDBoxLayout(orientation='horizontal', spacing=Spacing.MD, size_hint=(1, None), height=50)
 
             # Чекбокс (используем Button как чекбокс)
             from kivy.uix.checkbox import CheckBox
@@ -1026,13 +960,14 @@ class MolodnikiTreeDataInputPopup(Popup):
             self.breed_checkboxes[i] = checkbox
 
             # Название породы
-            breed_label = Label(
+            breed_label = MDLabel(
                 text=f"{breed_name}",
-                font_name='Roboto',
-                font_size='16sp',
+                font_style='Title',
+                role='small',
+                theme_text_color='Custom',
+                text_color=[1,1,1,1],
                 size_hint=(1, None),
-                height=50,
-                halign='left'
+                height=50
             )
 
             breed_row.add_widget(checkbox)
@@ -1043,31 +978,16 @@ class MolodnikiTreeDataInputPopup(Popup):
         content.add_widget(scroll)
 
         # Кнопки управления
-        btn_layout = BoxLayout(orientation='horizontal', spacing=15, size_hint=(1, None), height=70)
+        btn_layout = MDBoxLayout(orientation='horizontal', spacing=Spacing.MD, size_hint=(1, None), height=70, md_bg_color=Colors.DARK_SURFACE)
 
-        confirm_btn = ModernButton(
-            text='Удалить выбранные',
-            bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(0.34, None),
-            height=70,
-            font_size='16sp'
-        )
+        confirm_btn = MDButton(style='filled', size_hint=(0.34, None), height=dp(70))
+        confirm_btn.add_widget(MDButtonText(text='Удалить выбранные', theme_text_color='Custom', text_color=[1,0.3,0.3,1]))
 
-        clear_all_btn = ModernButton(
-            text='Очистить все',
-            bg_color=get_color_from_hex('#FFA500'),
-            size_hint=(0.33, None),
-            height=70,
-            font_size='16sp'
-        )
+        clear_all_btn = MDButton(style='filled', size_hint=(0.33, None), height=dp(70))
+        clear_all_btn.add_widget(MDButtonText(text='Очистить все', theme_text_color='Custom', text_color=[0.7,0.7,0.7,1]))
 
-        cancel_btn = ModernButton(
-            text='Отмена',
-            bg_color=get_color_from_hex('#808080'),
-            size_hint=(0.33, None),
-            height=70,
-            font_size='16sp'
-        )
+        cancel_btn = MDButton(style='filled', size_hint=(0.33, None), height=dp(70))
+        cancel_btn.add_widget(MDButtonText(text='Отмена', theme_text_color='Custom', text_color=[0.7,0.7,0.7,1]))
 
         btn_layout.add_widget(confirm_btn)
         btn_layout.add_widget(clear_all_btn)
@@ -1075,9 +995,12 @@ class MolodnikiTreeDataInputPopup(Popup):
         content.add_widget(btn_layout)
 
         popup = Popup(
-            title="Удаление пород",
+            title="",
             content=content,
-            size_hint=(0.8, 0.7)
+            size_hint=(0.85, 0.85),
+            separator_height=0,
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3]
         )
 
         def confirm_delete(btn):
@@ -1137,62 +1060,56 @@ class MolodnikiTreeDataInputPopup(Popup):
             self.table_screen.show_success("Все породы очищены!")
             popup.dismiss()
 
-        confirm_btn.bind(on_press=confirm_delete)
-        clear_all_btn.bind(on_press=clear_all)
-        cancel_btn.bind(on_press=popup.dismiss)
+        confirm_btn.bind(on_release=confirm_delete)
+        clear_all_btn.bind(on_release=clear_all)
+        cancel_btn.bind(on_release=popup.dismiss)
 
         popup.open()
 
     def show_breed_choice_popup(self, instance, selected_breed):
         """Показать popup с выбором после добавления первой породы"""
-        content = BoxLayout(orientation='vertical', spacing=15, padding=15)
+        content = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, padding=Spacing.MD, md_bg_color=Colors.DARK_SURFACE, adaptive_height=True)
 
         # Заголовок
-        title_label = Label(
+        title_label = MDLabel(
             text=f"Порода '{selected_breed}' добавлена!",
-            font_name='Roboto',
-            font_size='20sp',
-            bold=True,
+            font_style='Headline',
+            role='medium',
+            theme_text_color='Custom',
+            text_color=Colors.GREEN,
             size_hint=(1, None),
-            height=40,
-            color=(0, 0.5, 0, 1)
+            height=40
         )
         content.add_widget(title_label)
 
         # Информация о номере породы
-        info_label = Label(
+        info_label = MDLabel(
             text="Выберите действие:",
-            font_name='Roboto',
-            font_size='16sp',
+            font_style='Title',
+            role='small',
+            theme_text_color='Custom',
+            text_color=[1,1,1,1],
             size_hint=(1, None),
-            height=30,
-            color=(0.3, 0.3, 0.3, 1)
+            height=30
         )
         content.add_widget(info_label)
 
-        btn_layout = BoxLayout(orientation='vertical', spacing=15, size_hint=(1, None), height=150)
-        add_more_btn = ModernButton(
-            text='Добавить еще породу',
-            bg_color=get_color_from_hex('#00FF00'),
-            size_hint=(1, None),
-            height=65,
-            font_size='18sp'
-        )
-        save_exit_btn = ModernButton(
-            text='Сохранить и выйти',
-            bg_color=get_color_from_hex('#32CD32'),
-            size_hint=(1, None),
-            height=65,
-            font_size='18sp'
-        )
+        btn_layout = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, size_hint=(1, None), height=150)
+        add_more_btn = MDButton(style='filled', md_bg_color=get_color_from_hex('#00FF00'), size_hint=(1, None), height=dp(65))
+        add_more_btn.add_widget(MDButtonText(text='Добавить еще породу'))
+        save_exit_btn = MDButton(style='filled', md_bg_color=get_color_from_hex('#32CD32'), size_hint=(1, None), height=dp(65))
+        save_exit_btn.add_widget(MDButtonText(text='Сохранить и выйти'))
         btn_layout.add_widget(add_more_btn)
         btn_layout.add_widget(save_exit_btn)
         content.add_widget(btn_layout)
 
         popup = Popup(
-            title="Выбор действия",
+            title="",
             content=content,
-            size_hint=(0.8, 0.5)
+            size_hint=(0.85, 0.85),
+            separator_height=0,
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3]
         )
 
         def add_more_breed(btn):
@@ -1203,60 +1120,52 @@ class MolodnikiTreeDataInputPopup(Popup):
             popup.dismiss()
             self.table_screen.show_success("Данные по площадке сохранены!")
 
-        add_more_btn.bind(on_press=add_more_breed)
-        save_exit_btn.bind(on_press=save_and_exit)
+        add_more_btn.bind(on_release=add_more_breed)
+        save_exit_btn.bind(on_release=save_and_exit)
 
         popup.open()
 
     def show_custom_breed_popup(self, instance, breed_type):
         """Показать popup для ввода названия другой породы"""
-        content = BoxLayout(orientation='vertical', spacing=15, padding=15)
+        content = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, padding=Spacing.MD, md_bg_color=Colors.DARK_SURFACE, adaptive_height=True)
 
         # Заголовок
-        title_label = Label(
+        title_label = MDLabel(
             text="Введите название другой породы",
-            font_name='Roboto',
-            font_size='20sp',
-            bold=True,
+            font_style='Headline',
+            role='medium',
+            theme_text_color='Custom',
+            text_color=Colors.GREEN,
             size_hint=(1, None),
-            height=50,
-            color=(0, 0.5, 0, 1)
+            height=50
         )
         content.add_widget(title_label)
 
-        self.custom_breed_input = TextInput(
+        self.custom_breed_input = MDTextField(
             hint_text="Название породы",
-            multiline=False,
+            mode="outlined",
             size_hint=(1, None),
             height=50,
-            font_name='Roboto',
-            font_size='16sp'
+            line_color_focus=Colors.GREEN
         )
         content.add_widget(self.custom_breed_input)
 
-        btn_layout = BoxLayout(orientation='horizontal', spacing=15, size_hint=(1, None), height=70)
-        save_btn = ModernButton(
-            text='Сохранить',
-            bg_color=get_color_from_hex('#32CD32'),
-            size_hint=(0.5, None),
-            height=70,
-            font_size='18sp'
-        )
-        cancel_btn = ModernButton(
-            text='Отмена',
-            bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(0.5, None),
-            height=70,
-            font_size='18sp'
-        )
+        btn_layout = MDBoxLayout(orientation='horizontal', spacing=Spacing.MD, size_hint=(1, None), height=70, md_bg_color=Colors.DARK_SURFACE)
+        save_btn = MDButton(style='filled', size_hint=(0.5, None), height=dp(70))
+        save_btn.add_widget(MDButtonText(text='Сохранить', theme_text_color='Custom', text_color=Colors.GREEN))
+        cancel_btn = MDButton(style='filled', size_hint=(0.5, None), height=dp(70))
+        cancel_btn.add_widget(MDButtonText(text='Отмена', theme_text_color='Custom', text_color=[1,0.3,0.3,1]))
         btn_layout.add_widget(save_btn)
         btn_layout.add_widget(cancel_btn)
         content.add_widget(btn_layout)
 
         popup = Popup(
-            title=f"Ввод {'хвойной' if breed_type == 'coniferous' else 'лиственной'} породы",
+            title="",
             content=content,
-            size_hint=(0.8, 0.5)
+            size_hint=(0.85, 0.85),
+            separator_height=0,
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3]
         )
 
         def save_custom_breed(btn):
@@ -1278,8 +1187,8 @@ class MolodnikiTreeDataInputPopup(Popup):
             else:
                 self.table_screen.show_error("Название породы не может быть пустым!")
 
-        save_btn.bind(on_press=save_custom_breed)
-        cancel_btn.bind(on_press=popup.dismiss)
+        save_btn.bind(on_release=save_custom_breed)
+        cancel_btn.bind(on_release=popup.dismiss)
 
         popup.open()
 
@@ -1460,6 +1369,18 @@ class ExtendedMolodnikiTableScreen(Screen):
         except sqlite3.OperationalError:
             pass  # Столбец уже существует
 
+        # Добавляем колонку poroda если её нет (для хранения JSON пород)
+        try:
+            cursor.execute("ALTER TABLE molodniki_data ADD COLUMN poroda TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass  # Столбец уже существует
+
+        # Добавляем колонку radius если её нет
+        try:
+            cursor.execute("ALTER TABLE molodniki_data ADD COLUMN radius REAL DEFAULT 5.64")
+        except sqlite3.OperationalError:
+            pass  # Столбец уже существует
+
         # Создаем таблицу для хранения итогов по страницам
         cursor.execute('''CREATE TABLE IF NOT EXISTS molodniki_totals (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1538,58 +1459,57 @@ class ExtendedMolodnikiTableScreen(Screen):
 
     def show_clear_breeds_popup(self, breed_type):
         """Показать popup для очистки пользовательских пород с выбором через галочки"""
-        content = BoxLayout(orientation='vertical', spacing=15, padding=15)
+        content = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, padding=Spacing.MD, md_bg_color=Colors.DARK_SURFACE, adaptive_height=True)
 
         # Заголовок
-        title_label = Label(
+        title_label = MDLabel(
             text=f"Очистка {'хвойных' if breed_type == 'coniferous' else 'лиственных'} пород",
-            font_name='Roboto',
-            font_size='20sp',
-            bold=True,
+            font_style='Headline',
+            role='medium',
+            theme_text_color='Custom',
+            text_color=Colors.GREEN,
             size_hint=(1, None),
-            height=50,
-            color=(0, 0.5, 0, 1)
+            height=50
         )
         content.add_widget(title_label)
 
         # Описание
-        desc_label = Label(
+        desc_label = MDLabel(
             text="Отметьте породы для удаления:",
-            font_name='Roboto',
-            font_size='16sp',
+            font_style='Title',
+            role='small',
+            theme_text_color='Custom',
+            text_color=[1,1,1,1],
             size_hint=(1, None),
-            height=35,
-            color=(0.3, 0.3, 0.3, 1),
-            halign='left'
+            height=35
         )
-        desc_label.bind(size=desc_label.setter('text_size'))
         content.add_widget(desc_label)
 
         # Загружаем пользовательские породы
         custom_breeds = self.load_custom_breeds(breed_type)
 
         if not custom_breeds:
-            no_breeds_label = Label(
+            no_breeds_label = MDLabel(
                 text="Нет пользовательских пород для удаления",
-                font_name='Roboto',
-                font_size='16sp',
+                font_style='Title',
+                role='small',
+                theme_text_color='Custom',
+                text_color=[0.5,0.5,0.5,1],
                 size_hint=(1, None),
-                height=40,
-                color=(0.5, 0.5, 0.5, 1)
+                height=40
             )
             content.add_widget(no_breeds_label)
         else:
             # ScrollView для списка пород
             scroll = ScrollView(size_hint=(1, None), height=300)
-            breeds_layout = GridLayout(cols=1, spacing=10, size_hint_y=None)
-            breeds_layout.bind(minimum_height=breeds_layout.setter('height'))
+            breeds_layout = MDGridLayout(cols=1, spacing=Spacing.SM, adaptive_height=True, size_hint_y=None, padding=[0, 0])
 
             # Хранилище для чекбоксов
             self.breed_checkboxes = {}
 
             for breed in custom_breeds:
                 # Создаем горизонтальный layout для чекбокса и названия
-                breed_row = BoxLayout(orientation='horizontal', size_hint_y=None, height=50, spacing=15)
+                breed_row = MDBoxLayout(orientation='horizontal', size_hint_y=None, height=50, spacing=Spacing.MD)
 
                 # Чекбокс (используем Button как чекбокс)
                 from kivy.uix.checkbox import CheckBox
@@ -1597,16 +1517,15 @@ class ExtendedMolodnikiTableScreen(Screen):
                 self.breed_checkboxes[breed] = checkbox
 
                 # Название породы
-                breed_label = Label(
+                breed_label = MDLabel(
                     text=breed,
-                    font_name='Roboto',
-                    font_size='16sp',
+                    font_style='Title',
+                    role='small',
+                    theme_text_color='Custom',
+                    text_color=[1,1,1,1],
                     size_hint=(1, None),
-                    height=50,
-                    halign='left',
-                    color=(0.2, 0.2, 0.2, 1)
+                    height=50
                 )
-                breed_label.bind(size=breed_label.setter('text_size'))
 
                 breed_row.add_widget(checkbox)
                 breed_row.add_widget(breed_label)
@@ -1616,34 +1535,19 @@ class ExtendedMolodnikiTableScreen(Screen):
             content.add_widget(scroll)
 
         # Кнопки управления
-        btn_layout = BoxLayout(orientation='horizontal', spacing=15, size_hint=(1, None), height=70)
+        btn_layout = MDBoxLayout(orientation='horizontal', spacing=Spacing.MD, size_hint=(1, None), height=70)
 
         # Кнопка "Выбрать все"
-        select_all_btn = ModernButton(
-            text='Выбрать все',
-            bg_color=get_color_from_hex('#4169E1'),
-            size_hint=(0.33, None),
-            height=70,
-            font_size='16sp'
-        )
+        select_all_btn = MDButton(style='filled', md_bg_color=get_color_from_hex('#4169E1'), size_hint=(0.33, None), height=dp(70))
+        select_all_btn.add_widget(MDButtonText(text='Выбрать все'))
 
         # Кнопка "Удалить"
-        delete_btn = ModernButton(
-            text='Удалить',
-            bg_color=get_color_from_hex('#FF0000'),
-            size_hint=(0.33, None),
-            height=70,
-            font_size='16sp'
-        )
+        delete_btn = MDButton(style='filled', md_bg_color=get_color_from_hex('#FF0000'), size_hint=(0.33, None), height=dp(70))
+        delete_btn.add_widget(MDButtonText(text='Удалить'))
 
         # Кнопка "Отмена"
-        cancel_btn = ModernButton(
-            text='Отмена',
-            bg_color=get_color_from_hex('#808080'),
-            size_hint=(0.33, None),
-            height=70,
-            font_size='16sp'
-        )
+        cancel_btn = MDButton(style='filled', md_bg_color=get_color_from_hex('#808080'), size_hint=(0.33, None), height=dp(70))
+        cancel_btn.add_widget(MDButtonText(text='Отмена'))
 
         btn_layout.add_widget(select_all_btn)
         btn_layout.add_widget(delete_btn)
@@ -1651,9 +1555,12 @@ class ExtendedMolodnikiTableScreen(Screen):
         content.add_widget(btn_layout)
 
         popup = Popup(
-            title="Очистка пород",
+            title="",
             content=content,
-            size_hint=(0.8, 0.7)
+            size_hint=(0.85, 0.85),
+            separator_height=0,
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3]
         )
 
         def select_all(instance):
@@ -1667,68 +1574,68 @@ class ExtendedMolodnikiTableScreen(Screen):
             
             if not breeds_to_delete:
                 # Показываем сообщение что ничего не выбрано
+                error_content = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, padding=Spacing.MD, md_bg_color=Colors.DARK_SURFACE, adaptive_height=True)
+                error_content.add_widget(MDLabel(
+                    text="Не выбрано ни одной породы для удаления",
+                    font_style='Title',
+                    role='small',
+                    theme_text_color='Custom',
+                    text_color=[1,1,1,1]
+                ))
                 error_popup = Popup(
-                    title="Внимание",
-                    content=Label(
-                        text="Не выбрано ни одной породы для удаления",
-                        font_name='Roboto',
-                        font_size='16sp',
-                        color=(0.2, 0.2, 0.2, 1)
-                    ),
-                    size_hint=(0.5, 0.3),
+                    title="",
+                    content=error_content,
+                    size_hint=(0.85, 0.85),
+                    separator_height=0,
+                    background_color=[0,0,0,0.3],
+                    overlay_color=[0,0,0,0.3],
                     auto_dismiss=True
                 )
                 error_popup.open()
                 return
 
             # Подтверждение удаления
-            confirm_content = BoxLayout(orientation='vertical', spacing=15, padding=15)
+            confirm_content = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, padding=Spacing.MD, md_bg_color=Colors.DARK_SURFACE, adaptive_height=True)
             
             # Заголовок
-            confirm_title = Label(
+            confirm_title = MDLabel(
                 text="Подтверждение удаления",
-                font_name='Roboto',
-                font_size='18sp',
-                bold=True,
-                color=(0, 0.5, 0, 1),
+                font_style='Headline',
+                role='medium',
+                theme_text_color='Custom',
+                text_color=Colors.GREEN,
                 size_hint=(1, None),
                 height=40
             )
             confirm_content.add_widget(confirm_title)
             
-            confirm_label = Label(
+            confirm_label = MDLabel(
                 text=f"Вы уверены, что хотите удалить {len(breeds_to_delete)} пород(ы)?",
-                font_name='Roboto',
-                font_size='16sp',
-                color=(0.2, 0.2, 0.2, 1),
+                font_style='Title',
+                role='small',
+                theme_text_color='Custom',
+                text_color=[1,1,1,1],
                 size_hint=(1, None),
                 height=50
             )
             confirm_content.add_widget(confirm_label)
 
-            confirm_btn_layout = BoxLayout(orientation='horizontal', spacing=15, size_hint=(1, None), height=70)
-            confirm_yes_btn = ModernButton(
-                text='Да, удалить',
-                bg_color=get_color_from_hex('#FF6347'),
-                size_hint=(0.5, None),
-                height=70,
-                font_size='16sp'
-            )
-            confirm_no_btn = ModernButton(
-                text='Отмена',
-                bg_color=get_color_from_hex('#32CD32'),
-                size_hint=(0.5, None),
-                height=70,
-                font_size='16sp'
-            )
+            confirm_btn_layout = MDBoxLayout(orientation='horizontal', spacing=Spacing.MD, size_hint=(1, None), height=70)
+            confirm_yes_btn = MDButton(style='filled', md_bg_color=get_color_from_hex('#FF6347'), size_hint=(0.5, None), height=dp(70))
+            confirm_yes_btn.add_widget(MDButtonText(text='Да, удалить'))
+            confirm_no_btn = MDButton(style='filled', md_bg_color=get_color_from_hex('#32CD32'), size_hint=(0.5, None), height=dp(70))
+            confirm_no_btn.add_widget(MDButtonText(text='Отмена'))
             confirm_btn_layout.add_widget(confirm_yes_btn)
             confirm_btn_layout.add_widget(confirm_no_btn)
             confirm_content.add_widget(confirm_btn_layout)
 
             confirm_popup = Popup(
-                title="Подтверждение удаления",
+                title="",
                 content=confirm_content,
-                size_hint=(0.6, 0.45)
+                size_hint=(0.85, 0.85),
+                separator_height=0,
+                background_color=[0,0,0,0.3],
+                overlay_color=[0,0,0,0.3]
             )
 
             def do_delete(instance):
@@ -1747,139 +1654,125 @@ class ExtendedMolodnikiTableScreen(Screen):
                 popup.dismiss()
                 
                 # Показываем сообщение об успехе
+                success_content = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, padding=Spacing.MD, md_bg_color=Colors.DARK_SURFACE, adaptive_height=True)
+                success_content.add_widget(MDLabel(
+                    text=f"Удалено {len(breeds_to_delete)} пород(ы)",
+                    font_style='Title',
+                    role='small',
+                    theme_text_color='Custom',
+                    text_color=Colors.GREEN
+                ))
                 success_popup = Popup(
-                    title="Успешно",
-                    content=Label(
-                        text=f"Удалено {len(breeds_to_delete)} пород(ы)",
-                        font_name='Roboto',
-                        color=(0, 0.5, 0, 1)
-                    ),
-                    size_hint=(0.5, 0.3),
+                    title="",
+                    content=success_content,
+                    size_hint=(0.85, 0.85),
+                    separator_height=0,
+                    background_color=[0,0,0,0.3],
+                    overlay_color=[0,0,0,0.3],
                     auto_dismiss=True
                 )
                 success_popup.open()
 
-            confirm_yes_btn.bind(on_press=do_delete)
-            confirm_no_btn.bind(on_press=confirm_popup.dismiss)
+            confirm_yes_btn.bind(on_release=do_delete)
+            confirm_no_btn.bind(on_release=confirm_popup.dismiss)
             confirm_popup.open()
 
-        select_all_btn.bind(on_press=select_all)
-        delete_btn.bind(on_press=delete_selected)
-        cancel_btn.bind(on_press=popup.dismiss)
+        select_all_btn.bind(on_release=select_all)
+        delete_btn.bind(on_release=delete_selected)
+        cancel_btn.bind(on_release=popup.dismiss)
 
         popup.open()
 
     def create_ui(self):
-        main_layout = BoxLayout(orientation='horizontal', padding=10, spacing=10)
+        main_layout = MDBoxLayout(orientation='vertical', md_bg_color=[0.12, 0.12, 0.12, 1])
 
-        with self.canvas.before:
-            self.bg_color = Color(1, 1, 1, 1)
-            self.bg_rect = Rectangle(pos=self.pos, size=self.size)
-            self.bind(pos=self._update_bg, size=self._update_bg)
-
-        self._update_background(self.theme_manager.current_theme)
-
-        # Табличная часть (левая панель) - уменьшаем для видимости кнопок
-        table_panel = BoxLayout(orientation='vertical', size_hint_x=0.75)
-
-        # Адресная строка (текстовое поле для отображения адреса)
-        self.address_label = Label(
-            text=f"{self.current_quarter} {self.current_plot} {self.current_forestry}",
-            font_name='Roboto',
-            size_hint=(1, None),
-            height=40,
-            color=self._get_text_color(),
-            halign='center',
-            valign='middle'
+        # Верхняя панель
+        toolbar = MDTopAppBar(
+            type='small', elevation=2,
+            md_bg_color=Colors.SECONDARY,
         )
-        self.address_label.bind(size=self.address_label.setter('text_size'))
+        leading = MDTopAppBarLeadingButtonContainer()
+        leading.add_widget(MDActionTopAppBarButton(
+            icon='arrow-left', on_release=self.go_back))
+        toolbar.add_widget(leading)
+        self._toolbar_title = MDTopAppBarTitle(text=f'Участок №{self.current_section}')
+        toolbar.add_widget(self._toolbar_title)
+        trailing = MDTopAppBarTrailingButtonContainer()
+        trailing.add_widget(MDActionTopAppBarButton(
+            icon='refresh', on_release=self.clear_table_data))
+        toolbar.add_widget(trailing)
+        main_layout.add_widget(toolbar)
 
-        # Левая панель с кнопками и адресом
-        left_panel = BoxLayout(orientation='horizontal', size_hint=(1, None), height=400, spacing=20)
-
-        # Кнопки слева вертикально
-        buttons_layout = BoxLayout(orientation='vertical', size_hint=(None, 1), width=150, spacing=10)
-
-        # Кнопка Адрес
-        address_btn = ModernButton(
-            text='Адрес',
-            bg_color=get_color_from_hex('#87CEEB'),
-            size_hint=(1, None),
-            height=45,
-            font_size='16sp'
+        # Контент
+        scroll = MDScrollView()
+        content = MDBoxLayout(
+            orientation='vertical', spacing=Spacing.LG,
+            padding=[Spacing.MD, Spacing.MD],
+            adaptive_height=True,
         )
-        address_btn.bind(on_press=self.show_address_popup)
-        buttons_layout.add_widget(address_btn)
 
-        # Кнопка Файл
-        file_btn = ModernButton(
-            text='Файл',
-            bg_color=get_color_from_hex('#FFD700'),
-            size_hint=(1, None),
-            height=45,
-            font_size='16sp'
+        # Карточка с адресной информацией
+        address_card = MDCard(
+            orientation='vertical', padding=Spacing.MD,
+            size_hint_y=None, height=dp(56),
+            radius=[Spacing.RADIUS_LG], elevation=1,
+            md_bg_color=[0.18, 0.18, 0.18, 0.95],
         )
-        file_btn.bind(on_press=self.show_file_popup)
-        buttons_layout.add_widget(file_btn)
-
-        # Кнопка Детали
-        additional_functions_btn = ModernButton(
-            text='Детали',
-            bg_color=get_color_from_hex('#9370DB'),
-            size_hint=(1, None),
-            height=45,
-            font_size='16sp'
+        self.address_label = MDLabel(
+            text=f"Участок №{self.current_section}  |  {self.current_quarter} {self.current_plot} {self.current_forestry}",
+            theme_text_color='Custom', text_color=[1,1,1,1],
+            font_style='Title', role='small',
+            adaptive_height=True, valign='middle',
         )
-        additional_functions_btn.bind(on_press=self.show_additional_functions_popup)
-        buttons_layout.add_widget(additional_functions_btn)
+        address_card.add_widget(self.address_label)
+        content.add_widget(address_card)
 
-        # Кнопка Итого
-        total_summary_btn = ModernButton(
-            text='Итого',
-            bg_color=get_color_from_hex('#00FF00'),
-            size_hint=(1, None),
-            height=45,
-            font_size='16sp',
-            bold=True
+        # Сетка кнопок в 2 колонки
+        buttons = [
+            ('map-marker', 'Адрес', Colors.BTN_INFO, self.show_address_popup),
+            ('file-outline', 'Файл', Colors.BTN_WARNING, self.show_file_popup),
+            ('clipboard-text-outline', 'Детали', Colors.BTN_PURPLE, self.show_additional_functions_popup),
+            ('calculator', 'Итого', Colors.BTN_SUCCESS, self.show_total_summary_popup),
+            ('file-document-edit', 'Проект', Colors.BTN_TEAL, self.generate_care_project),
+            ('exit-to-app', 'Меню', Colors.BTN_DANGER, self.go_back),
+        ]
+
+        grid = MDBoxLayout(
+            orientation='vertical', spacing=Spacing.MD,
+            size_hint_y=None, adaptive_height=True,
         )
-        total_summary_btn.bind(on_press=self.show_total_summary_popup)
-        buttons_layout.add_widget(total_summary_btn)
+        for i in range(0, len(buttons), 2):
+            row = MDBoxLayout(
+                orientation='horizontal', spacing=Spacing.MD,
+                size_hint_y=None, height=dp(72),
+            )
+            for j in range(2):
+                if i + j < len(buttons):
+                    icon, text, color, cb = buttons[i + j]
+                    card = MDCard(
+                        orientation='horizontal', padding=[Spacing.MD, Spacing.SM],
+                        size_hint=(0.5, 1), radius=[Spacing.RADIUS_MD],
+                        elevation=1, md_bg_color=[0.18, 0.18, 0.18, 0.95],
+                        ripple_behavior=True,
+                        on_release=lambda x, c=cb: c(x),
+                    )
+                    icon_btn = MDIconButton(
+                        icon=icon,
+                        theme_icon_color='Custom', icon_color=color,
+                        font_size=dp(24),
+                    )
+                    card.add_widget(icon_btn)
+                    card.add_widget(MDLabel(
+                        text=text, font_size='14sp',
+                        theme_text_color='Custom', text_color=[1,1,1,1],
+                        adaptive_height=True, valign='middle',
+                    ))
+                    row.add_widget(card)
+            grid.add_widget(row)
+        content.add_widget(grid)
 
-        # Кнопка Проект
-        care_project_btn = ModernButton(
-            text='Проект',
-            bg_color=get_color_from_hex('#FF8C00'),
-            size_hint=(1, None),
-            height=45,
-            font_size='16sp',
-            bold=True
-        )
-        care_project_btn.bind(on_press=self.generate_care_project)
-        buttons_layout.add_widget(care_project_btn)
-
-        # Кнопка Меню
-        go_back_btn = ModernButton(
-            text='Меню',
-            bg_color=get_color_from_hex('#FF0000'),
-            size_hint=(1, None),
-            height=45,
-            font_size='16sp'
-        )
-        go_back_btn.bind(on_press=self.go_back)
-        buttons_layout.add_widget(go_back_btn)
-
-        left_panel.add_widget(buttons_layout)
-
-        # Адресная строка справа от кнопок
-        address_container = BoxLayout(orientation='vertical', size_hint=(1, 1), spacing=5)
-        address_container.add_widget(self.address_label)
-
-        left_panel.add_widget(address_container)
-
-        table_panel.add_widget(left_panel)
-        main_layout.add_widget(table_panel)
-
-        # Правая панель управления (убрана, кнопка "Меню" теперь в левой панели)
+        scroll.add_widget(content)
+        main_layout.add_widget(scroll)
         self.add_widget(main_layout)
 
     def _update_bg(self, instance, value):
@@ -1905,7 +1798,10 @@ class ExtendedMolodnikiTableScreen(Screen):
             return get_color_from_hex(theme['text_color'])
 
     def update_section_label(self):
-        self.section_label.text = f"{self.current_section}"
+        if hasattr(self, '_toolbar_title') and self._toolbar_title:
+            self._toolbar_title.text = f'Участок №{self.current_section}'
+        if hasattr(self, 'address_label') and self.address_label:
+            self.address_label.text = f"Участок №{self.current_section}"
 
     def toggle_edit_mode(self, instance):
         self.edit_mode = not self.edit_mode
@@ -1960,38 +1856,29 @@ class ExtendedMolodnikiTableScreen(Screen):
         """Показать popup для выбора типа породы"""
         if not value: return
 
-        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        content = MDBoxLayout(orientation='vertical', spacing=10, padding=10, md_bg_color=Colors.DARK_SURFACE)
 
         # Кнопки выбора типа породы
-        type_layout = BoxLayout(orientation='horizontal', spacing=10)
-        coniferous_btn = ModernButton(
-            text='Хвойные',
-            bg_color=get_color_from_hex('#228B22'),
-            size_hint=(0.5, None),
-            height=50
-        )
-        deciduous_btn = ModernButton(
-            text='Лиственные',
-            bg_color=get_color_from_hex('#32CD32'),
-            size_hint=(0.5, None),
-            height=50
-        )
+        type_layout = MDBoxLayout(orientation='horizontal', spacing=10)
+        coniferous_btn = MDButton(style='filled', size_hint=(0.5, None), height=50)
+        coniferous_btn.add_widget(MDButtonText(text='Хвойные', theme_text_color='Custom', text_color=Colors.GREEN))
+        deciduous_btn = MDButton(style='filled', size_hint=(0.5, None), height=50)
+        deciduous_btn.add_widget(MDButtonText(text='Лиственные', theme_text_color='Custom', text_color=Colors.GREEN))
         type_layout.add_widget(coniferous_btn)
         type_layout.add_widget(deciduous_btn)
         content.add_widget(type_layout)
 
         # Кнопка отмены
-        cancel_btn = ModernButton(
-            text='Отмена',
-            bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(0.5, 1),
-            height=50
-        )
+        cancel_btn = MDButton(style='filled', size_hint=(0.5, 1), height=50)
+        cancel_btn.add_widget(MDButtonText(text='Отмена', theme_text_color='Custom', text_color=[1,0.3,0.3,1]))
         content.add_widget(cancel_btn)
 
         popup = Popup(
-            title="Выберите тип породы",
+            title="",
             content=content,
+            separator_height=0,
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3],
             size_hint=(0.8, 0.5)
         )
 
@@ -2003,23 +1890,24 @@ class ExtendedMolodnikiTableScreen(Screen):
             self.show_breed_selection_popup(instance, 'deciduous')
             popup.dismiss()
 
-        coniferous_btn.bind(on_press=select_coniferous)
-        deciduous_btn.bind(on_press=select_deciduous)
-        cancel_btn.bind(on_press=popup.dismiss)
+        coniferous_btn.bind(on_release=select_coniferous)
+        deciduous_btn.bind(on_release=select_deciduous)
+        cancel_btn.bind(on_release=popup.dismiss)
 
         popup.open()
 
     def show_breed_selection_popup(self, instance, breed_type):
         """Показать popup для выбора конкретной породы из словаря"""
-        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        content = MDBoxLayout(orientation='vertical', spacing=10, padding=10, md_bg_color=Colors.DARK_SURFACE)
 
         # Заголовок
-        title_label = Label(
+        title_label = MDLabel(
             text=f"Выберите {'хвойную' if breed_type == 'coniferous' else 'лиственную'} породу",
-            font_name='Roboto',
             bold=True,
             size_hint=(1, None),
-            height=30
+            height=30,
+            theme_text_color='Custom',
+            text_color=Colors.TEXT_ON_DARK
         )
         content.add_widget(title_label)
 
@@ -2041,59 +1929,45 @@ class ExtendedMolodnikiTableScreen(Screen):
 
         # ScrollView для списка пород
         scroll = ScrollView(size_hint=(1, None), height=300)
-        breeds_layout = GridLayout(cols=1, spacing=5, size_hint_y=None)
+        breeds_layout = MDGridLayout(cols=1, spacing=5, size_hint_y=None, md_bg_color=Colors.DARK_SURFACE)
         breeds_layout.bind(minimum_height=breeds_layout.setter('height'))
 
         for breed in all_breeds:
-            btn = ModernButton(
-                text=breed,
-                bg_color=get_color_from_hex('#87CEEB'),
-                size_hint=(1, None),
-                height=50,
-                font_size='14sp'
-            )
-            btn.bind(on_press=lambda x, b=breed: self.select_breed(instance, breed_type, b))
+            btn = MDButton(style='filled', size_hint=(1, None), height=50)
+            btn.add_widget(MDButtonText(text=breed, theme_text_color='Custom', text_color=[0.7,0.7,0.7,1]))
+            btn.bind(on_release=lambda x, b=breed: self.select_breed(instance, breed_type, b))
             breeds_layout.add_widget(btn)
 
         scroll.add_widget(breeds_layout)
         content.add_widget(scroll)
 
         # Кнопка "Новая"
-        other_btn = ModernButton(
-            text='Новая',
-            bg_color=get_color_from_hex('#DDA0DD'),
-            size_hint=(1, None),
-            height=50
-        )
-        other_btn.bind(on_press=lambda x: self.select_breed(instance, breed_type, 'other'))
+        other_btn = MDButton(style='filled', size_hint=(1, None), height=50)
+        other_btn.add_widget(MDButtonText(text='Новая', theme_text_color='Custom', text_color=Colors.GREEN))
+        other_btn.bind(on_release=lambda x: self.select_breed(instance, breed_type, 'other'))
         content.add_widget(other_btn)
 
         # Кнопка "Очистить"
-        clear_btn = ModernButton(
-            text='Очистить',
-            bg_color=get_color_from_hex('#FFA500'),
-            size_hint=(1, None),
-            height=50
-        )
-        clear_btn.bind(on_press=lambda x: self.show_clear_breeds_popup(breed_type))
+        clear_btn = MDButton(style='filled', size_hint=(1, None), height=50)
+        clear_btn.add_widget(MDButtonText(text='Очистить', theme_text_color='Custom', text_color=[0.7,0.7,0.7,1]))
+        clear_btn.bind(on_release=lambda x: self.show_clear_breeds_popup(breed_type))
         content.add_widget(clear_btn)
 
         # Кнопка отмены
-        cancel_btn = ModernButton(
-            text='Отмена',
-            bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(1, None),
-            height=50
-        )
+        cancel_btn = MDButton(style='filled', size_hint=(1, None), height=50)
+        cancel_btn.add_widget(MDButtonText(text='Отмена', theme_text_color='Custom', text_color=[1,0.3,0.3,1]))
         content.add_widget(cancel_btn)
 
         popup = Popup(
-            title=f"Выбор {'хвойной' if breed_type == 'coniferous' else 'лиственной'} породы",
+            title="",
             content=content,
+            separator_height=0,
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3],
             size_hint=(0.85, 0.85)
         )
 
-        cancel_btn.bind(on_press=popup.dismiss)
+        cancel_btn.bind(on_release=popup.dismiss)
         popup.open()
 
     def select_breed(self, instance, breed_type, selected_breed):
@@ -2107,31 +1981,27 @@ class ExtendedMolodnikiTableScreen(Screen):
 
     def show_breed_details_popup(self, instance, breed_type, selected_breed=None):
         """Показать popup для ввода параметров породы (единый поток сохранения)"""
-        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        content = MDBoxLayout(orientation='vertical', spacing=10, padding=10, md_bg_color=Colors.DARK_SURFACE)
 
         # Получаем номер площадки из row_index
         plot_number = instance.row_index + 1 if hasattr(instance, 'row_index') else 1
 
         # Бокс для отображения сохраненных пород по площадке (в начале popup)
-        plot_breeds_box = BoxLayout(
+        plot_breeds_box = MDBoxLayout(
             orientation='vertical',
             size_hint=(1, None),
             height=150,
             padding=[10, 10],
-            spacing=5
+            spacing=5,
+            md_bg_color=Colors.CARD_BG
         )
-        with plot_breeds_box.canvas.before:
-            Color(rgba=get_color_from_hex('#F0F8FF'))
-            plot_breeds_box.bg = RoundedRectangle(pos=plot_breeds_box.pos, size=plot_breeds_box.size, radius=[10])
-            plot_breeds_box.bind(pos=lambda *args: setattr(plot_breeds_box.bg, 'pos', plot_breeds_box.pos),
-                                size=lambda *args: setattr(plot_breeds_box.bg, 'size', plot_breeds_box.size))
         
-        plot_breeds_title = Label(
+        plot_breeds_title = MDLabel(
             text=f'Площадка №{plot_number} - Сохраненные породы:',
-            font_name='Roboto',
             font_size='14sp',
             bold=True,
-            color=(0, 0.3, 0.5, 1),
+            theme_text_color='Custom',
+            text_color=Colors.GREEN,
             size_hint=(1, None),
             height=25,
             halign='left'
@@ -2141,7 +2011,7 @@ class ExtendedMolodnikiTableScreen(Screen):
         
         # ScrollView для списка пород на площадке
         plot_breeds_scroll = ScrollView(size_hint=(1, None), height=110)
-        plot_breeds_list = GridLayout(cols=1, spacing=3, size_hint_y=None)
+        plot_breeds_list = MDGridLayout(cols=1, spacing=3, size_hint_y=None, md_bg_color=Colors.CARD_BG)
         plot_breeds_list.bind(minimum_height=plot_breeds_list.setter('height'))
         
         # Получаем существующие породы для этой площадки
@@ -2165,11 +2035,11 @@ class ExtendedMolodnikiTableScreen(Screen):
                     if conif_density > 0:
                         density = conif_density
                 
-                breed_item = Label(
+                breed_item = MDLabel(
                     text=f'{i+1}. {breed_name} ({breed_type_display}) - Густота: {density}, Высота: {height}м',
-                    font_name='Roboto',
                     font_size='12sp',
-                    color=(0.2, 0.2, 0.2, 1),
+                    theme_text_color='Custom',
+                    text_color=[0.7,0.7,0.7,1],
                     size_hint=(1, None),
                     height=25,
                     halign='left'
@@ -2177,11 +2047,11 @@ class ExtendedMolodnikiTableScreen(Screen):
                 breed_item.bind(size=lambda *args: setattr(breed_item, 'text_size', (breed_item.width, None)))
                 plot_breeds_list.add_widget(breed_item)
         else:
-            no_breeds_label = Label(
+            no_breeds_label = MDLabel(
                 text='Породы еще не добавлены',
-                font_name='Roboto',
                 font_size='12sp',
-                color=(0.5, 0.5, 0.5, 1),
+                theme_text_color='Custom',
+                text_color=[0.5,0.5,0.5,1],
                 size_hint=(1, None),
                 height=25,
                 halign='left'
@@ -2194,32 +2064,32 @@ class ExtendedMolodnikiTableScreen(Screen):
         content.add_widget(plot_breeds_box)
 
         # Заголовок с названием породы
-        title_label = Label(
+        title_label = MDLabel(
             text=f"Добавление породы: {selected_breed}",
-            font_name='Roboto',
             font_size='18sp',
             bold=True,
             size_hint=(1, None),
             height=40,
-            color=(0, 0.5, 0, 1)
+            theme_text_color='Custom',
+            text_color=Colors.GREEN
         )
         content.add_widget(title_label)
 
         # Информация о типе породы
         type_text = "Хвойная порода" if breed_type == 'coniferous' else "Лиственная порода"
-        type_label = Label(
+        type_label = MDLabel(
             text=f"Тип: {type_text}",
-            font_name='Roboto',
             font_size='14sp',
             size_hint=(1, None),
             height=25,
-            color=(0.3, 0.3, 0.3, 1)
+            theme_text_color='Custom',
+            text_color=[0.7,0.7,0.7,1]
         )
         content.add_widget(type_label)
 
         # ScrollView для полей ввода параметров породы
         fields_scroll = ScrollView(size_hint=(1, None), height=200)
-        fields_layout = GridLayout(cols=2, spacing=10, size_hint_y=None)
+        fields_layout = MDGridLayout(cols=2, spacing=10, size_hint_y=None, md_bg_color=Colors.DARK_SURFACE)
         fields_layout.bind(minimum_height=fields_layout.setter('height'))
 
         if breed_type == 'coniferous':
@@ -2242,9 +2112,14 @@ class ExtendedMolodnikiTableScreen(Screen):
 
         self.breed_inputs = {}
         for label_text, field_key in fields:
-            lbl = Label(text=label_text, font_name='Roboto', size_hint=(None, None), size=(120, 40), halign='left', valign='middle')
+            lbl = MDLabel(text=label_text, size_hint=(None, None), size=(120, 40), halign='left', valign='middle', theme_text_color='Custom', text_color=Colors.TEXT_ON_DARK)
             lbl.bind(size=lambda *args: setattr(lbl, 'text_size', (lbl.width, None)))
-            inp = TextInput(multiline=False, size_hint=(None, None), size=(120, 40), font_name='Roboto')
+            inp = MDTextField(
+                mode="outlined",
+                size_hint=(None, None),
+                size=(120, 40),
+                line_color_focus=Colors.GREEN
+            )
             if field_key in ['density', 'age']:
                 inp.input_filter = 'int'
             elif field_key == 'height':
@@ -2255,8 +2130,7 @@ class ExtendedMolodnikiTableScreen(Screen):
                     inp.bind(text=self.update_coniferous_density)
             # Делаем поле густоты только для чтения для хвойных (рассчитывается автоматически)
             if field_key == 'density' and breed_type == 'coniferous':
-                inp.readonly = True
-                inp.background_color = (0.9, 0.9, 0.9, 1)
+                inp.disabled = True
             fields_layout.add_widget(lbl)
             fields_layout.add_widget(inp)
             self.breed_inputs[field_key] = inp
@@ -2276,55 +2150,34 @@ class ExtendedMolodnikiTableScreen(Screen):
 
         # Подсказка для хвойных пород
         if breed_type == 'coniferous':
-            hint_label = Label(
+            hint_label = MDLabel(
                 text="* Густота для хвойных рассчитывается автоматически как сумма градаций высот",
-                font_name='Roboto',
                 font_size='12sp',
                 size_hint=(1, None),
                 height=30,
-                color=(0.5, 0.5, 0.5, 1)
+                theme_text_color='Custom',
+                text_color=[0.5,0.5,0.5,1]
             )
             content.add_widget(hint_label)
 
         # Кнопки управления - добавление, удаление, сохранить и выход
-        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
+        btn_layout = MDBoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50, md_bg_color=Colors.DARK_SURFACE)
 
         # Главная кнопка - "Добавить"
-        save_add_btn = ModernButton(
-            text='Добавить',
-            bg_color=get_color_from_hex('#00FF00'),
-            size_hint=(0.25, 1),
-            height=50,
-            font_size='16sp',
-            bold=True
-        )
+        save_add_btn = MDButton(style='filled', size_hint=(0.25, 1), height=50)
+        save_add_btn.add_widget(MDButtonText(text='Добавить', theme_text_color='Custom', text_color=Colors.GREEN, bold=True))
 
         # Кнопка "Сохранить"
-        save_btn = ModernButton(
-            text='Сохранить',
-            bg_color=get_color_from_hex('#32CD32'),
-            size_hint=(0.25, 1),
-            height=50,
-            font_size='16sp'
-        )
+        save_btn = MDButton(style='filled', size_hint=(0.25, 1), height=50)
+        save_btn.add_widget(MDButtonText(text='Сохранить', theme_text_color='Custom', text_color=Colors.GREEN))
 
         # Кнопка удаления
-        delete_btn = ModernButton(
-            text='Удалить',
-            bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(0.25, 1),
-            height=50,
-            font_size='14sp'
-        )
+        delete_btn = MDButton(style='filled', size_hint=(0.25, 1), height=50)
+        delete_btn.add_widget(MDButtonText(text='Удалить', theme_text_color='Custom', text_color=[1,0.3,0.3,1]))
 
         # Кнопка выхода
-        exit_btn = ModernButton(
-            text='Выход',
-            bg_color=get_color_from_hex('#FFA500'),
-            size_hint=(0.25, 1),
-            height=50,
-            font_size='14sp'
-        )
+        exit_btn = MDButton(style='filled', size_hint=(0.25, 1), height=50)
+        exit_btn.add_widget(MDButtonText(text='Выход', theme_text_color='Custom', text_color=[0.7,0.7,0.7,1]))
 
         btn_layout.add_widget(save_add_btn)
         btn_layout.add_widget(save_btn)
@@ -2333,8 +2186,11 @@ class ExtendedMolodnikiTableScreen(Screen):
         content.add_widget(btn_layout)
 
         popup = Popup(
-            title=f"Параметры породы: {selected_breed}",
+            title="",
             content=content,
+            separator_height=0,
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3],
             size_hint=(0.9, 0.95)
         )
 
@@ -2383,9 +2239,12 @@ class ExtendedMolodnikiTableScreen(Screen):
 
             # Обновляем page_data
             if self.current_page not in self.page_data:
-                self.page_data[self.current_page] = [['', '', '', '', '', ''] for _ in range(self.rows_per_page)]
-            if hasattr(instance, 'row_index') and instance.row_index < len(self.page_data[self.current_page]):
-                self.page_data[self.current_page][instance.row_index][3] = instance.text
+                self.page_data[self.current_page] = []
+            if hasattr(instance, 'row_index'):
+                row_idx = instance.row_index
+                while len(self.page_data[self.current_page]) <= row_idx:
+                    self.page_data[self.current_page].append(['', '', '', '', '', ''])
+                self.page_data[self.current_page][row_idx][3] = instance.text
 
             self.update_plot_total(instance, instance.text)
 
@@ -2451,9 +2310,12 @@ class ExtendedMolodnikiTableScreen(Screen):
 
             # Обновляем page_data
             if self.current_page not in self.page_data:
-                self.page_data[self.current_page] = [['', '', '', '', '', ''] for _ in range(self.rows_per_page)]
-            if hasattr(instance, 'row_index') and instance.row_index < len(self.page_data[self.current_page]):
-                self.page_data[self.current_page][instance.row_index][3] = instance.text
+                self.page_data[self.current_page] = []
+            if hasattr(instance, 'row_index'):
+                row_idx = instance.row_index
+                while len(self.page_data[self.current_page]) <= row_idx:
+                    self.page_data[self.current_page].append(['', '', '', '', '', ''])
+                self.page_data[self.current_page][row_idx][3] = instance.text
 
             self.update_plot_total(instance, instance.text)
             self.show_success(f"Порода '{selected_breed}' сохранена!")
@@ -2464,10 +2326,10 @@ class ExtendedMolodnikiTableScreen(Screen):
             save_only(btn)
             popup.dismiss()
 
-        save_add_btn.bind(on_press=save_and_add)
-        save_btn.bind(on_press=save_only)
-        delete_btn.bind(on_press=lambda x: self.show_delete_breed_popup(instance, plot_breeds_list))
-        exit_btn.bind(on_press=exit_to_plot_menu)
+        save_add_btn.bind(on_release=save_and_add)
+        save_btn.bind(on_release=save_only)
+        delete_btn.bind(on_release=lambda x: self.show_delete_breed_popup(instance, plot_breeds_list))
+        exit_btn.bind(on_release=exit_to_plot_menu)
 
         popup.open()
 
@@ -2480,21 +2342,21 @@ class ExtendedMolodnikiTableScreen(Screen):
             self.show_error("Нет пород для удаления!")
             return
         
-        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        content = MDBoxLayout(orientation='vertical', spacing=10, padding=10, md_bg_color=Colors.DARK_SURFACE)
         
-        title_label = Label(
+        title_label = MDLabel(
             text="Выберите породы для удаления:",
-            font_name='Roboto',
             bold=True,
             size_hint=(1, None),
             height=40,
-            color=(0.5, 0, 0, 1)
+            theme_text_color='Custom',
+            text_color=[1,0.3,0.3,1]
         )
         content.add_widget(title_label)
         
         # ScrollView для списка пород
         scroll = ScrollView(size_hint=(1, None), height=300)
-        breeds_layout = GridLayout(cols=1, spacing=5, size_hint_y=None)
+        breeds_layout = MDGridLayout(cols=1, spacing=5, size_hint_y=None, md_bg_color=Colors.DARK_SURFACE)
         breeds_layout.bind(minimum_height=breeds_layout.setter('height'))
         
         # Чекбоксы для выбора пород
@@ -2503,17 +2365,18 @@ class ExtendedMolodnikiTableScreen(Screen):
             breed_name = breed_info.get('name', 'Неизвестная')
             
             # Создаём строку с чекбоксом и названием породы
-            breed_row = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=40)
+            breed_row = MDBoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=40, md_bg_color=Colors.DARK_SURFACE)
             
             checkbox = CheckBox(size_hint=(None, None), size=(40, 40), active=False)
             self.breed_checkboxes[i] = checkbox
             
-            breed_label = Label(
+            breed_label = MDLabel(
                 text=f"{breed_name}",
-                font_name='Roboto',
                 size_hint=(1, None),
                 height=40,
-                halign='left'
+                halign='left',
+                theme_text_color='Custom',
+                text_color=Colors.TEXT_ON_DARK
             )
             
             breed_row.add_widget(checkbox)
@@ -2524,28 +2387,16 @@ class ExtendedMolodnikiTableScreen(Screen):
         content.add_widget(scroll)
 
         # Кнопки управления
-        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
+        btn_layout = MDBoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50, md_bg_color=Colors.DARK_SURFACE)
 
-        confirm_btn = ModernButton(
-            text='Удалить выбранные',
-            bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(0.34, 1),
-            height=50
-        )
+        confirm_btn = MDButton(style='filled', size_hint=(0.34, 1), height=50)
+        confirm_btn.add_widget(MDButtonText(text='Удалить выбранные', theme_text_color='Custom', text_color=[1,0.3,0.3,1]))
 
-        clear_all_btn = ModernButton(
-            text='Очистить все',
-            bg_color=get_color_from_hex('#FFA500'),
-            size_hint=(0.33, 1),
-            height=50
-        )
+        clear_all_btn = MDButton(style='filled', size_hint=(0.33, 1), height=50)
+        clear_all_btn.add_widget(MDButtonText(text='Очистить все', theme_text_color='Custom', text_color=[0.7,0.7,0.7,1]))
 
-        cancel_btn = ModernButton(
-            text='Отмена',
-            bg_color=get_color_from_hex('#808080'),
-            size_hint=(0.33, 1),
-            height=50
-        )
+        cancel_btn = MDButton(style='filled', size_hint=(0.33, 1), height=50)
+        cancel_btn.add_widget(MDButtonText(text='Отмена', theme_text_color='Custom', text_color=[0.7,0.7,0.7,1]))
 
         btn_layout.add_widget(confirm_btn)
         btn_layout.add_widget(clear_all_btn)
@@ -2553,8 +2404,11 @@ class ExtendedMolodnikiTableScreen(Screen):
         content.add_widget(btn_layout)
 
         popup = Popup(
-            title="Удаление пород",
+            title="",
             content=content,
+            separator_height=0,
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3],
             size_hint=(0.8, 0.7)
         )
 
@@ -2615,23 +2469,23 @@ class ExtendedMolodnikiTableScreen(Screen):
             self.show_success("Все породы очищены!")
             popup.dismiss()
 
-        confirm_btn.bind(on_press=confirm_delete)
-        clear_all_btn.bind(on_press=clear_all)
-        cancel_btn.bind(on_press=popup.dismiss)
+        confirm_btn.bind(on_release=confirm_delete)
+        clear_all_btn.bind(on_release=clear_all)
+        cancel_btn.bind(on_release=popup.dismiss)
 
         popup.open()
 
     def show_after_add_popup(self, instance, added_breed, total_breeds_count):
         """Показать popup после добавления породы с выбором следующего действия"""
-        content = BoxLayout(orientation='vertical', spacing=15, padding=15)
+        content = MDBoxLayout(orientation='vertical', spacing=15, padding=15, md_bg_color=Colors.DARK_SURFACE)
 
         # Заголовок с информацией
-        title_label = Label(
+        title_label = MDLabel(
             text=f"✓ Порода '{added_breed}' добавлена!\n\nВсего пород на площадке: {total_breeds_count}",
-            font_name='Roboto',
             font_size='18sp',
             bold=True,
-            color=(0, 0.5, 0, 1),
+            theme_text_color='Custom',
+            text_color=Colors.GREEN,
             size_hint=(1, None),
             height=80,
             halign='center'
@@ -2639,32 +2493,24 @@ class ExtendedMolodnikiTableScreen(Screen):
         content.add_widget(title_label)
 
         # Кнопки выбора
-        btn_layout = BoxLayout(orientation='vertical', spacing=10, size_hint=(1, None), height=150)
+        btn_layout = MDBoxLayout(orientation='vertical', spacing=10, size_hint=(1, None), height=150, md_bg_color=Colors.DARK_SURFACE)
         
-        add_more_btn = ModernButton(
-            text='+ Добавить ещё породу',
-            bg_color=get_color_from_hex('#32CD32'),
-            size_hint=(1, None),
-            height=50,
-            font_size='16sp'
-        )
+        add_more_btn = MDButton(style='filled', size_hint=(1, None), height=50)
+        add_more_btn.add_widget(MDButtonText(text='+ Добавить ещё породу', theme_text_color='Custom', text_color=Colors.GREEN))
         
-        finish_btn = ModernButton(
-            text='✓ Завершить редактирование',
-            bg_color=get_color_from_hex('#228B22'),
-            size_hint=(1, None),
-            height=50,
-            font_size='16sp',
-            bold=True
-        )
+        finish_btn = MDButton(style='filled', size_hint=(1, None), height=50)
+        finish_btn.add_widget(MDButtonText(text='✓ Завершить редактирование', theme_text_color='Custom', text_color=Colors.GREEN, bold=True))
         
         btn_layout.add_widget(add_more_btn)
         btn_layout.add_widget(finish_btn)
         content.add_widget(btn_layout)
 
         popup = Popup(
-            title="Порода добавлена",
+            title="",
             content=content,
+            separator_height=0,
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3],
             size_hint=(0.8, 0.55)
         )
 
@@ -2677,61 +2523,57 @@ class ExtendedMolodnikiTableScreen(Screen):
             popup.dismiss()
             self.show_success(f"Данные площадки сохранены! Всего пород: {total_breeds_count}")
 
-        add_more_btn.bind(on_press=add_more)
-        finish_btn.bind(on_press=finish)
+        add_more_btn.bind(on_release=add_more)
+        finish_btn.bind(on_release=finish)
 
         popup.open()
 
     def show_breeds_list_popup(self, instance):
         """Показать popup со списком всех пород в этой строке"""
-        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        content = MDBoxLayout(orientation='vertical', spacing=10, padding=10, md_bg_color=Colors.DARK_SURFACE)
 
-        title_label = Label(
+        title_label = MDLabel(
             text="Список пород в этой строке",
-            font_name='Roboto',
             bold=True,
             size_hint=(1, None),
-            height=30
+            height=30,
+            theme_text_color='Custom',
+            text_color=Colors.TEXT_ON_DARK
         )
         content.add_widget(title_label)
 
         breeds_data = self.parse_breeds_data(instance.text)
 
         if not breeds_data:
-            no_breeds_label = Label(
+            no_breeds_label = MDLabel(
                 text="Породы не найдены",
-                font_name='Roboto',
                 size_hint=(1, None),
                 height=50,
-                color=(0.5, 0.5, 0.5, 1)
+                theme_text_color='Custom',
+                text_color=[0.5,0.5,0.5,1]
             )
             content.add_widget(no_breeds_label)
         else:
             scroll = ScrollView(size_hint=(1, None), height=300)
-            breeds_layout = GridLayout(cols=1, spacing=5, size_hint_y=None)
+            breeds_layout = MDGridLayout(cols=1, spacing=5, size_hint_y=None, md_bg_color=Colors.DARK_SURFACE)
             breeds_layout.bind(minimum_height=breeds_layout.setter('height'))
 
             for i, breed_info in enumerate(breeds_data):
-                breed_card = BoxLayout(
+                breed_card = MDBoxLayout(
                     orientation='vertical',
                     size_hint=(1, None),
                     height=120,
-                    padding=5
+                    padding=5,
+                    md_bg_color=Colors.CARD_BG
                 )
-                breed_card.canvas.before.clear()
-                with breed_card.canvas.before:
-                    Color(rgba=get_color_from_hex('#E8F4FD'))
-                    Rectangle(pos=breed_card.pos, size=breed_card.size)
-                    Color(rgba=get_color_from_hex('#B0BEC5'))
-                    Line(rectangle=(breed_card.x, breed_card.y, breed_card.width, breed_card.height), width=1)
 
-                name_label = Label(
+                name_label = MDLabel(
                     text=f"{i+1}. {breed_info.get('name', 'Неизвестная порода')}",
-                    font_name='Roboto',
                     bold=True,
                     size_hint=(1, None),
                     height=25,
-                    color=(0, 0, 0, 1)
+                    theme_text_color='Custom',
+                    text_color=Colors.TEXT_ON_DARK
                 )
                 breed_card.add_widget(name_label)
 
@@ -2764,62 +2606,52 @@ class ExtendedMolodnikiTableScreen(Screen):
                     if 'age' in breed_info and breed_info['age']:
                         params_text.append(f"Возраст: {breed_info['age']} лет")
 
-                params_label = Label(
+                params_label = MDLabel(
                     text="; ".join(params_text) if params_text else "Нет параметров",
-                    font_name='Roboto',
                     size_hint=(1, None),
                     height=40,
-                    color=(0.3, 0.3, 0.3, 1),
-                    text_size=(None, None),
+                    theme_text_color='Custom',
+                    text_color=[0.7,0.7,0.7,1],
                     halign='left',
                     valign='top'
                 )
                 params_label.bind(size=lambda *args: setattr(params_label, 'text_size', (params_label.width, None)))
                 breed_card.add_widget(params_label)
 
-                btn_layout = BoxLayout(orientation='horizontal', spacing=5, size_hint=(1, None), height=30)
-                edit_btn = ModernButton(
-                    text='Изменить',
-                    bg_color=get_color_from_hex('#87CEEB'),
-                    size_hint=(0.5, 1),
-                    font_size='12sp'
-                )
-                delete_btn = ModernButton(
-                    text='Удалить',
-                    bg_color=get_color_from_hex('#FF6347'),
-                    size_hint=(0.5, 1),
-                    font_size='12sp'
-                )
+                btn_layout = MDBoxLayout(orientation='horizontal', spacing=5, size_hint=(1, None), height=30, md_bg_color=Colors.CARD_BG)
+                edit_btn = MDButton(style='filled', size_hint=(0.5, 1))
+                edit_btn.add_widget(MDButtonText(text='Изменить', theme_text_color='Custom', text_color=[0.7,0.7,0.7,1]))
+                delete_btn = MDButton(style='filled', size_hint=(0.5, 1))
+                delete_btn.add_widget(MDButtonText(text='Удалить', theme_text_color='Custom', text_color=[1,0.3,0.3,1]))
                 btn_layout.add_widget(edit_btn)
-                delete_btn.bind(on_press=lambda x, idx=i: self.delete_breed_from_list(instance, idx))
+                delete_btn.bind(on_release=lambda x, idx=i: self.delete_breed_from_list(instance, idx))
                 btn_layout.add_widget(delete_btn)
                 breed_card.add_widget(btn_layout)
 
                 def edit_breed(btn, idx=i):
                     self.edit_breed_in_list(instance, idx)
 
-                edit_btn.bind(on_press=edit_breed)
+                edit_btn.bind(on_release=edit_breed)
 
                 breeds_layout.add_widget(breed_card)
 
             scroll.add_widget(breeds_layout)
             content.add_widget(scroll)
 
-        close_btn = ModernButton(
-            text='Закрыть',
-            bg_color=get_color_from_hex('#808080'),
-            size_hint=(1, None),
-            height=50
-        )
+        close_btn = MDButton(style='filled', size_hint=(1, None), height=50)
+        close_btn.add_widget(MDButtonText(text='Закрыть', theme_text_color='Custom', text_color=[0.7,0.7,0.7,1]))
         content.add_widget(close_btn)
 
         popup = Popup(
-            title="Управление породами",
+            title="",
             content=content,
+            separator_height=0,
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3],
             size_hint=(0.85, 0.9)
         )
 
-        close_btn.bind(on_press=popup.dismiss)
+        close_btn.bind(on_release=popup.dismiss)
         popup.open()
 
     def edit_breed_in_list(self, instance, breed_index):
@@ -3133,67 +2965,57 @@ class ExtendedMolodnikiTableScreen(Screen):
 
     def show_plot_area_input_popup(self, instance):
         """Показать popup для ввода площади участка в гектарах"""
-        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        content = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, padding=Spacing.MD,
+                              md_bg_color=Colors.DARK_SURFACE, adaptive_height=True)
 
-        title_label = Label(
+        title_label = MDLabel(
             text="Введите площадь обследуемого участка",
-            font_name='Roboto',
-            font_size='18sp',
-            bold=True,
-            color=(0, 0.5, 0, 1),
-            size_hint=(1, None),
-            height=40
+            font_style='Title', role='medium',
+            theme_text_color='Custom', text_color=Colors.GREEN,
+            adaptive_height=True
         )
         content.add_widget(title_label)
 
-        self.plot_area_input_field = TextInput(
+        self.plot_area_input_field = MDTextField(
             hint_text="Площадь участка (га)",
-            multiline=False,
-            size_hint=(1, None),
-            height=50,
-            font_name='Roboto',
+            mode='outlined',
+            size_hint_y=None, height=dp(52),
             input_filter='float',
             text=self.plot_area_input if hasattr(self, 'plot_area_input') and self.plot_area_input else ''
         )
         self.plot_area_input_field.bind(text=self.update_plot_area_display)
         content.add_widget(self.plot_area_input_field)
 
-        info_label = Label(
+        info_label = MDLabel(
             text="Укажите площадь обследуемого участка в гектарах.\n"
                  "Это значение используется для расчета площади перечета\n"
                  "по всем площадкам и отображается в итоговых отчетах.",
-            font_name='Roboto',
-            font_size='14sp',
-            color=(0.3, 0.3, 0.3, 1),
-            size_hint=(1, None),
-            height=80,
-            halign='left',
-            valign='top'
+            theme_text_color='Custom', text_color=[0.8,0.8,0.8,1],
+            adaptive_height=True
         )
-        info_label.bind(size=lambda *args: setattr(info_label, 'text_size', (info_label.width, None)))
         content.add_widget(info_label)
 
-        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
-        save_btn = ModernButton(
-            text='Сохранить',
-            bg_color=get_color_from_hex('#00FF00'),
-            size_hint=(0.5, 1),
-            height=50
-        )
-        cancel_btn = ModernButton(
-            text='Отмена',
-            bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(0.5, 1),
-            height=50
-        )
+        btn_layout = MDBoxLayout(orientation='horizontal', spacing=Spacing.MD, adaptive_height=True)
+        save_btn = MDButton(style='filled', md_bg_color=Colors.BTN_SUCCESS,
+                            size_hint=(0.5, None), height=dp(48))
+        save_btn.add_widget(MDButtonText(text='Сохранить'))
+        cancel_btn = MDButton(style='outlined',
+                              size_hint=(0.5, None), height=dp(48),
+                              line_color=Colors.DANGER)
+        cancel_btn.add_widget(MDButtonText(text='Отмена',
+                              theme_text_color='Custom', text_color=Colors.DANGER))
         btn_layout.add_widget(save_btn)
         btn_layout.add_widget(cancel_btn)
         content.add_widget(btn_layout)
 
         popup = Popup(
-            title="Площадь участка",
+            title="",
             content=content,
-            size_hint=(0.8, 0.6)
+            size_hint=(0.85, None),
+            height=dp(300),
+            separator_height=0,
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3]
         )
 
         def save_plot_area(btn):
@@ -3202,18 +3024,16 @@ class ExtendedMolodnikiTableScreen(Screen):
                 if plot_area <= 0:
                     self.show_error("Площадь участка должна быть положительным числом!")
                     return
-
                 self.plot_area_input = str(plot_area)
                 self.project_data['address']['plot_area'] = str(plot_area)
                 self.show_success(f"Площадь участка {plot_area} га сохранена")
                 popup.dismiss()
                 self.update_address_popup_display()
-
             except ValueError:
                 self.show_error("Введите корректное числовое значение площади!")
 
-        save_btn.bind(on_press=save_plot_area)
-        cancel_btn.bind(on_press=popup.dismiss)
+        save_btn.bind(on_release=save_plot_area)
+        cancel_btn.bind(on_release=popup.dismiss)
 
         popup.open()
 
@@ -3239,14 +3059,14 @@ class ExtendedMolodnikiTableScreen(Screen):
                         except (json.JSONDecodeError, TypeError):
                             continue
 
-            content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+            content = MDBoxLayout(orientation='vertical', spacing=10, padding=10, md_bg_color=Colors.DARK_SURFACE)
 
-            title_label = Label(
+            title_label = MDLabel(
                 text="Площадь участка в гектарах",
-                font_name='Roboto',
                 font_size='18sp',
                 bold=True,
-                color=(0, 0.5, 0, 1),
+                theme_text_color='Custom',
+                text_color=Colors.GREEN,
                 size_hint=(1, None),
                 height=40
             )
@@ -3267,11 +3087,11 @@ class ExtendedMolodnikiTableScreen(Screen):
 Если на площадке 10 деревьев, то густота = 10 / {plot_area_ha:.4f} ≈ {10/plot_area_ha:.1f} шт/га
 """
 
-            info_label = Label(
+            info_label = MDLabel(
                 text=info_text,
-                font_name='Roboto',
                 font_size='14sp',
-                color=(0, 0, 0, 1),
+                theme_text_color='Custom',
+                text_color=Colors.TEXT_ON_DARK,
                 size_hint=(1, None),
                 height=250,
                 halign='left',
@@ -3280,21 +3100,20 @@ class ExtendedMolodnikiTableScreen(Screen):
             info_label.bind(size=lambda *args: setattr(info_label, 'text_size', (info_label.width, None)))
             content.add_widget(info_label)
 
-            close_btn = ModernButton(
-                text='Закрыть',
-                bg_color=get_color_from_hex('#808080'),
-                size_hint=(1, None),
-                height=50
-            )
+            close_btn = MDButton(style='filled', size_hint=(1, None), height=50)
+            close_btn.add_widget(MDButtonText(text='Закрыть', theme_text_color='Custom', text_color=[0.7,0.7,0.7,1]))
             content.add_widget(close_btn)
 
             popup = Popup(
-                title="Площадь участка (га)",
+                title="",
                 content=content,
+                separator_height=0,
+                background_color=[0,0,0,0.3],
+                overlay_color=[0,0,0,0.3],
                 size_hint=(0.8, 0.8)
             )
 
-            close_btn.bind(on_press=popup.dismiss)
+            close_btn.bind(on_release=popup.dismiss)
             popup.open()
 
         except Exception as e:
@@ -3302,7 +3121,7 @@ class ExtendedMolodnikiTableScreen(Screen):
 
     def show_plot_area_combined_popup(self, instance):
         """Показать объединенное popup для работы с площадью участка"""
-        content = BoxLayout(orientation='vertical', spacing=20, padding=20)
+        content = MDBoxLayout(orientation='vertical', spacing=20, padding=20, md_bg_color=Colors.DARK_SURFACE)
 
         try:
             current_radius = float(self.current_radius) if self.current_radius else 5.64
@@ -3324,12 +3143,12 @@ class ExtendedMolodnikiTableScreen(Screen):
                         except (json.JSONDecodeError, TypeError):
                             continue
 
-            title_label = Label(
+            title_label = MDLabel(
                 text="Площадь участка",
-                font_name='Roboto',
                 font_size='20sp',
                 bold=True,
-                color=(0, 0.5, 0, 1),
+                theme_text_color='Custom',
+                text_color=Colors.GREEN,
                 size_hint=(1, None),
                 height=50,
                 halign='center'
@@ -3337,26 +3156,26 @@ class ExtendedMolodnikiTableScreen(Screen):
             content.add_widget(title_label)
 
             # Раздел ввода площади участка
-            input_section = BoxLayout(orientation='vertical', spacing=10, size_hint=(1, None), height=120)
+            input_section = MDBoxLayout(orientation='vertical', spacing=10, size_hint=(1, None), height=120, md_bg_color=Colors.DARK_SURFACE)
 
-            input_title = Label(
+            input_title = MDLabel(
                 text="Ввод площади участка",
-                font_name='Roboto',
                 font_size='16sp',
                 bold=True,
                 size_hint=(1, None),
                 height=30,
-                halign='center'
+                halign='center',
+                theme_text_color='Custom',
+                text_color=Colors.TEXT_ON_DARK
             )
             input_section.add_widget(input_title)
 
-            plot_area_input_field = TextInput(
+            plot_area_input_field = MDTextField(
                 hint_text="Площадь участка (га)",
-                multiline=False,
+                mode="outlined",
                 size_hint=(1, None),
                 height=50,
-                font_name='Roboto',
-                input_filter='float',
+                line_color_focus=Colors.GREEN,
                 text=str(self._get_current_plot_area_input()) if hasattr(self, 'plot_area_input') and self.plot_area_input else ''
             )
             input_section.add_widget(plot_area_input_field)
@@ -3364,22 +3183,23 @@ class ExtendedMolodnikiTableScreen(Screen):
             content.add_widget(input_section)
 
             # Раздел информации о площади
-            info_label = Label(
+            info_label = MDLabel(
                 text="Информация о площади участка:",
-                font_name='Roboto',
                 font_size='16sp',
                 bold=True,
                 size_hint=(1, None),
                 height=30,
-                halign='center'
+                halign='center',
+                theme_text_color='Custom',
+                text_color=Colors.TEXT_ON_DARK
             )
             content.add_widget(info_label)
 
             info_text = ScrollView(size_hint=(1, None), height=250)
-            info_layout = BoxLayout(orientation='vertical', spacing=5, padding=10, size_hint_y=None)
+            info_layout = MDBoxLayout(orientation='vertical', spacing=5, padding=10, size_hint_y=None, md_bg_color=Colors.DARK_SURFACE)
             info_layout.bind(minimum_height=info_layout.setter('height'))
 
-            info_data = Label(
+            info_data = MDLabel(
                 text=f"""Одиночная площадка:
 Радиус: {current_radius:.2f} м
 Площадь: {plot_area_ha:.4f} га
@@ -3392,9 +3212,9 @@ class ExtendedMolodnikiTableScreen(Screen):
 
 Пример расчета густоты на гектар:
 Если на площадке 10 деревьев, то густота = 10 / {plot_area_ha:.4f} ≈ {10/plot_area_ha:.1f} шт/га""",
-                font_name='Roboto',
                 font_size='14sp',
-                color=(0, 0, 0, 1),
+                theme_text_color='Custom',
+                text_color=Colors.TEXT_ON_DARK,
                 size_hint=(1, None),
                 height=200,
                 halign='left',
@@ -3407,21 +3227,13 @@ class ExtendedMolodnikiTableScreen(Screen):
             content.add_widget(info_text)
 
             # Кнопки управления (объединение сохранения и обновления в одну кнопку)
-            btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=60)
+            btn_layout = MDBoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=60, md_bg_color=Colors.DARK_SURFACE)
 
-            combined_btn = ModernButton(
-                text='Сохранить и обновить',
-                bg_color=get_color_from_hex('#00FF00'),
-                size_hint=(0.7, 1),
-                height=60
-            )
+            combined_btn = MDButton(style='filled', size_hint=(0.7, 1), height=60)
+            combined_btn.add_widget(MDButtonText(text='Сохранить и обновить', theme_text_color='Custom', text_color=Colors.GREEN))
 
-            close_btn = ModernButton(
-                text='Закрыть',
-                bg_color=get_color_from_hex('#FF6347'),
-                size_hint=(0.3, 1),
-                height=60
-            )
+            close_btn = MDButton(style='filled', size_hint=(0.3, 1), height=60)
+            close_btn.add_widget(MDButtonText(text='Закрыть', theme_text_color='Custom', text_color=[1,0.3,0.3,1]))
 
             btn_layout.add_widget(combined_btn)
             btn_layout.add_widget(close_btn)
@@ -3429,8 +3241,11 @@ class ExtendedMolodnikiTableScreen(Screen):
             content.add_widget(btn_layout)
 
             popup = Popup(
-                title="Площадь участка",
+                title="",
                 content=content,
+                separator_height=0,
+                background_color=[0,0,0,0.3],
+                overlay_color=[0,0,0,0.3],
                 size_hint=(0.8, 0.9)
             )
 
@@ -3452,8 +3267,8 @@ class ExtendedMolodnikiTableScreen(Screen):
                 popup.dismiss()
                 self.show_plot_area_combined_popup(instance)
 
-            combined_btn.bind(on_press=save_and_refresh)
-            close_btn.bind(on_press=popup.dismiss)
+            combined_btn.bind(on_release=save_and_refresh)
+            close_btn.bind(on_release=popup.dismiss)
 
             popup.open()
 
@@ -3507,135 +3322,126 @@ class ExtendedMolodnikiTableScreen(Screen):
 
     def show_care_queue_popup(self, instance):
         """Показать popup для выбора мероприятий рубки"""
-        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        content = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, padding=Spacing.MD,
+                              md_bg_color=Colors.DARK_SURFACE, adaptive_height=True)
 
-        title_label = Label(
+        title_label = MDLabel(
             text="Выберите мероприятие:",
-            font_name='Roboto',
-            font_size='18sp',
-            bold=True,
-            color=(0, 0.5, 0, 1),
-            size_hint=(1, None),
-            height=40
+            font_style='Title', role='medium',
+            theme_text_color='Custom', text_color=Colors.GREEN,
+            size_hint_y=None, height=dp(40)
         )
         content.add_widget(title_label)
 
-        # Поле для ввода мероприятия
-        self.activity_input = TextInput(
-            hint_text="Введите мероприятие",
-            multiline=False,
-            size_hint=(1, None),
-            height=50,
-            font_name='Roboto'
+        self.activity_input = MDTextField(
+            hint_text="Название мероприятия (необязательно)",
+            mode='outlined',
+            size_hint_y=None, height=dp(52)
         )
         content.add_widget(self.activity_input)
 
-        # Выбор очереди
-        queue_label = Label(
+        queue_label = MDLabel(
             text="Очередь:",
-            font_name='Roboto',
-            font_size='16sp',
-            bold=True,
-            size_hint=(1, None),
-            height=30,
-            color=(0.3, 0.3, 0.3, 1)
+            font_style='Label', role='medium',
+            theme_text_color='Custom', text_color=[1,1,1,1],
+            size_hint_y=None, height=dp(30)
         )
         content.add_widget(queue_label)
 
-        # Радио-кнопки для выбора очереди
-        from kivy.uix.spinner import Spinner
-        self.queue_spinner = Spinner(
-            text='Выберите очередь',
-            values=('первая', 'вторая', 'третья'),
-            size_hint=(1, None),
-            height=50,
-            font_name='Roboto'
-        )
-        content.add_widget(self.queue_spinner)
+        self.queue_checkboxes = {}
+        queue_grid = MDGridLayout(cols=3, spacing=Spacing.MD, adaptive_height=True,
+                                  size_hint_y=None, padding=[0, 0])
+        for q in ['первая', 'вторая', 'третья']:
+            cell = MDBoxLayout(orientation='horizontal', spacing=Spacing.XS,
+                               size_hint_y=None, height=dp(40))
+            cb = CheckBox(size_hint=(None, 1), width=dp(36), color=[0.3, 0.8, 0.3, 1],
+                          active=(q == 'первая'))
+            lbl = MDLabel(text=q, theme_text_color='Custom', text_color=[1,1,1,1],
+                          size_hint=(1, 1), valign='middle')
+            cell.add_widget(cb)
+            cell.add_widget(lbl)
+            queue_grid.add_widget(cell)
+            self.queue_checkboxes[q] = cb
+        content.add_widget(queue_grid)
 
-        # Чекбоксы для выбора типов мероприятий
         self.activity_checkboxes = {}
         activities = ['осветление', 'прочистка']
 
-        activities_label = Label(
+        activities_label = MDLabel(
             text="Типы мероприятий:",
-            font_name='Roboto',
-            font_size='16sp',
-            bold=True,
-            size_hint=(1, None),
-            height=30,
-            color=(0.3, 0.3, 0.3, 1)
+            font_style='Label', role='medium',
+            theme_text_color='Custom', text_color=[1,1,1,1],
+            size_hint_y=None, height=dp(30)
         )
         content.add_widget(activities_label)
 
+        act_grid = MDGridLayout(cols=2, spacing=Spacing.MD, adaptive_height=True,
+                                size_hint_y=None, padding=[0, 0])
         for activity in activities:
-            checkbox_layout = BoxLayout(orientation='horizontal', size_hint=(1, None), height=40)
-            checkbox = CheckBox(size_hint=(None, 1), width=40)
-            label = Label(
+            cell = MDBoxLayout(orientation='horizontal', spacing=Spacing.XS,
+                               size_hint_y=None, height=dp(40))
+            checkbox = CheckBox(size_hint=(None, 1), width=dp(36), color=[0.3, 0.8, 0.3, 1])
+            label = MDLabel(
                 text=activity,
-                font_name='Roboto',
-                font_size='16sp',
-                size_hint=(1, 1),
-                halign='left',
-                valign='middle'
+                theme_text_color='Custom', text_color=[1,1,1,1],
+                size_hint=(1, 1), valign='middle'
             )
-            label.bind(size=lambda *args: setattr(label, 'text_size', (label.width, None)))
-            checkbox_layout.add_widget(checkbox)
-            checkbox_layout.add_widget(label)
-            content.add_widget(checkbox_layout)
+            cell.add_widget(checkbox)
+            cell.add_widget(label)
+            act_grid.add_widget(cell)
             self.activity_checkboxes[activity] = checkbox
+        content.add_widget(act_grid)
 
-        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
-        save_btn = ModernButton(
-            text='Сохранить',
-            bg_color=get_color_from_hex('#00FF00'),
-            size_hint=(0.5, 1),
-            height=50
-        )
-        cancel_btn = ModernButton(
-            text='Отмена',
-            bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(0.5, 1),
-            height=50
-        )
+        btn_layout = MDBoxLayout(orientation='horizontal', spacing=Spacing.MD,
+                                 adaptive_height=True)
+        save_btn = MDButton(style='filled', md_bg_color=Colors.BTN_SUCCESS,
+                            size_hint=(0.5, None), height=dp(48))
+        save_btn.add_widget(MDButtonText(text='Сохранить'))
+        cancel_btn = MDButton(style='outlined',
+                              size_hint=(0.5, None), height=dp(48),
+                              line_color=Colors.DANGER)
+        cancel_btn.add_widget(MDButtonText(text='Отмена',
+                              theme_text_color='Custom', text_color=Colors.DANGER))
         btn_layout.add_widget(save_btn)
         btn_layout.add_widget(cancel_btn)
         content.add_widget(btn_layout)
 
         popup = Popup(
-            title="Мероприятие рубки",
+            title="",
             content=content,
-            size_hint=(0.8, 0.8)
+            size_hint=(0.85, None),
+            height=dp(440),
+            separator_height=0,
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3]
         )
 
         def save_activity(btn):
             activity_text = self.activity_input.text.strip()
-            selected_queue = self.queue_spinner.text
+            selected_queues = [q for q, cb in self.queue_checkboxes.items() if cb.active]
             selected_activities = [activity for activity, checkbox in self.activity_checkboxes.items() if checkbox.active]
 
             if not activity_text and not selected_activities:
                 self.show_error("Введите мероприятие или выберите тип мероприятия!")
                 return
 
-            if selected_queue == 'Выберите очередь':
+            if not selected_queues:
                 self.show_error("Выберите очередь!")
                 return
 
-            # Сохраняем в переменные класса
+            selected_queue = ', '.join(selected_queues)
             self.care_queue = selected_queue
             if activity_text:
                 self.care_queue += f" - {activity_text}"
             if selected_activities:
                 self.care_queue += f" ({', '.join(selected_activities)})"
 
-            # Сохраняем в project_data для отображения в текущих значениях
             self.project_data['details']['care_queue'] = self.care_queue
 
             result_parts = []
             if activity_text:
                 result_parts.append(f"Мероприятие: {activity_text}")
-            if selected_queue != 'Выберите очередь':
-                result_parts.append(f"Очередь: {selected_queue}")
+            result_parts.append(f"Очередь: {selected_queue}")
             if selected_activities:
                 result_parts.append(f"Типы: {', '.join(selected_activities)}")
 
@@ -3644,31 +3450,27 @@ class ExtendedMolodnikiTableScreen(Screen):
                 self.update_details_display()
             popup.dismiss()
 
-        save_btn.bind(on_press=save_activity)
-        cancel_btn.bind(on_press=popup.dismiss)
+        save_btn.bind(on_release=save_activity)
+        cancel_btn.bind(on_release=popup.dismiss)
 
         popup.open()
 
     def show_characteristics_popup(self, instance):
         """Показать popup для характеристики молодняков"""
-        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        content = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, padding=Spacing.MD,
+                              md_bg_color=Colors.DARK_SURFACE, adaptive_height=True)
 
-        title_label = Label(
+        title_label = MDLabel(
             text="Характеристика молодняков:",
-            font_name='Roboto',
-            font_size='18sp',
-            bold=True,
-            color=(0, 0.5, 0, 1),
-            size_hint=(1, None),
-            height=40
+            font_style='Title', role='medium',
+            theme_text_color='Custom', text_color=Colors.GREEN,
+            size_hint_y=None, height=dp(40)
         )
         content.add_widget(title_label)
 
-        # Поля для ввода характеристик
         self.characteristics_inputs = {}
         characteristics = ['Лучшие', 'Вспомогательные', 'Нежелательные']
 
-        # Загружаем существующие данные, если они есть
         existing_characteristics = {}
         if self.project_data['details'].get('characteristics'):
             try:
@@ -3684,49 +3486,44 @@ class ExtendedMolodnikiTableScreen(Screen):
                 pass
 
         for char in characteristics:
-            char_layout = BoxLayout(orientation='vertical', size_hint=(1, None), height=80, spacing=5)
-            char_label = Label(
+            char_label = MDLabel(
                 text=f"{char}:",
-                font_name='Roboto',
-                font_size='16sp',
-                bold=True,
-                size_hint=(1, None),
-                height=25
+                font_style='Label', role='medium',
+                theme_text_color='Custom', text_color=[1,1,1,1],
+                size_hint_y=None, height=dp(25)
             )
-            char_input = TextInput(
+            content.add_widget(char_label)
+            char_input = MDTextField(
                 hint_text="Введите название породы",
+                mode='outlined',
+                text=existing_characteristics.get(char, ''),
                 multiline=True,
-                size_hint=(1, None),
-                height=50,
-                font_name='Roboto',
-                text=existing_characteristics.get(char, '')
+                size_hint_y=None, height=dp(60)
             )
-            char_layout.add_widget(char_label)
-            char_layout.add_widget(char_input)
-            content.add_widget(char_layout)
+            content.add_widget(char_input)
             self.characteristics_inputs[char] = char_input
 
-        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
-        save_btn = ModernButton(
-            text='Сохранить',
-            bg_color=get_color_from_hex('#00FF00'),
-            size_hint=(0.5, 1),
-            height=50
-        )
-        cancel_btn = ModernButton(
-            text='Отмена',
-            bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(0.5, 1),
-            height=50
-        )
+        btn_layout = MDBoxLayout(orientation='horizontal', spacing=Spacing.MD, adaptive_height=True)
+        save_btn = MDButton(style='filled', md_bg_color=Colors.BTN_SUCCESS,
+                            size_hint=(0.5, None), height=dp(48))
+        save_btn.add_widget(MDButtonText(text='Сохранить'))
+        cancel_btn = MDButton(style='outlined',
+                              size_hint=(0.5, None), height=dp(48),
+                              line_color=Colors.DANGER)
+        cancel_btn.add_widget(MDButtonText(text='Отмена',
+                              theme_text_color='Custom', text_color=Colors.DANGER))
         btn_layout.add_widget(save_btn)
         btn_layout.add_widget(cancel_btn)
         content.add_widget(btn_layout)
 
         popup = Popup(
-            title="Характеристика молодняков",
+            title="",
             content=content,
-            size_hint=(0.8, 0.8)
+            size_hint=(0.85, None),
+            height=dp(420),
+            separator_height=0,
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3]
         )
 
         def save_characteristics(btn):
@@ -3738,9 +3535,7 @@ class ExtendedMolodnikiTableScreen(Screen):
 
             if filled_characteristics:
                 characteristics_text = "\n".join([f"{k}: {v}" for k, v in filled_characteristics.items()])
-                # Сохраняем в project_data для отображения в текущих значениях
                 self.project_data['details']['characteristics'] = characteristics_text
-                # Также сохраняем в свойство класса
                 self.characteristics = characteristics_text
                 self.show_success(f"Характеристики сохранены:\n{characteristics_text}")
                 self.update_details_display()
@@ -3749,81 +3544,67 @@ class ExtendedMolodnikiTableScreen(Screen):
                 return
             popup.dismiss()
 
-        save_btn.bind(on_press=save_characteristics)
-        cancel_btn.bind(on_press=popup.dismiss)
+        save_btn.bind(on_release=save_characteristics)
+        cancel_btn.bind(on_release=popup.dismiss)
 
         popup.open()
 
     def show_date_popup(self, instance):
         """Показать popup для ввода даты рубки"""
-        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        content = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, padding=Spacing.MD,
+                              md_bg_color=Colors.DARK_SURFACE, adaptive_height=True)
 
-        title_label = Label(
+        title_label = MDLabel(
             text="Введите дату рубки:",
-            font_name='Roboto',
-            font_size='18sp',
-            bold=True,
-            color=(0, 0.5, 0, 1),
-            size_hint=(1, None),
-            height=40
+            font_style='Title', role='medium',
+            theme_text_color='Custom', text_color=Colors.GREEN,
+            size_hint_y=None, height=dp(40)
         )
         content.add_widget(title_label)
 
-        # Поле для ввода даты
-        self.date_input = TextInput(
+        self.date_input = MDTextField(
             hint_text="ДД.ММ.ГГГГ",
-            multiline=False,
-            size_hint=(1, None),
-            height=50,
-            font_name='Roboto',
-            input_filter='0123456789.'
+            mode='outlined',
+            size_hint_y=None, height=dp(52)
         )
         content.add_widget(self.date_input)
 
-        info_label = Label(
+        info_label = MDLabel(
             text="Формат: ДД.ММ.ГГГГ\nНапример: 15.06.2025",
-            font_name=
-            'Roboto',
-            font_size='14sp',
-            color=(0.3, 0.3, 0.3, 1),
-            size_hint=(1, None),
-            height=50,
-            halign='left',
-            valign='top'
+            font_style='Body', role='small',
+            theme_text_color='Custom', text_color=[0.8,0.8,0.8,1],
+            size_hint_y=None, height=dp(50)
         )
-        info_label.bind(size=lambda *args: setattr(info_label, 'text_size', (info_label.width, None)))
         content.add_widget(info_label)
 
-        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
-        save_btn = ModernButton(
-            text='Сохранить',
-            bg_color=get_color_from_hex('#00FF00'),
-            size_hint=(0.5, 1),
-            height=50
-        )
-        cancel_btn = ModernButton(
-            text='Отмена',
-            bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(0.5, 1),
-            height=50
-        )
+        btn_layout = MDBoxLayout(orientation='horizontal', spacing=Spacing.MD, adaptive_height=True)
+        save_btn = MDButton(style='filled', md_bg_color=Colors.BTN_SUCCESS,
+                            size_hint=(0.5, None), height=dp(48))
+        save_btn.add_widget(MDButtonText(text='Сохранить'))
+        cancel_btn = MDButton(style='outlined',
+                              size_hint=(0.5, None), height=dp(48),
+                              line_color=Colors.DANGER)
+        cancel_btn.add_widget(MDButtonText(text='Отмена',
+                              theme_text_color='Custom', text_color=Colors.DANGER))
         btn_layout.add_widget(save_btn)
         btn_layout.add_widget(cancel_btn)
         content.add_widget(btn_layout)
 
         popup = Popup(
-            title="Дата рубки",
+            title="",
             content=content,
-            size_hint=(0.8, 0.6)
+            size_hint=(0.85, None),
+            height=dp(280),
+            separator_height=0,
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3]
         )
 
         def save_date(btn):
             date_text = self.date_input.text.strip()
             if date_text:
-                # Простая валидация формата даты
                 import re
                 if re.match(r'^\d{2}\.\d{2}\.\d{4}$', date_text):
-                    # Сохраняем в свойство класса и project_data
                     self.care_date = date_text
                     self.project_data['details']['care_date'] = date_text
                     self.show_success(f"Дата рубки сохранена: {date_text}")
@@ -3836,63 +3617,58 @@ class ExtendedMolodnikiTableScreen(Screen):
                 return
             popup.dismiss()
 
-        save_btn.bind(on_press=save_date)
-        cancel_btn.bind(on_press=popup.dismiss)
+        save_btn.bind(on_release=save_date)
+        cancel_btn.bind(on_release=popup.dismiss)
 
         popup.open()
 
     def show_technology_popup(self, instance):
         """Показать popup для ввода технологии ухода"""
-        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        content = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, padding=Spacing.MD,
+                              md_bg_color=Colors.DARK_SURFACE, adaptive_height=True)
 
-        title_label = Label(
+        title_label = MDLabel(
             text="Введите технологию ухода:",
-            font_name='Roboto',
-            font_size='18sp',
-            bold=True,
-            color=(0, 0.5, 0, 1),
-            size_hint=(1, None),
-            height=40
+            font_style='Title', role='medium',
+            theme_text_color='Custom', text_color=Colors.GREEN,
+            size_hint_y=None, height=dp(40)
         )
         content.add_widget(title_label)
 
-        # Поле для ввода технологии
-        self.technology_input = TextInput(
+        self.technology_input = MDTextField(
             hint_text="Опишите технологию ухода",
+            mode='outlined',
             multiline=True,
-            size_hint=(1, None),
-            height=100,
-            font_name='Roboto'
+            size_hint_y=None, height=dp(100)
         )
         content.add_widget(self.technology_input)
 
-        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
-        save_btn = ModernButton(
-            text='Сохранить',
-            bg_color=get_color_from_hex('#00FF00'),
-            size_hint=(0.5, 1),
-            height=50
-        )
-        cancel_btn = ModernButton(
-            text='Отмена',
-            bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(0.5, 1),
-            height=50
-        )
+        btn_layout = MDBoxLayout(orientation='horizontal', spacing=Spacing.MD, adaptive_height=True)
+        save_btn = MDButton(style='filled', md_bg_color=Colors.BTN_SUCCESS,
+                            size_hint=(0.5, None), height=dp(48))
+        save_btn.add_widget(MDButtonText(text='Сохранить'))
+        cancel_btn = MDButton(style='outlined',
+                              size_hint=(0.5, None), height=dp(48),
+                              line_color=Colors.DANGER)
+        cancel_btn.add_widget(MDButtonText(text='Отмена',
+                              theme_text_color='Custom', text_color=Colors.DANGER))
         btn_layout.add_widget(save_btn)
         btn_layout.add_widget(cancel_btn)
         content.add_widget(btn_layout)
 
         popup = Popup(
-            title="Технология ухода",
+            title="",
             content=content,
-            size_hint=(0.8, 0.7)
+            size_hint=(0.85, None),
+            height=dp(320),
+            separator_height=0,
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3]
         )
 
         def save_technology(btn):
             technology_text = self.technology_input.text.strip()
             if technology_text:
-                # Сохраняем в свойство класса и project_data
                 self.technology = technology_text
                 self.project_data['details']['technology'] = technology_text
                 self.show_success(f"Технология ухода сохранена: {technology_text[:50]}...")
@@ -3902,27 +3678,24 @@ class ExtendedMolodnikiTableScreen(Screen):
                 return
             popup.dismiss()
 
-        save_btn.bind(on_press=save_technology)
-        cancel_btn.bind(on_press=popup.dismiss)
+        save_btn.bind(on_release=save_technology)
+        cancel_btn.bind(on_release=popup.dismiss)
 
         popup.open()
 
     def show_forest_purpose_popup(self, instance):
         """Показать popup для выбора назначения лесов"""
-        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        content = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, padding=Spacing.MD,
+                              md_bg_color=Colors.DARK_SURFACE, adaptive_height=True)
 
-        title_label = Label(
+        title_label = MDLabel(
             text="Выберите назначение лесов:",
-            font_name='Roboto',
-            font_size='18sp',
-            bold=True,
-            color=(0, 0.5, 0, 1),
-            size_hint=(1, None),
-            height=40
+            font_style='Title', role='medium',
+            theme_text_color='Custom', text_color=Colors.GREEN,
+            size_hint_y=None, height=dp(40)
         )
         content.add_widget(title_label)
 
-        # Чекбоксы выбора назначения лесов
         forest_purposes = [
             ('Эксплуатационные', 'Эксплуатационные леса'),
             ('Защитные', 'Защитные леса'),
@@ -3932,46 +3705,44 @@ class ExtendedMolodnikiTableScreen(Screen):
         self.forest_purpose_checkboxes = {}
         self.selected_forest_purpose = None
 
+        purpose_grid = MDGridLayout(cols=1, spacing=Spacing.MD, adaptive_height=True,
+                                    size_hint_y=None, padding=[0, 0])
         for short_name, full_name in forest_purposes:
-            checkbox_layout = BoxLayout(orientation='horizontal', size_hint=(1, None), height=50, spacing=10)
-            checkbox = CheckBox(size_hint=(None, 1), width=40)
-            label = Label(
+            cell = MDBoxLayout(orientation='horizontal', spacing=Spacing.SM,
+                               size_hint_y=None, height=dp(40))
+            checkbox = CheckBox(size_hint=(None, 1), width=dp(36), color=[0.3, 0.8, 0.3, 1])
+            label = MDLabel(
                 text=f"{short_name} ({full_name})",
-                font_name='Roboto',
-                font_size='16sp',
-                size_hint=(1, 1),
-                halign='left',
-                valign='middle',
-                color=(0, 0, 0, 1)
+                theme_text_color='Custom', text_color=[1,1,1,1],
+                size_hint=(1, 1), valign='middle'
             )
-            label.bind(size=lambda *args: setattr(label, 'text_size', (label.width, None)))
-            checkbox_layout.add_widget(checkbox)
-            checkbox_layout.add_widget(label)
-            content.add_widget(checkbox_layout)
+            cell.add_widget(checkbox)
+            cell.add_widget(label)
+            purpose_grid.add_widget(cell)
             self.forest_purpose_checkboxes[full_name] = checkbox
+        content.add_widget(purpose_grid)
 
-        # Кнопки управления
-        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
-        save_btn = ModernButton(
-            text='Сохранить',
-            bg_color=get_color_from_hex('#00FF00'),
-            size_hint=(0.5, 1),
-            height=50
-        )
-        cancel_btn = ModernButton(
-            text='Отмена',
-            bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(0.5, 1),
-            height=50
-        )
+        btn_layout = MDBoxLayout(orientation='horizontal', spacing=Spacing.MD, adaptive_height=True)
+        save_btn = MDButton(style='filled', md_bg_color=Colors.BTN_SUCCESS,
+                            size_hint=(0.5, None), height=dp(48))
+        save_btn.add_widget(MDButtonText(text='Сохранить'))
+        cancel_btn = MDButton(style='outlined',
+                              size_hint=(0.5, None), height=dp(48),
+                              line_color=Colors.DANGER)
+        cancel_btn.add_widget(MDButtonText(text='Отмена',
+                              theme_text_color='Custom', text_color=Colors.DANGER))
         btn_layout.add_widget(save_btn)
         btn_layout.add_widget(cancel_btn)
         content.add_widget(btn_layout)
 
         popup = Popup(
-            title="Назначение лесов",
+            title="",
             content=content,
-            size_hint=(0.8, 0.7)
+            size_hint=(0.85, None),
+            height=dp(360),
+            separator_height=0,
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3]
         )
 
         def save_forest_purpose(btn):
@@ -3990,8 +3761,8 @@ class ExtendedMolodnikiTableScreen(Screen):
             else:
                 self.show_error("Выберите назначение лесов!")
 
-        save_btn.bind(on_press=save_forest_purpose)
-        cancel_btn.bind(on_press=popup.dismiss)
+        save_btn.bind(on_release=save_forest_purpose)
+        cancel_btn.bind(on_release=popup.dismiss)
         self.forest_purpose_popup = popup
         popup.open()
 
@@ -4004,174 +3775,99 @@ class ExtendedMolodnikiTableScreen(Screen):
 
     def show_additional_functions_popup(self, instance):
         """Показать popup с дополнительными функциями"""
-        content = BoxLayout(orientation='vertical', spacing=15, padding=15)
+        content = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, padding=Spacing.MD,
+                              md_bg_color=Colors.DARK_SURFACE)
 
-        title_label = Label(
+        title_label = MDLabel(
             text="Детали проекта",
-            font_name='Roboto',
-            font_size='20sp',
-            bold=True,
-            color=(0, 0.5, 0, 1),
-            size_hint=(1, None),
-            height=50
+            font_style='Headline', role='medium',
+            theme_text_color='Custom', text_color=Colors.GREEN,
+            size_hint_y=None, height=dp(50)
         )
         content.add_widget(title_label)
 
-        # ScrollView для всего содержимого
         scroll = ScrollView(size_hint=(1, 1))
-        scroll_content = GridLayout(cols=1, spacing=15, size_hint_y=None)
+        scroll_content = MDBoxLayout(orientation='vertical', spacing=Spacing.MD,
+                                     adaptive_height=True, size_hint_y=None)
         scroll_content.bind(minimum_height=scroll_content.setter('height'))
 
-        # Кнопки дополнительных функций
-        buttons_layout = GridLayout(cols=2, spacing=15, size_hint=(1, None), height=280)
+        buttons_layout = MDGridLayout(cols=2, spacing=Spacing.MD,
+                                      adaptive_height=True, size_hint_y=None,
+                                      padding=[0, 0])
 
-        # Кнопка Вид рубки
-        care_queue_btn = ModernButton(
-            text='Вид рубки',
-            bg_color=get_color_from_hex('#32CD32'),
-            size_hint=(1, None),
-            height=70,
-            font_size='18sp'
-        )
-        care_queue_btn.bind(on_press=self.show_care_queue_popup)
-        buttons_layout.add_widget(care_queue_btn)
+        def make_detail_card(text, icon_name, callback):
+            card = MDCard(style='elevated', size_hint=(1, None), height=dp(70),
+                          md_bg_color=Colors.CARD_BG, ripple_behavior=True,
+                          on_release=callback, focus_behavior=True)
+            card.add_widget(MDBoxLayout(
+                MDIcon(icon=icon_name, theme_text_color='Custom', text_color=Colors.GREEN,
+                       size_hint=(None, 1), width=dp(40)),
+                MDLabel(text=text, font_style='Label', role='medium',
+                        theme_text_color='Custom', text_color=[1,1,1,1],
+                        halign='left', adaptive_height=True),
+                orientation='horizontal', spacing=Spacing.SM, padding=[Spacing.SM, 0],
+                adaptive_height=True
+            ))
+            return card
 
-        # Кнопка ХарактерМ
-        characteristics_btn = ModernButton(
-            text='ХарактерМ',
-            bg_color=get_color_from_hex('#32CD32'),
-            size_hint=(1, None),
-            height=70,
-            font_size='16sp'
-        )
-        characteristics_btn.bind(on_press=self.show_characteristics_popup)
-        buttons_layout.add_widget(characteristics_btn)
-
-        # Кнопка Дата рубки
-        date_btn = ModernButton(
-            text='Дата рубки',
-            bg_color=get_color_from_hex('#32CD32'),
-            size_hint=(1, None),
-            height=70,
-            font_size='18sp'
-        )
-        date_btn.bind(on_press=self.show_date_popup)
-        buttons_layout.add_widget(date_btn)
-
-        # Кнопка Технология ухода
-        technology_btn = ModernButton(
-            text='Технология\nухода',
-            bg_color=get_color_from_hex('#32CD32'),
-            size_hint=(1, None),
-            height=70,
-            font_size='16sp'
-        )
-        technology_btn.bind(on_press=self.show_technology_popup)
-        buttons_layout.add_widget(technology_btn)
-
-        # Кнопка Назначение лесов
-        forest_purpose_btn = ModernButton(
-            text='Назначение\nлесов',
-            bg_color=get_color_from_hex('#32CD32'),
-            size_hint=(1, None),
-            height=70,
-            font_size='16sp'
-        )
-        forest_purpose_btn.bind(on_press=self.show_forest_purpose_popup)
-        buttons_layout.add_widget(forest_purpose_btn)
+        buttons_layout.add_widget(make_detail_card('Вид рубки', 'content-cut', self.show_care_queue_popup))
+        buttons_layout.add_widget(make_detail_card('ХарактерМ', 'texture', self.show_characteristics_popup))
+        buttons_layout.add_widget(make_detail_card('Дата рубки', 'calendar', self.show_date_popup))
+        buttons_layout.add_widget(make_detail_card('Технология\nухода', 'wrench', self.show_technology_popup))
+        buttons_layout.add_widget(make_detail_card('Назначение\nлесов', 'pine-tree', self.show_forest_purpose_popup))
 
         scroll_content.add_widget(buttons_layout)
 
-        # Отображение текущих значений деталей проекта
-        current_values = BoxLayout(orientation='vertical', spacing=8, size_hint=(1, None), height=220, padding=[15, 15])
-        with current_values.canvas.before:
-            Color(rgba=get_color_from_hex('#E8F4FD'))
-            current_values.bg = RoundedRectangle(pos=current_values.pos, size=current_values.size, radius=[10])
-            current_values.bind(pos=lambda *args: setattr(current_values.bg, 'pos', current_values.pos),
-                               size=lambda *args: setattr(current_values.bg, 'size', current_values.size))
-
-        current_title = Label(
-            text='Текущие значения проекта:',
-            font_name='Roboto',
-            font_size='18sp',
-            bold=True,
-            color=(0, 0, 0, 1),
-            size_hint=(1, None),
-            height=40,
-            halign='center'
-        )
-        current_values.add_widget(current_title)
-
-        # Формируем текст с текущими значениями (данные из project_data загружаются из JSON)
         care_queue_val = self.project_data['details'].get('care_queue', '') or self.care_queue or 'Не указана'
         characteristics_val = self.project_data['details'].get('characteristics', '') or self.characteristics or 'Не указана'
         care_date_val = self.project_data['details'].get('care_date', '') or self.care_date or 'Не указана'
         technology_val = self.project_data['details'].get('technology', '') or self.technology or 'Не указана'
         forest_purpose_val = self.project_data['details'].get('forest_purpose', '') or self.forest_purpose or 'Не указано'
 
-        self.current_details_info = Label(
+        current_card = MDCard(style='elevated', md_bg_color=Colors.CARD_BG,
+                              adaptive_height=True, padding=Spacing.MD, spacing=Spacing.SM)
+
+        current_title = MDLabel(
+            text="Текущие значения проекта:",
+            font_style='Title', role='small',
+            theme_text_color='Custom', text_color=Colors.GREEN,
+            size_hint_y=None, height=dp(30)
+        )
+        current_card.add_widget(current_title)
+
+        self.current_details_info = MDLabel(
             text=f"Очередь рубки: {care_queue_val}\n"
                  f"Характеристика молодняков: {characteristics_val}\n"
                  f"Дата рубки: {care_date_val}\n"
                  f"Технология ухода: {technology_val}\n"
                  f"Назначение лесов: {forest_purpose_val}",
-            font_name='Roboto',
-            font_size='16sp',
-            color=(0, 0, 0, 1),
-            size_hint=(1, None),
-            height=160,
-            halign='left',
-            valign='top'
+            font_style='Body', role='medium',
+            theme_text_color='Custom', text_color=[1,1,1,1],
+            adaptive_height=True
         )
-        self.current_details_info.bind(size=lambda *args: setattr(self.current_details_info, 'text_size', (self.current_details_info.width, None)))
-        current_values.add_widget(self.current_details_info)
-
-        scroll_content.add_widget(current_values)
+        current_card.add_widget(self.current_details_info)
+        scroll_content.add_widget(current_card)
 
         scroll.add_widget(scroll_content)
         content.add_widget(scroll)
 
-        # Кнопка закрытия
-        close_btn = ModernButton(
-            text='Закрыть',
-            bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(1, None),
-            height=60,
-            font_size='18sp'
-        )
-        content.add_widget(close_btn)
+        cancel_btn = MDButton(style='outlined', size_hint=(1, None), height=dp(48),
+                              line_color=Colors.DANGER)
+        cancel_btn.add_widget(MDButtonText(text='Закрыть',
+                              theme_text_color='Custom', text_color=Colors.DANGER))
+        content.add_widget(cancel_btn)
 
         popup = Popup(
-            title="Детали проекта",
+            title="",
             content=content,
-            size_hint=(0.95, 0.95)
+            size_hint=(0.9, 0.9),
+            separator_height=0,
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3]
         )
 
-        close_btn.bind(on_press=popup.dismiss)
+        cancel_btn.bind(on_release=popup.dismiss)
         popup.open()
-
-    def get_breed_letter(self, breed_name):
-        """Получение первой буквы для коэффициента состава породы"""
-        breed_letters = {
-            'Сосна': 'С',
-            'Ель': 'Е',
-            'Пихта': 'П',
-            'Кедр': 'К',
-            'Лиственница': 'Л',
-            'Берёза': 'Б',
-            'Осина': 'Ос',
-            'Ольха чёрная': 'ОЧ',
-            'Ольха серая': 'ОС',
-            'Ива': 'И',
-            'Ива кустарниковая': 'ИК'
-        }
-
-        for full_name, letter in breed_letters.items():
-            if full_name.lower() in breed_name.lower():
-                return letter
-
-        # Возвращаем первую букву имени породы, если не найдено
-        return breed_name[0].upper() if breed_name else 'Н'
 
     def get_breed_letter(self, breed_name):
         """Получение первой буквы для коэффициента состава породы"""
@@ -4197,63 +3893,78 @@ class ExtendedMolodnikiTableScreen(Screen):
         return breed_name[0].upper() if breed_name else 'Н'
 
     def show_error(self, message):
+        content = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, padding=Spacing.MD,
+                              md_bg_color=Colors.DARK_SURFACE, adaptive_height=True)
+        content.add_widget(MDIcon(icon='alert-circle', theme_text_color='Custom', text_color=Colors.DANGER,
+                                   size_hint=(None, None), size=(dp(48), dp(48)), halign='center'))
+        content.add_widget(MDLabel(text=message, theme_text_color='Custom', text_color=[1,0.3,0.3,1],
+                                    halign='center', adaptive_height=True))
         Popup(
-            title='Ошибка',
-            content=Label(text=message, color=(1, 0, 0, 1)),
-            size_hint=(0.6, 0.3)
+            title="",
+            content=content,
+            size_hint=(0.7, None),
+            height=dp(180),
+            separator_height=0,
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3]
         ).open()
 
     def show_success(self, message):
+        content = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, padding=Spacing.MD,
+                              md_bg_color=Colors.DARK_SURFACE, adaptive_height=True)
+        content.add_widget(MDIcon(icon='check-circle', theme_text_color='Custom', text_color=Colors.GREEN,
+                                   size_hint=(None, None), size=(dp(48), dp(48)), halign='center'))
+        content.add_widget(MDLabel(text=message, theme_text_color='Custom', text_color=[0.3,0.8,0.3,1],
+                                    halign='center', adaptive_height=True))
         Popup(
-            title='Успешно',
-            content=Label(text=message, color=(0, 0.5, 0, 1)),
-            size_hint=(0.6, 0.3)
+            title="",
+            content=content,
+            size_hint=(0.7, None),
+            height=dp(180),
+            separator_height=0,
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3]
         ).open()
 
     def show_quarter_popup(self, instance):
         """Показать popup для ввода квартала"""
-        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        content = MDBoxLayout(orientation='vertical', spacing=10, padding=10, md_bg_color=Colors.DARK_SURFACE)
 
-        title_label = Label(
+        title_label = MDLabel(
             text="Введите номер квартала",
-            font_name='Roboto',
             bold=True,
             size_hint=(1, None),
-            height=30
+            height=30,
+            theme_text_color='Custom',
+            text_color=Colors.TEXT_ON_DARK
         )
         content.add_widget(title_label)
 
-        self.quarter_input = TextInput(
+        self.quarter_input = MDTextField(
             hint_text="Номер квартала",
-            multiline=False,
+            mode="outlined",
             size_hint=(1, None),
             height=40,
-            font_name='Roboto',
-            input_filter='int',
+            line_color_focus=Colors.GREEN,
             text=self.current_quarter
         )
         content.add_widget(self.quarter_input)
 
-        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=40)
-        save_btn = ModernButton(
-            text='Сохранить',
-            bg_color=get_color_from_hex('#00FF00'),
-            size_hint=(0.5, 1),
-            height=50
-        )
-        cancel_btn = ModernButton(
-            text='Отмена',
-            bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(0.5, 1),
-            height=50
-        )
+        btn_layout = MDBoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=40, md_bg_color=Colors.DARK_SURFACE)
+        save_btn = MDButton(style='filled', size_hint=(0.5, 1), height=50)
+        save_btn.add_widget(MDButtonText(text='Сохранить', theme_text_color='Custom', text_color=Colors.GREEN))
+        cancel_btn = MDButton(style='filled', size_hint=(0.5, 1), height=50)
+        cancel_btn.add_widget(MDButtonText(text='Отмена', theme_text_color='Custom', text_color=[1,0.3,0.3,1]))
         btn_layout.add_widget(save_btn)
         btn_layout.add_widget(cancel_btn)
         content.add_widget(btn_layout)
 
         popup = Popup(
-            title="Настройка квартала",
+            title="",
             content=content,
+            separator_height=0,
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3],
             size_hint=(0.6, 0.5)
         )
 
@@ -4270,56 +3981,51 @@ class ExtendedMolodnikiTableScreen(Screen):
             else:
                 self.show_error("Номер квартала не может быть пустым!")
 
-        save_btn.bind(on_press=save_quarter)
-        cancel_btn.bind(on_press=popup.dismiss)
+        save_btn.bind(on_release=save_quarter)
+        cancel_btn.bind(on_release=popup.dismiss)
 
         popup.open()
 
     def show_plot_popup(self, instance):
         """Показать popup для ввода выдела"""
-        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        content = MDBoxLayout(orientation='vertical', spacing=10, padding=10, md_bg_color=Colors.DARK_SURFACE)
 
-        title_label = Label(
+        title_label = MDLabel(
             text="Введите номер выдела",
-            font_name='Roboto',
             bold=True,
             size_hint=(1, None),
-            height=30
+            height=30,
+            theme_text_color='Custom',
+            text_color=Colors.TEXT_ON_DARK
         )
         content.add_widget(title_label)
 
-        self.plot_input = TextInput(
+        self.plot_input = MDTextField(
             hint_text="Номер выдела",
-            multiline=False,
+            mode="outlined",
             size_hint=(1, None),
             height=40,
-            font_name='Roboto',
-            input_filter='int',
+            line_color_focus=Colors.GREEN,
             text=self.current_plot
         )
         self.plot_input.bind(text=self.update_plot_display)
         content.add_widget(self.plot_input)
 
-        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
-        save_btn = ModernButton(
-            text='Сохранить',
-            bg_color=get_color_from_hex('#00FF00'),
-            size_hint=(0.5, 1),
-            height=50
-        )
-        cancel_btn = ModernButton(
-            text='Отмена',
-            bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(0.5, 1),
-            height=50
-        )
+        btn_layout = MDBoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50, md_bg_color=Colors.DARK_SURFACE)
+        save_btn = MDButton(style='filled', size_hint=(0.5, 1), height=50)
+        save_btn.add_widget(MDButtonText(text='Сохранить', theme_text_color='Custom', text_color=Colors.GREEN))
+        cancel_btn = MDButton(style='filled', size_hint=(0.5, 1), height=50)
+        cancel_btn.add_widget(MDButtonText(text='Отмена', theme_text_color='Custom', text_color=[1,0.3,0.3,1]))
         btn_layout.add_widget(save_btn)
         btn_layout.add_widget(cancel_btn)
         content.add_widget(btn_layout)
 
         popup = Popup(
-            title="Настройка выдела",
+            title="",
             content=content,
+            separator_height=0,
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3],
             size_hint=(0.6, 0.5)
         )
 
@@ -4335,86 +4041,82 @@ class ExtendedMolodnikiTableScreen(Screen):
             else:
                 self.show_error("Номер выдела не может быть пустым!")
 
-        save_btn.bind(on_press=save_plot)
-        cancel_btn.bind(on_press=popup.dismiss)
+        save_btn.bind(on_release=save_plot)
+        cancel_btn.bind(on_release=popup.dismiss)
 
         popup.open()
 
     def show_forestry_popup(self, instance):
         """Показать popup для ввода лесничества"""
-        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        content = MDBoxLayout(orientation='vertical', spacing=10, padding=10, md_bg_color=Colors.DARK_SURFACE)
 
-        title_label = Label(
+        title_label = MDLabel(
             text="Введите название лесничества",
-            font_name='Roboto',
             bold=True,
             size_hint=(1, None),
-            height=30
+            height=30,
+            theme_text_color='Custom',
+            text_color=Colors.GREEN
         )
         content.add_widget(title_label)
 
         # Поле для лесничества
-        forestry_label = Label(
+        forestry_label = MDLabel(
             text="Лесничество:",
-            font_name='Roboto',
             size_hint=(1, None),
             height=25,
-            color=(0.3, 0.3, 0.3, 1)
+            theme_text_color='Custom',
+            text_color=Colors.TEXT_ON_DARK
         )
         content.add_widget(forestry_label)
 
-        self.forestry_input = TextInput(
+        self.forestry_input = MDTextField(
             hint_text="Название лесничества",
-            multiline=False,
+            mode="outlined",
             size_hint=(1, None),
             height=40,
-            font_name='Roboto',
+            line_color_focus=Colors.GREEN,
             text=self.current_forestry
         )
         self.forestry_input.bind(text=lambda instance, value: self.update_forestry_display(value))
         content.add_widget(self.forestry_input)
 
         # Поле для участкового лесничества
-        district_forestry_label = Label(
+        district_forestry_label = MDLabel(
             text="Участковое лесничество:",
-            font_name='Roboto',
             size_hint=(1, None),
             height=25,
-            color=(0.3, 0.3, 0.3, 1)
+            theme_text_color='Custom',
+            text_color=Colors.TEXT_ON_DARK
         )
         content.add_widget(district_forestry_label)
 
-        self.district_forestry_input = TextInput(
+        self.district_forestry_input = MDTextField(
             hint_text="Название участкового лесничества",
-            multiline=False,
+            mode="outlined",
             size_hint=(1, None),
             height=40,
-            font_name='Roboto',
+            line_color_focus=Colors.GREEN,
             text=getattr(self, 'current_district_forestry', '')
         )
         self.district_forestry_input.bind(text=lambda instance, value: self.update_district_forestry_display(value))
         content.add_widget(self.district_forestry_input)
 
-        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
-        save_btn = ModernButton(
-            text='Сохранить',
-            bg_color=get_color_from_hex('#00FF00'),
-            size_hint=(0.5, 1),
-            height=50
-        )
-        cancel_btn = ModernButton(
-            text='Отмена',
-            bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(0.5, 1),
-            height=50
-        )
+        btn_layout = MDBoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50, md_bg_color=Colors.DARK_SURFACE)
+        save_btn = MDButton(style='filled', size_hint=(0.5, 1), height=50)
+        save_btn.add_widget(MDButtonText(text='Сохранить', theme_text_color='Custom', text_color=Colors.GREEN))
+        cancel_btn = MDButton(style='filled', size_hint=(0.5, 1), height=50)
+        cancel_btn.add_widget(MDButtonText(text='Отмена', theme_text_color='Custom', text_color=[1,0.3,0.3,1]))
         btn_layout.add_widget(save_btn)
         btn_layout.add_widget(cancel_btn)
         content.add_widget(btn_layout)
 
         popup = Popup(
-            title="Настройка лесничества",
+            title="",
             content=content,
+            separator_height=0,
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3],
             size_hint=(0.6, 0.7)
         )
 
@@ -4433,8 +4135,8 @@ class ExtendedMolodnikiTableScreen(Screen):
             else:
                 self.show_error("Название лесничества не может быть пустым!")
 
-        save_btn.bind(on_press=save_forestry)
-        cancel_btn.bind(on_press=popup.dismiss)
+        save_btn.bind(on_release=save_forestry)
+        cancel_btn.bind(on_release=popup.dismiss)
 
         popup.open()
 
@@ -4487,6 +4189,59 @@ class ExtendedMolodnikiTableScreen(Screen):
                 continue
 
         return breed_densities
+
+    def _show_open_project_popup(self, output_file, stdout_text):
+        """Спросить пользователя: открыть проект в Word или Excel"""
+        content = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, padding=Spacing.MD,
+                              md_bg_color=Colors.DARK_SURFACE, adaptive_height=True)
+        content.add_widget(MDLabel(
+            text="Проект ухода успешно создан!",
+            font_style='Headline', role='medium',
+            theme_text_color='Custom', text_color=Colors.GREEN,
+            size_hint_y=None, height=dp(44), halign='center'))
+        content.add_widget(MDLabel(
+            text="Открыть проект?",
+            theme_text_color='Custom', text_color=[1,1,1,1],
+            size_hint_y=None, height=dp(30), halign='center'))
+
+        btn_layout = MDBoxLayout(orientation='horizontal', spacing=Spacing.MD,
+                                 adaptive_height=True, pos_hint={'center_x': 0.5})
+
+        popup = Popup(title="", content=content, size_hint=(0.7, None), height=dp(220),
+                      separator_height=0, background_color=[0,0,0,0.3], overlay_color=[0,0,0,0.3])
+
+        word_btn = MDButton(style='filled', md_bg_color=Colors.BTN_SUCCESS,
+                            size_hint=(0.3, None), height=dp(48))
+        word_btn.add_widget(MDButtonText(text='Word'))
+        word_btn.bind(on_release=lambda x: self._open_project_file(output_file, 'word', popup))
+
+        excel_btn = MDButton(style='filled', md_bg_color=Colors.BTN_WARNING,
+                             size_hint=(0.3, None), height=dp(48))
+        excel_btn.add_widget(MDButtonText(text='Excel'))
+        excel_btn.bind(on_release=lambda x: self._open_project_file(output_file, 'excel', popup))
+
+        no_btn = MDButton(style='outlined', size_hint=(0.3, None), height=dp(48),
+                          line_color=Colors.DANGER)
+        no_btn.add_widget(MDButtonText(text='Нет', theme_text_color='Custom', text_color=Colors.DANGER))
+        no_btn.bind(on_release=lambda x: popup.dismiss())
+
+        btn_layout.add_widget(word_btn)
+        btn_layout.add_widget(excel_btn)
+        btn_layout.add_widget(no_btn)
+        content.add_widget(btn_layout)
+
+        popup.open()
+
+    def _open_project_file(self, output_file, file_type, popup):
+        """Открыть сгенерированный файл проекта"""
+        try:
+            popup.dismiss()
+            if file_type == 'word' and output_file and os.path.exists(output_file):
+                os.startfile(output_file)
+            elif file_type == 'excel':
+                self.save_to_excel_without_dialog()
+        except Exception as e:
+            self.show_error(f"Ошибка при открытии файла: {str(e)}")
 
     def generate_care_project(self, instance):
         """Генерирует проект ухода в Word документе с использованием данных из меню Итого"""
@@ -4597,7 +4352,13 @@ class ExtendedMolodnikiTableScreen(Screen):
 
             if result.returncode == 0:
                 stdout_text = decode_output(result.stdout)
-                self.show_success(f"Проект ухода успешно создан!\n{stdout_text}")
+                # Извлекаем путь к файлу из вывода
+                output_file = ''
+                for line in stdout_text.split('\n'):
+                    if '[OK]' in line:
+                        output_file = line.split(':', 1)[-1].strip() if ':' in line else ''
+                        break
+                self._show_open_project_popup(output_file, stdout_text)
             else:
                 stderr_text = decode_output(result.stderr)
                 self.show_error(f"Ошибка при создании проекта ухода:\n{stderr_text}")
@@ -5102,14 +4863,14 @@ class ExtendedMolodnikiTableScreen(Screen):
 
     def show_edit_plots_popup(self, instance):
         """Показать popup со списком площадок для управления породами"""
-        content = BoxLayout(orientation='vertical', spacing=15, padding=15)
+        content = MDBoxLayout(orientation='vertical', spacing=15, padding=15, md_bg_color=Colors.DARK_SURFACE)
 
-        title_label = Label(
+        title_label = MDLabel(
             text="Площадки - Управление породами",
-            font_name='Roboto',
             font_size='20sp',
             bold=True,
-            color=(0, 0.5, 0, 1),
+            theme_text_color='Custom',
+            text_color=Colors.GREEN,
             size_hint=(1, None),
             height=50
         )
@@ -5117,7 +4878,7 @@ class ExtendedMolodnikiTableScreen(Screen):
 
         # ScrollView для списка площадок
         scroll = ScrollView(size_hint=(1, 1))
-        plots_layout = GridLayout(cols=1, spacing=10, size_hint_y=None)
+        plots_layout = MDGridLayout(cols=1, spacing=10, size_hint_y=None, md_bg_color=Colors.DARK_SURFACE)
         plots_layout.bind(minimum_height=plots_layout.setter('height'))
 
         # Получаем все площадки из page_data
@@ -5133,11 +4894,11 @@ class ExtendedMolodnikiTableScreen(Screen):
                     })
 
         if not all_plots:
-            no_plots_label = Label(
+            no_plots_label = MDLabel(
                 text="Нет сохраненных площадок.\nДобавьте площадки через меню 'Файл' -> 'Создать'",
-                font_name='Roboto',
                 font_size='16sp',
-                color=(0.5, 0.5, 0.5, 1),
+                theme_text_color='Custom',
+                text_color=[0.5,0.5,0.5,1],
                 size_hint=(1, None),
                 height=100,
                 halign='center',
@@ -5159,21 +4920,16 @@ class ExtendedMolodnikiTableScreen(Screen):
                 breeds_count = len(breeds_list)
 
                 # Создаем бокс площадки
-                plot_box = BoxLayout(orientation='vertical', spacing=5, size_hint_y=None, height=120 if breeds_count > 0 else 80)
-                with plot_box.canvas.before:
-                    Color(rgba=get_color_from_hex('#F0FFF0'))
-                    plot_box.bg = RoundedRectangle(pos=plot_box.pos, size=plot_box.size, radius=[10])
-                    plot_box.bind(pos=lambda *args: setattr(plot_box.bg, 'pos', plot_box.pos),
-                                 size=lambda *args: setattr(plot_box.bg, 'size', plot_box.size))
+                plot_box = MDBoxLayout(orientation='vertical', spacing=5, size_hint_y=None, height=120 if breeds_count > 0 else 80, md_bg_color=Colors.CARD_BG)
 
                 # Заголовок площадки
-                plot_header = BoxLayout(orientation='horizontal', size_hint_y=None, height=35, padding=[10, 5])
-                plot_num_label = Label(
+                plot_header = MDBoxLayout(orientation='horizontal', size_hint_y=None, height=35, padding=[10, 5], md_bg_color=Colors.CARD_BG)
+                plot_num_label = MDLabel(
                     text=f"Площадка №{plot_num}",
-                    font_name='Roboto',
                     font_size='16sp',
                     bold=True,
-                    color=(0, 0.5, 0, 1),
+                    theme_text_color='Custom',
+                    text_color=Colors.GREEN,
                     size_hint=(0.3, 1),
                     halign='left'
                 )
@@ -5181,11 +4937,11 @@ class ExtendedMolodnikiTableScreen(Screen):
                 plot_header.add_widget(plot_num_label)
 
                 if gps_point:
-                    gps_label = Label(
+                    gps_label = MDLabel(
                         text=f"GPS: {gps_point}",
-                        font_name='Roboto',
                         font_size='14sp',
-                        color=(0.3, 0.3, 0.3, 1),
+                        theme_text_color='Custom',
+                        text_color=[0.7,0.7,0.7,1],
                         size_hint=(0.35, 1),
                         halign='left'
                     )
@@ -5193,11 +4949,11 @@ class ExtendedMolodnikiTableScreen(Screen):
                     plot_header.add_widget(gps_label)
 
                 if forest_type:
-                    type_label = Label(
+                    type_label = MDLabel(
                         text=f"Тип: {forest_type}",
-                        font_name='Roboto',
                         font_size='14sp',
-                        color=(0.3, 0.3, 0.3, 1),
+                        theme_text_color='Custom',
+                        text_color=[0.7,0.7,0.7,1],
                         size_hint=(0.35, 1),
                         halign='left'
                     )
@@ -5214,11 +4970,11 @@ class ExtendedMolodnikiTableScreen(Screen):
                     if breeds_count > 3:
                         breeds_info_text += f" и еще {breeds_count - 3}"
 
-                    breeds_label = Label(
+                    breeds_label = MDLabel(
                         text=breeds_info_text,
-                        font_name='Roboto',
                         font_size='13sp',
-                        color=(0.2, 0.2, 0.2, 1),
+                        theme_text_color='Custom',
+                        text_color=[0.7,0.7,0.7,1],
                         size_hint=(1, None),
                         height=30,
                         halign='left'
@@ -5227,14 +4983,9 @@ class ExtendedMolodnikiTableScreen(Screen):
                     plot_box.add_widget(breeds_label)
 
                 # Кнопка управления
-                manage_btn = ModernButton(
-                    text='Редакция',
-                    bg_color=get_color_from_hex('#32CD32'),
-                    size_hint=(1, None),
-                    height=40,
-                    font_size='14sp'
-                )
-                manage_btn.bind(on_press=lambda x, p=plot_info: self.show_plot_breed_management(p))
+                manage_btn = MDButton(style='filled', size_hint=(1, None), height=40)
+                manage_btn.add_widget(MDButtonText(text='Редакция', theme_text_color='Custom', text_color=Colors.GREEN))
+                manage_btn.bind(on_release=lambda x, p=plot_info: self.show_plot_breed_management(p))
                 plot_box.add_widget(manage_btn)
 
                 plots_layout.add_widget(plot_box)
@@ -5243,22 +4994,20 @@ class ExtendedMolodnikiTableScreen(Screen):
         content.add_widget(scroll)
 
         # Кнопка закрытия
-        close_btn = ModernButton(
-            text='Закрыть',
-            bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(1, None),
-            height=60,
-            font_size='18sp'
-        )
+        close_btn = MDButton(style='filled', size_hint=(1, None), height=60)
+        close_btn.add_widget(MDButtonText(text='Закрыть', theme_text_color='Custom', text_color=[1,0.3,0.3,1]))
         content.add_widget(close_btn)
 
         popup = Popup(
-            title="Площадки",
+            title="",
             content=content,
+            separator_height=0,
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3],
             size_hint=(0.9, 0.9)
         )
 
-        close_btn.bind(on_press=popup.dismiss)
+        close_btn.bind(on_release=popup.dismiss)
         popup.open()
 
     def show_plot_breed_management(self, plot_info):
@@ -5268,15 +5017,15 @@ class ExtendedMolodnikiTableScreen(Screen):
         plot_data = plot_info['data']
         plot_num = row_idx + 1
 
-        content = BoxLayout(orientation='vertical', spacing=15, padding=15)
+        content = MDBoxLayout(orientation='vertical', spacing=15, padding=15, md_bg_color=Colors.DARK_SURFACE)
 
         # Заголовок
-        title_label = Label(
+        title_label = MDLabel(
             text=f"Управление породами - Площадка №{plot_num}",
-            font_name='Roboto',
             font_size='20sp',
             bold=True,
-            color=(0, 0.5, 0, 1),
+            theme_text_color='Custom',
+            text_color=Colors.GREEN,
             size_hint=(1, None),
             height=50
         )
@@ -5284,23 +5033,18 @@ class ExtendedMolodnikiTableScreen(Screen):
 
         # ScrollView для содержимого
         scroll = ScrollView(size_hint=(1, 1))
-        scroll_content = GridLayout(cols=1, spacing=15, size_hint_y=None)
+        scroll_content = MDGridLayout(cols=1, spacing=15, size_hint_y=None, md_bg_color=Colors.DARK_SURFACE)
         scroll_content.bind(minimum_height=scroll_content.setter('height'))
 
         # Информация о площадке
-        info_box = BoxLayout(orientation='vertical', spacing=8, size_hint=(1, None), height=150, padding=[15, 15])
-        with info_box.canvas.before:
-            Color(rgba=get_color_from_hex('#E8F4FD'))
-            info_box.bg = RoundedRectangle(pos=info_box.pos, size=info_box.size, radius=[10])
-            info_box.bind(pos=lambda *args: setattr(info_box.bg, 'pos', info_box.pos),
-                         size=lambda *args: setattr(info_box.bg, 'size', info_box.size))
+        info_box = MDBoxLayout(orientation='vertical', spacing=8, size_hint=(1, None), height=150, padding=[15, 15], md_bg_color=Colors.CARD_BG)
 
-        info_title = Label(
+        info_title = MDLabel(
             text='Данные площадки:',
-            font_name='Roboto',
             font_size='16sp',
             bold=True,
-            color=(0, 0, 0, 1),
+            theme_text_color='Custom',
+            text_color=Colors.TEXT_ON_DARK,
             size_hint=(1, None),
             height=30,
             halign='left'
@@ -5316,11 +5060,11 @@ class ExtendedMolodnikiTableScreen(Screen):
         info_text += f"Предмет ухода: {predmet_uhoda or 'Не указан'}\n"
         info_text += f"Тип леса: {forest_type or 'Не указан'}"
 
-        info_details = Label(
+        info_details = MDLabel(
             text=info_text,
-            font_name='Roboto',
             font_size='14sp',
-            color=(0.2, 0.2, 0.2, 1),
+            theme_text_color='Custom',
+            text_color=[0.7,0.7,0.7,1],
             size_hint=(1, None),
             height=80,
             halign='left',
@@ -5330,33 +5074,22 @@ class ExtendedMolodnikiTableScreen(Screen):
         info_box.add_widget(info_details)
 
         # Кнопка "Редакция" для данных площадки
-        edit_plot_btn = ModernButton(
-            text='Редакция',
-            bg_color=get_color_from_hex('#32CD32'),
-            size_hint=(1, None),
-            height=45,
-            font_size='15sp',
-            bold=True
-        )
-        edit_plot_btn.bind(on_press=lambda x, p=page_num, r=row_idx: self.edit_plot_data_from_management(p, r))
+        edit_plot_btn = MDButton(style='filled', size_hint=(1, None), height=45)
+        edit_plot_btn.add_widget(MDButtonText(text='Редакция', theme_text_color='Custom', text_color=Colors.GREEN, bold=True))
+        edit_plot_btn.bind(on_release=lambda x, p=page_num, r=row_idx: self.edit_plot_data_from_management(p, r))
         info_box.add_widget(edit_plot_btn)
 
         scroll_content.add_widget(info_box)
 
         # Список пород с боксами
-        breeds_box = BoxLayout(orientation='vertical', spacing=10, size_hint=(1, None), height=400, padding=[15, 15])
-        with breeds_box.canvas.before:
-            Color(rgba=get_color_from_hex('#FFF8DC'))
-            breeds_box.bg = RoundedRectangle(pos=breeds_box.pos, size=breeds_box.size, radius=[10])
-            breeds_box.bind(pos=lambda *args: setattr(breeds_box.bg, 'pos', breeds_box.pos),
-                           size=lambda *args: setattr(breeds_box.bg, 'size', breeds_box.size))
+        breeds_box = MDBoxLayout(orientation='vertical', spacing=10, size_hint=(1, None), height=400, padding=[15, 15], md_bg_color=Colors.CARD_BG)
 
-        breeds_title = Label(
+        breeds_title = MDLabel(
             text='Сохраненные породы:',
-            font_name='Roboto',
             font_size='16sp',
             bold=True,
-            color=(0, 0, 0, 1),
+            theme_text_color='Custom',
+            text_color=Colors.TEXT_ON_DARK,
             size_hint=(1, None),
             height=30,
             halign='left'
@@ -5365,18 +5098,18 @@ class ExtendedMolodnikiTableScreen(Screen):
 
         # ScrollView для списка пород
         breeds_scroll = ScrollView(size_hint=(1, 1))
-        breeds_list_layout = GridLayout(cols=1, spacing=8, size_hint_y=None)
+        breeds_list_layout = MDGridLayout(cols=1, spacing=8, size_hint_y=None, md_bg_color=Colors.CARD_BG)
         breeds_list_layout.bind(minimum_height=breeds_list_layout.setter('height'))
 
         # Получаем породы из данных
         breeds_list = self.parse_breeds_data(breeds_data) if breeds_data else []
 
         if not breeds_list:
-            no_breeds_label = Label(
+            no_breeds_label = MDLabel(
                 text="Нет сохраненных пород для этой площадки",
-                font_name='Roboto',
                 font_size='14sp',
-                color=(0.5, 0.5, 0.5, 1),
+                theme_text_color='Custom',
+                text_color=[0.5,0.5,0.5,1],
                 size_hint=(1, None),
                 height=50,
                 halign='center'
@@ -5390,21 +5123,16 @@ class ExtendedMolodnikiTableScreen(Screen):
                 breed_type_text = 'Хвойная' if breed_type == 'coniferous' else 'Лиственная'
 
                 # Создаем бокс породы
-                breed_box = BoxLayout(orientation='vertical', spacing=5, size_hint_y=None, height=140, padding=[10, 10])
-                with breed_box.canvas.before:
-                    Color(rgba=get_color_from_hex('#F5F5F5'))
-                    breed_box.bg = RoundedRectangle(pos=breed_box.pos, size=breed_box.size, radius=[8])
-                    breed_box.bind(pos=lambda *args: setattr(breed_box.bg, 'pos', breed_box.pos),
-                                  size=lambda *args: setattr(breed_box.bg, 'size', breed_box.size))
+                breed_box = MDBoxLayout(orientation='vertical', spacing=5, size_hint_y=None, height=140, padding=[10, 10], md_bg_color=Colors.CARD_BG)
 
                 # Заголовок породы
                 breed_header = f"№{i+1}: {breed_name} ({breed_type_text})"
-                breed_header_label = Label(
+                breed_header_label = MDLabel(
                     text=breed_header,
-                    font_name='Roboto',
                     font_size='15sp',
                     bold=True,
-                    color=(0, 0.3, 0.5, 1),
+                    theme_text_color='Custom',
+                    text_color=Colors.GREEN,
                     size_hint=(1, None),
                     height=30,
                     halign='left'
@@ -5445,11 +5173,11 @@ class ExtendedMolodnikiTableScreen(Screen):
                     params.append(f"Возраст: {age}л")
 
                 params_text = ", ".join(params) if params else "Нет параметров"
-                params_label = Label(
+                params_label = MDLabel(
                     text=params_text,
-                    font_name='Roboto',
                     font_size='13sp',
-                    color=(0.2, 0.2, 0.2, 1),
+                    theme_text_color='Custom',
+                    text_color=[0.7,0.7,0.7,1],
                     size_hint=(1, None),
                     height=40,
                     halign='left',
@@ -5459,14 +5187,9 @@ class ExtendedMolodnikiTableScreen(Screen):
                 breed_box.add_widget(params_label)
 
                 # Кнопка Редакция
-                edit_breed_btn = ModernButton(
-                    text='Редакция',
-                    bg_color=get_color_from_hex('#32CD32'),
-                    size_hint=(1, None),
-                    height=35,
-                    font_size='13sp'
-                )
-                edit_breed_btn.bind(on_press=lambda x, p=page_num, r=row_idx, b=i: self.edit_breed_from_plot(p, r, b))
+                edit_breed_btn = MDButton(style='filled', size_hint=(1, None), height=35)
+                edit_breed_btn.add_widget(MDButtonText(text='Редакция', theme_text_color='Custom', text_color=Colors.GREEN))
+                edit_breed_btn.bind(on_release=lambda x, p=page_num, r=row_idx, b=i: self.edit_breed_from_plot(p, r, b))
                 breed_box.add_widget(edit_breed_btn)
 
                 breeds_list_layout.add_widget(breed_box)
@@ -5476,36 +5199,21 @@ class ExtendedMolodnikiTableScreen(Screen):
         scroll_content.add_widget(breeds_box)
 
         # Кнопки управления
-        btn_layout = BoxLayout(orientation='horizontal', spacing=15, size_hint=(1, None), height=60)
+        btn_layout = MDBoxLayout(orientation='horizontal', spacing=15, size_hint=(1, None), height=60, md_bg_color=Colors.DARK_SURFACE)
 
-        add_breed_btn = ModernButton(
-            text='Добавить',
-            bg_color=get_color_from_hex('#00FF00'),
-            size_hint=(0.33, 1),
-            height=50,
-            font_size='16sp'
-        )
-        add_breed_btn.bind(on_press=lambda x, p=page_num, r=row_idx: self.add_breed_from_plot(p, r))
+        add_breed_btn = MDButton(style='filled', size_hint=(0.33, 1), height=50)
+        add_breed_btn.add_widget(MDButtonText(text='Добавить', theme_text_color='Custom', text_color=Colors.GREEN))
+        add_breed_btn.bind(on_release=lambda x, p=page_num, r=row_idx: self.add_breed_from_plot(p, r))
         btn_layout.add_widget(add_breed_btn)
 
-        edit_breed_main_btn = ModernButton(
-            text='Изменить',
-            bg_color=get_color_from_hex('#FFA500'),
-            size_hint=(0.33, 1),
-            height=50,
-            font_size='16sp'
-        )
-        edit_breed_main_btn.bind(on_press=lambda x, p=page_num, r=row_idx: self.edit_breed_list_from_plot(p, r))
+        edit_breed_main_btn = MDButton(style='filled', size_hint=(0.33, 1), height=50)
+        edit_breed_main_btn.add_widget(MDButtonText(text='Изменить', theme_text_color='Custom', text_color=[0.7,0.7,0.7,1]))
+        edit_breed_main_btn.bind(on_release=lambda x, p=page_num, r=row_idx: self.edit_breed_list_from_plot(p, r))
         btn_layout.add_widget(edit_breed_main_btn)
 
-        close_btn = ModernButton(
-            text='Закрыть',
-            bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(0.34, 1),
-            height=50,
-            font_size='16sp'
-        )
-        close_btn.bind(on_press=lambda x: self.close_breed_management())
+        close_btn = MDButton(style='filled', size_hint=(0.34, 1), height=50)
+        close_btn.add_widget(MDButtonText(text='Закрыть', theme_text_color='Custom', text_color=[1,0.3,0.3,1]))
+        close_btn.bind(on_release=lambda x: self.close_breed_management())
         btn_layout.add_widget(close_btn)
 
         scroll_content.add_widget(btn_layout)
@@ -5513,8 +5221,11 @@ class ExtendedMolodnikiTableScreen(Screen):
         content.add_widget(scroll)
 
         self.breed_management_popup = Popup(
-            title=f"Площадка №{plot_num} - Породы",
+            title="",
             content=content,
+            separator_height=0,
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3],
             size_hint=(0.95, 0.95)
         )
 
@@ -5548,21 +5259,21 @@ class ExtendedMolodnikiTableScreen(Screen):
         self.close_breed_management()
 
         # Открываем popup выбора породы для редактирования
-        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        content = MDBoxLayout(orientation='vertical', spacing=10, padding=10, md_bg_color=Colors.DARK_SURFACE)
 
-        title_label = Label(
+        title_label = MDLabel(
             text=f"Площадка №{row_idx + 1} - Выберите породу для редактирования:",
-            font_name='Roboto',
             font_size='16sp',
             bold=True,
-            color=(0, 0.5, 0, 1),
+            theme_text_color='Custom',
+            text_color=Colors.GREEN,
             size_hint=(1, None),
             height=40
         )
         content.add_widget(title_label)
 
         scroll = ScrollView(size_hint=(1, None), height=300)
-        breeds_layout = GridLayout(cols=1, spacing=5, size_hint_y=None)
+        breeds_layout = MDGridLayout(cols=1, spacing=5, size_hint_y=None, md_bg_color=Colors.DARK_SURFACE)
         breeds_layout.bind(minimum_height=breeds_layout.setter('height'))
 
         for i, breed_info in enumerate(breeds_list):
@@ -5570,32 +5281,25 @@ class ExtendedMolodnikiTableScreen(Screen):
             breed_type = breed_info.get('type', 'unknown')
             breed_type_text = 'Хвойная' if breed_type == 'coniferous' else 'Лиственная'
 
-            btn = ModernButton(
-                text=f"№{i+1}: {breed_name} ({breed_type_text})",
-                bg_color=get_color_from_hex('#87CEEB'),
-                size_hint=(1, None),
-                height=50,
-                font_size='14sp'
-            )
-            btn.bind(on_press=lambda x, p=page_num, r=row_idx, b=i: self.edit_breed_from_plot(p, r, b))
+            btn = MDButton(style='filled', size_hint=(1, None), height=50)
+            btn.add_widget(MDButtonText(text=f"№{i+1}: {breed_name} ({breed_type_text})", theme_text_color='Custom', text_color=[0.7,0.7,0.7,1]))
+            btn.bind(on_release=lambda x, p=page_num, r=row_idx, b=i: self.edit_breed_from_plot(p, r, b))
             breeds_layout.add_widget(btn)
 
         scroll.add_widget(breeds_layout)
         content.add_widget(scroll)
 
-        cancel_btn = ModernButton(
-            text='Отмена',
-            bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(1, None),
-            height=50,
-            font_size='16sp'
-        )
-        cancel_btn.bind(on_press=lambda x: self.close_breed_selection_popup())
+        cancel_btn = MDButton(style='filled', size_hint=(1, None), height=50)
+        cancel_btn.add_widget(MDButtonText(text='Отмена', theme_text_color='Custom', text_color=[1,0.3,0.3,1]))
+        cancel_btn.bind(on_release=lambda x: self.close_breed_selection_popup())
         content.add_widget(cancel_btn)
 
         self.breed_selection_popup = Popup(
-            title="Выбор породы",
+            title="",
             content=content,
+            separator_height=0,
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3],
             size_hint=(0.9, 0.8)
         )
         self.breed_selection_popup.open()
@@ -6013,18 +5717,19 @@ class ExtendedMolodnikiTableScreen(Screen):
 
     def show_edit_breed_popup(self, instance, breed_index, breed_info):
         """Показать popup для редактирования породы"""
-        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        content = MDBoxLayout(orientation='vertical', spacing=10, padding=10, md_bg_color=Colors.DARK_SURFACE)
 
-        title_label = Label(
+        title_label = MDLabel(
             text=f"Редактирование породы: {breed_info.get('name', '')}",
-            font_name='Roboto',
             bold=True,
             size_hint=(1, None),
-            height=30
+            height=30,
+            theme_text_color='Custom',
+            text_color=Colors.TEXT_ON_DARK
         )
         content.add_widget(title_label)
 
-        fields_layout = GridLayout(cols=2, spacing=5, size_hint=(1, None), height=200)
+        fields_layout = MDGridLayout(cols=2, spacing=5, size_hint=(1, None), height=200, md_bg_color=Colors.DARK_SURFACE)
 
         breed_type = breed_info.get('type', 'deciduous')
         if breed_type == 'coniferous':
@@ -6045,17 +5750,14 @@ class ExtendedMolodnikiTableScreen(Screen):
 
         self.edit_inputs = {}
         for label_text, field_key in fields:
-            lbl = Label(text=label_text, font_name='Roboto', size_hint=(None, None), size=(100, 30))
-            inp = TextInput(
-                multiline=False,
+            lbl = MDLabel(text=label_text, size_hint=(None, None), size=(100, 30), theme_text_color='Custom', text_color=Colors.TEXT_ON_DARK)
+            inp = MDTextField(
+                mode="outlined",
                 size_hint=(None, None),
                 size=(100, 30),
+                line_color_focus=Colors.GREEN,
                 text=str(breed_info.get(field_key, ''))
             )
-            if field_key in ['density', 'age']:
-                inp.input_filter = 'int'
-            elif field_key == 'height':
-                inp.input_filter = 'float'
             fields_layout.add_widget(lbl)
             fields_layout.add_widget(inp)
             self.edit_inputs[field_key] = inp
@@ -6063,26 +5765,21 @@ class ExtendedMolodnikiTableScreen(Screen):
         content.add_widget(fields_layout)
 
         # Кнопки
-        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
-        save_btn = ModernButton(
-            text='Сохранить',
-            bg_color=get_color_from_hex('#00FF00'),
-            size_hint=(0.5, 1),
-            height=50
-        )
-        cancel_btn = ModernButton(
-            text='Отмена',
-            bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(0.5, 1),
-            height=50
-        )
+        btn_layout = MDBoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50, md_bg_color=Colors.DARK_SURFACE)
+        save_btn = MDButton(style='filled', size_hint=(0.5, 1), height=50)
+        save_btn.add_widget(MDButtonText(text='Сохранить', theme_text_color='Custom', text_color=Colors.GREEN))
+        cancel_btn = MDButton(style='filled', size_hint=(0.5, 1), height=50)
+        cancel_btn.add_widget(MDButtonText(text='Отмена', theme_text_color='Custom', text_color=[1,0.3,0.3,1]))
         btn_layout.add_widget(save_btn)
         btn_layout.add_widget(cancel_btn)
         content.add_widget(btn_layout)
 
         popup = Popup(
-            title=f"Редактирование породы",
+            title="",
             content=content,
+            separator_height=0,
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3],
             size_hint=(0.9, 0.8)
         )
 
@@ -6109,53 +5806,49 @@ class ExtendedMolodnikiTableScreen(Screen):
                 self.show_success("Порода обновлена!")
                 popup.dismiss()
 
-        save_btn.bind(on_press=save_edit)
-        cancel_btn.bind(on_press=popup.dismiss)
+        save_btn.bind(on_release=save_edit)
+        cancel_btn.bind(on_release=popup.dismiss)
 
         popup.open()
 
     def show_custom_breed_popup(self, instance, breed_type):
         """Показать popup для ввода названия другой породы"""
-        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        content = MDBoxLayout(orientation='vertical', spacing=10, padding=10, md_bg_color=Colors.DARK_SURFACE)
 
-        title_label = Label(
+        title_label = MDLabel(
             text="Введите название другой породы",
-            font_name='Roboto',
             bold=True,
             size_hint=(1, None),
-            height=30
+            height=30,
+            theme_text_color='Custom',
+            text_color=Colors.TEXT_ON_DARK
         )
         content.add_widget(title_label)
 
-        self.custom_breed_input = TextInput(
+        self.custom_breed_input = MDTextField(
             hint_text="Название породы",
-            multiline=False,
+            mode="outlined",
             size_hint=(1, None),
             height=40,
-            font_name='Roboto'
+            line_color_focus=Colors.GREEN
         )
         content.add_widget(self.custom_breed_input)
 
-        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
-        save_btn = ModernButton(
-            text='Сохранить',
-            bg_color=get_color_from_hex('#00FF00'),
-            size_hint=(0.5, 1),
-            height=50
-        )
-        cancel_btn = ModernButton(
-            text='Отмена',
-            bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(0.5, 1),
-            height=50
-        )
+        btn_layout = MDBoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50, md_bg_color=Colors.DARK_SURFACE)
+        save_btn = MDButton(style='filled', size_hint=(0.5, 1), height=50)
+        save_btn.add_widget(MDButtonText(text='Сохранить', theme_text_color='Custom', text_color=Colors.GREEN))
+        cancel_btn = MDButton(style='filled', size_hint=(0.5, 1), height=50)
+        cancel_btn.add_widget(MDButtonText(text='Отмена', theme_text_color='Custom', text_color=[1,0.3,0.3,1]))
         btn_layout.add_widget(save_btn)
         btn_layout.add_widget(cancel_btn)
         content.add_widget(btn_layout)
 
         popup = Popup(
-            title=f"Ввод {'хвойной' if breed_type == 'coniferous' else 'лиственной'} породы",
+            title="",
             content=content,
+            separator_height=0,
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3],
             size_hint=(0.8, 0.6)
         )
 
@@ -6177,8 +5870,8 @@ class ExtendedMolodnikiTableScreen(Screen):
             else:
                 self.show_error("Название породы не может быть пустым!")
 
-        save_btn.bind(on_press=save_custom_breed)
-        cancel_btn.bind(on_press=popup.dismiss)
+        save_btn.bind(on_release=save_custom_breed)
+        cancel_btn.bind(on_release=popup.dismiss)
 
         popup.open()
 
@@ -6414,8 +6107,9 @@ class ExtendedMolodnikiTableScreen(Screen):
 
                     page_data = []
                     rows_data = cursor.fetchall()
+                    max_row = max((r[0] for r in rows_data), default=-1)
 
-                    for row_idx in range(self.rows_per_page):
+                    for row_idx in range(max_row + 1):
                         row_data = ['', '', '', '', '', '']
                         page_data.append(row_data)
 
@@ -6460,65 +6154,83 @@ class ExtendedMolodnikiTableScreen(Screen):
         App.get_running_app().root.current = 'main'
 
     def show_error(self, message):
+        content = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, padding=Spacing.MD,
+                              md_bg_color=Colors.DARK_SURFACE, adaptive_height=True)
+        content.add_widget(MDIcon(icon='alert-circle', theme_text_color='Custom', text_color=Colors.DANGER,
+                                   size_hint=(None, None), size=(dp(48), dp(48)), halign='center'))
+        content.add_widget(MDLabel(text=message, theme_text_color='Custom', text_color=[1,0.3,0.3,1],
+                                    halign='center', adaptive_height=True))
         Popup(
-            title='Ошибка',
-            content=Label(text=message, color=(1, 0, 0, 1)),
-            size_hint=(0.6, 0.3)
+            title="",
+            content=content,
+            size_hint=(0.7, None),
+            height=dp(180),
+            separator_height=0,
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3]
         ).open()
 
     def show_success(self, message):
+        content = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, padding=Spacing.MD,
+                              md_bg_color=Colors.DARK_SURFACE, adaptive_height=True)
+        content.add_widget(MDIcon(icon='check-circle', theme_text_color='Custom', text_color=Colors.GREEN,
+                                   size_hint=(None, None), size=(dp(48), dp(48)), halign='center'))
+        content.add_widget(MDLabel(text=message, theme_text_color='Custom', text_color=[0.3,0.8,0.3,1],
+                                    halign='center', adaptive_height=True))
         Popup(
-            title='Успешно',
-            content=Label(text=message, color=(0, 0.5, 0, 1)),
-            size_hint=(0.6, 0.3)
+            title="",
+            content=content,
+            size_hint=(0.7, None),
+            height=dp(180),
+            separator_height=0,
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3]
         ).open()
 
     def show_quarter_popup(self, instance):
         """Показать popup для ввода квартала"""
-        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        content = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, padding=Spacing.MD,
+                              md_bg_color=Colors.DARK_SURFACE, adaptive_height=True)
 
-        title_label = Label(
+        title_label = MDLabel(
             text="Введите номер квартала",
-            font_name='Roboto',
-            bold=True,
-            size_hint=(1, None),
-            height=30
+            font_style='Title', role='medium',
+            theme_text_color='Custom', text_color=Colors.GREEN,
+            size_hint_y=None, height=dp(40)
         )
         content.add_widget(title_label)
 
-        self.quarter_input = TextInput(
+        self.quarter_input = MDTextField(
             hint_text="Номер квартала",
-            multiline=False,
-            size_hint=(1, None),
-            height=40,
-            font_name='Roboto',
+            mode='outlined',
+            size_hint_y=None, height=dp(52),
             input_filter='int',
             text=self.project_data['address'].get('quarter', self.current_quarter)
         )
         self.quarter_input.bind(text=lambda instance, value: self.update_quarter_display(value))
         content.add_widget(self.quarter_input)
 
-        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=40)
-        save_btn = ModernButton(
-            text='Сохранить',
-            bg_color=get_color_from_hex('#00FF00'),
-            size_hint=(0.5, 1),
-            height=50
-        )
-        cancel_btn = ModernButton(
-            text='Отмена',
-            bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(0.5, 1),
-            height=50
-        )
+        btn_layout = MDBoxLayout(orientation='horizontal', spacing=Spacing.MD, adaptive_height=True)
+        save_btn = MDButton(style='filled', md_bg_color=Colors.BTN_SUCCESS,
+                            size_hint=(0.5, None), height=dp(48))
+        save_btn.add_widget(MDButtonText(text='Сохранить'))
+        cancel_btn = MDButton(style='outlined',
+                              size_hint=(0.5, None), height=dp(48),
+                              line_color=Colors.DANGER)
+        cancel_btn.add_widget(MDButtonText(text='Отмена',
+                              theme_text_color='Custom', text_color=Colors.DANGER))
         btn_layout.add_widget(save_btn)
         btn_layout.add_widget(cancel_btn)
         content.add_widget(btn_layout)
 
         popup = Popup(
-            title="Настройка квартала",
+            title="",
             content=content,
-            size_hint=(0.6, 0.5)
+            size_hint=(0.85, None),
+            height=dp(300),
+            separator_height=0,
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3]
         )
 
         def save_quarter(btn):
@@ -6532,56 +6244,54 @@ class ExtendedMolodnikiTableScreen(Screen):
             else:
                 self.show_error("Номер квартала не может быть пустым!")
 
-        save_btn.bind(on_press=save_quarter)
-        cancel_btn.bind(on_press=popup.dismiss)
+        save_btn.bind(on_release=save_quarter)
+        cancel_btn.bind(on_release=popup.dismiss)
 
         popup.open()
 
     def show_plot_popup(self, instance):
         """Показать popup для ввода выдела"""
-        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        content = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, padding=Spacing.MD,
+                              md_bg_color=Colors.DARK_SURFACE, adaptive_height=True)
 
-        title_label = Label(
+        title_label = MDLabel(
             text="Введите номер выдела",
-            font_name='Roboto',
-            bold=True,
-            size_hint=(1, None),
-            height=30
+            font_style='Title', role='medium',
+            theme_text_color='Custom', text_color=Colors.GREEN,
+            size_hint_y=None, height=dp(40)
         )
         content.add_widget(title_label)
 
-        self.plot_input = TextInput(
+        self.plot_input = MDTextField(
             hint_text="Номер выдела",
-            multiline=False,
-            size_hint=(1, None),
-            height=40,
-            font_name='Roboto',
+            mode='outlined',
+            size_hint_y=None, height=dp(52),
             input_filter='int',
             text=self.current_plot
         )
         content.add_widget(self.plot_input)
 
-        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
-        save_btn = ModernButton(
-            text='Сохранить',
-            bg_color=get_color_from_hex('#00FF00'),
-            size_hint=(0.5, 1),
-            height=50
-        )
-        cancel_btn = ModernButton(
-            text='Отмена',
-            bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(0.5, 1),
-            height=50
-        )
+        btn_layout = MDBoxLayout(orientation='horizontal', spacing=Spacing.MD, adaptive_height=True)
+        save_btn = MDButton(style='filled', md_bg_color=Colors.BTN_SUCCESS,
+                            size_hint=(0.5, None), height=dp(48))
+        save_btn.add_widget(MDButtonText(text='Сохранить'))
+        cancel_btn = MDButton(style='outlined',
+                              size_hint=(0.5, None), height=dp(48),
+                              line_color=Colors.DANGER)
+        cancel_btn.add_widget(MDButtonText(text='Отмена',
+                              theme_text_color='Custom', text_color=Colors.DANGER))
         btn_layout.add_widget(save_btn)
         btn_layout.add_widget(cancel_btn)
         content.add_widget(btn_layout)
 
         popup = Popup(
-            title="Настройка выдела",
+            title="",
             content=content,
-            size_hint=(0.6, 0.5)
+            size_hint=(0.85, None),
+            height=dp(300),
+            separator_height=0,
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3]
         )
 
         def save_plot(btn):
@@ -6595,85 +6305,75 @@ class ExtendedMolodnikiTableScreen(Screen):
             else:
                 self.show_error("Номер выдела не может быть пустым!")
 
-        save_btn.bind(on_press=save_plot)
-        cancel_btn.bind(on_press=popup.dismiss)
+        save_btn.bind(on_release=save_plot)
+        cancel_btn.bind(on_release=popup.dismiss)
 
         popup.open()
 
     def show_forestry_popup(self, instance):
         """Показать popup для ввода лесничества и участкового лесничества"""
-        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        content = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, padding=Spacing.MD,
+                              md_bg_color=Colors.DARK_SURFACE, adaptive_height=True)
 
-        title_label = Label(
+        title_label = MDLabel(
             text="Введите название лесничества и участкового лесничества",
-            font_name='Roboto',
-            bold=True,
-            size_hint=(1, None),
-            height=30
+            font_style='Title', role='medium',
+            theme_text_color='Custom', text_color=Colors.GREEN,
+            size_hint_y=None, height=dp(40)
         )
         content.add_widget(title_label)
 
-        # Поле для лесничества
-        forestry_label = Label(
+        forestry_label = MDLabel(
             text="Лесничество:",
-            font_name='Roboto',
-            size_hint=(1, None),
-            height=25,
-            color=(0.3, 0.3, 0.3, 1)
+            theme_text_color='Custom', text_color=[0.8,0.8,0.8,1],
+            size_hint_y=None, height=dp(25)
         )
         content.add_widget(forestry_label)
 
-        self.forestry_input = TextInput(
+        self.forestry_input = MDTextField(
             hint_text="Название лесничества",
-            multiline=False,
-            size_hint=(1, None),
-            height=40,
-            font_name='Roboto',
+            mode='outlined',
+            size_hint_y=None, height=dp(52),
             text=self.current_forestry
         )
         content.add_widget(self.forestry_input)
 
-        # Поле для участкового лесничества
-        district_forestry_label = Label(
+        district_forestry_label = MDLabel(
             text="Участковое лесничество:",
-            font_name='Roboto',
-            size_hint=(1, None),
-            height=25,
-            color=(0.3, 0.3, 0.3, 1)
+            theme_text_color='Custom', text_color=[0.8,0.8,0.8,1],
+            size_hint_y=None, height=dp(25)
         )
         content.add_widget(district_forestry_label)
 
-        self.district_forestry_input = TextInput(
+        self.district_forestry_input = MDTextField(
             hint_text="Название участкового лесничества",
-            multiline=False,
-            size_hint=(1, None),
-            height=40,
-            font_name='Roboto',
+            mode='outlined',
+            size_hint_y=None, height=dp(52),
             text=getattr(self, 'current_district_forestry', '')
         )
         content.add_widget(self.district_forestry_input)
 
-        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
-        save_btn = ModernButton(
-            text='Сохранить',
-            bg_color=get_color_from_hex('#00FF00'),
-            size_hint=(0.5, 1),
-            height=50
-        )
-        cancel_btn = ModernButton(
-            text='Отмена',
-            bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(0.5, 1),
-            height=50
-        )
+        btn_layout = MDBoxLayout(orientation='horizontal', spacing=Spacing.MD, adaptive_height=True)
+        save_btn = MDButton(style='filled', md_bg_color=Colors.BTN_SUCCESS,
+                            size_hint=(0.5, None), height=dp(48))
+        save_btn.add_widget(MDButtonText(text='Сохранить'))
+        cancel_btn = MDButton(style='outlined',
+                              size_hint=(0.5, None), height=dp(48),
+                              line_color=Colors.DANGER)
+        cancel_btn.add_widget(MDButtonText(text='Отмена',
+                              theme_text_color='Custom', text_color=Colors.DANGER))
         btn_layout.add_widget(save_btn)
         btn_layout.add_widget(cancel_btn)
         content.add_widget(btn_layout)
 
         popup = Popup(
-            title="Настройка лесничества",
+            title="",
             content=content,
-            size_hint=(0.6, 0.7)
+            size_hint=(0.85, None),
+            height=dp(380),
+            separator_height=0,
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3]
         )
 
         def save_forestry(btn):
@@ -6690,55 +6390,53 @@ class ExtendedMolodnikiTableScreen(Screen):
             else:
                 self.show_error("Название лесничества не может быть пустым!")
 
-        save_btn.bind(on_press=save_forestry)
-        cancel_btn.bind(on_press=popup.dismiss)
+        save_btn.bind(on_release=save_forestry)
+        cancel_btn.bind(on_release=popup.dismiss)
 
         popup.open()
 
-    def show_district_forestry_popup(self):
+    def show_district_forestry_popup(self, instance=None):
         """Показать popup для ввода участкового лесничества"""
-        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        content = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, padding=Spacing.MD,
+                              md_bg_color=Colors.DARK_SURFACE, adaptive_height=True)
 
-        title_label = Label(
+        title_label = MDLabel(
             text="Введите название участкового лесничества",
-            font_name='Roboto',
-            bold=True,
-            size_hint=(1, None),
-            height=30
+            font_style='Title', role='medium',
+            theme_text_color='Custom', text_color=Colors.GREEN,
+            size_hint_y=None, height=dp(40)
         )
         content.add_widget(title_label)
 
-        self.district_forestry_input = TextInput(
+        self.district_forestry_input = MDTextField(
             hint_text="Название участкового лесничества",
-            multiline=False,
-            size_hint=(1, None),
-            height=40,
-            font_name='Roboto',
+            mode='outlined',
+            size_hint_y=None, height=dp(52),
             text=getattr(self, 'current_district_forestry', '')
         )
         content.add_widget(self.district_forestry_input)
 
-        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
-        save_btn = ModernButton(
-            text='Сохранить',
-            bg_color=get_color_from_hex('#00FF00'),
-            size_hint=(0.5, 1),
-            height=50
-        )
-        cancel_btn = ModernButton(
-            text='Отмена',
-            bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(0.5, 1),
-            height=50
-        )
+        btn_layout = MDBoxLayout(orientation='horizontal', spacing=Spacing.MD, adaptive_height=True)
+        save_btn = MDButton(style='filled', md_bg_color=Colors.BTN_SUCCESS,
+                            size_hint=(0.5, None), height=dp(48))
+        save_btn.add_widget(MDButtonText(text='Сохранить'))
+        cancel_btn = MDButton(style='outlined',
+                              size_hint=(0.5, None), height=dp(48),
+                              line_color=Colors.DANGER)
+        cancel_btn.add_widget(MDButtonText(text='Отмена',
+                              theme_text_color='Custom', text_color=Colors.DANGER))
         btn_layout.add_widget(save_btn)
         btn_layout.add_widget(cancel_btn)
         content.add_widget(btn_layout)
 
         popup = Popup(
-            title="Настройка участкового лесничества",
+            title="",
             content=content,
-            size_hint=(0.6, 0.4)
+            size_hint=(0.85, None),
+            height=dp(300),
+            separator_height=0,
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3]
         )
 
         def save_district_forestry(btn):
@@ -6751,8 +6449,8 @@ class ExtendedMolodnikiTableScreen(Screen):
                 self.show_success("Участковое лесничество очищено")
             popup.dismiss()
 
-        save_btn.bind(on_press=save_district_forestry)
-        cancel_btn.bind(on_press=popup.dismiss)
+        save_btn.bind(on_release=save_district_forestry)
+        cancel_btn.bind(on_release=popup.dismiss)
 
         popup.open()
 
@@ -6940,7 +6638,7 @@ class ExtendedMolodnikiTableScreen(Screen):
         return {
             'composition_text': composition_text,
             'forestry_formulas_text': forestry_formulas_text,
-            'total_plots': sum(len(page) for page in self.page_data.values() if page)
+            'total_plots': sum(1 for page in self.page_data.values() for row in page if any(cell for cell in row[:3] if cell))
         }
 
     def show_total_summary_popup(self, *args, **kwargs):
@@ -6956,7 +6654,7 @@ class ExtendedMolodnikiTableScreen(Screen):
             forest_types_set = set()
             
             # Подсчитываем общее количество площадок
-            total_plots_count = sum(len(page) for page in self.page_data.values() if page)
+            total_plots_count = sum(1 for page in self.page_data.values() for row in page if any(cell for cell in row[:3] if cell))
 
             # Обрабатываем все страницы для сбора данных
             for page_num, page_rows in self.page_data.items():
@@ -7054,58 +6752,41 @@ class ExtendedMolodnikiTableScreen(Screen):
                             breeds_data[breed_name]['coniferous_zones']['bolee_15'] += plot_data['bolee_15_density']
 
             # Создаем popup с результатами
-            content = BoxLayout(orientation='vertical', spacing=0, padding=10)
+            content = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, padding=Spacing.MD,
+                                  md_bg_color=Colors.DARK_SURFACE, adaptive_height=True)
 
             scroll = ScrollView(size_hint=(1, None), height=600)
-            results_layout = GridLayout(cols=1, spacing=10, size_hint_y=None)
+            results_layout = MDGridLayout(cols=1, spacing=Spacing.MD, adaptive_height=True, size_hint_y=None)
             results_layout.bind(minimum_height=results_layout.setter('height'))
 
             # ============================================================
             # БОКС 1: АДРЕСНАЯ ИНФОРМАЦИЯ (#E6F3FF)
             # ============================================================
-            address_block = BoxLayout(orientation='vertical', size_hint_y=None, padding=[10, 10], spacing=8)
-            address_block.bind(minimum_height=address_block.setter('height'))
-            with address_block.canvas.before:
-                Color(rgba=get_color_from_hex('#E6F3FF'))
-                address_block.bg = RoundedRectangle(pos=address_block.pos, size=address_block.size, radius=[10])
-                address_block.bind(pos=lambda *args: setattr(address_block.bg, 'pos', address_block.pos),
-                                  size=lambda *args: setattr(address_block.bg, 'size', address_block.size))
-
-            address_title = Label(
-                text='📍 АДРЕСНАЯ ИНФОРМАЦИЯ',
-                font_name='Roboto',
-                bold=True,
-                font_size='14sp',
-                color=(0, 0.3, 0.6, 1),
-                size_hint=(1, None),
-                height=30,
-                halign='center'
+            address_block = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, adaptive_height=True, padding=Spacing.MD)
+            address_title = MDLabel(
+                text='АДРЕСНАЯ ИНФОРМАЦИЯ',
+                theme_text_color='Custom',
+                text_color=Colors.GREEN,
+                font_style='Title',
+                role='medium',
+                adaptive_height=True
             )
             address_block.add_widget(address_title)
 
-            address_inner = BoxLayout(orientation='vertical', size_hint_y=None, padding=[10, 10], spacing=5)
-            address_inner.bind(minimum_height=address_inner.setter('height'))
-            with address_inner.canvas.before:
-                Color(rgba=get_color_from_hex('#FFFFFF'))
-                address_inner.bg = RoundedRectangle(pos=address_inner.pos, size=address_inner.size, radius=[8])
-                address_inner.bind(pos=lambda *args: setattr(address_inner.bg, 'pos', address_inner.pos),
-                                  size=lambda *args: setattr(address_inner.bg, 'size', address_inner.size))
-
-            address_text = Label(
+            address_inner = MDBoxLayout(orientation='vertical', spacing=5, adaptive_height=True, padding=[10, 10])
+            plot_area_from_address = self.project_data['address'].get('plot_area', '')
+            address_area_text = f"Площадь участка: {plot_area_from_address} га" if plot_area_from_address else "Площадь участка: не указана"
+            address_text = MDLabel(
                 text=f"Название проекта: {self.project_data.get('document_name', 'Проект')}\n"
                      f"Квартал: {self.current_quarter or 'Не указан'}\n"
                      f"Выдел: {getattr(self, 'current_plot', '') or 'Не указан'}\n"
                      f"Лесничество: {self.current_forestry or 'Не указано'}\n"
                      f"Участковое лесничество: {self.project_data['address'].get('district_forestry', '') or 'Не указано'}\n"
-                     f"Радиус: {default_radius:.2f} м | Площадь: {plot_area_m2_default:.1f} м²",
-                font_name='Roboto',
-                font_size='12sp',
-                color=(0.2, 0.2, 0.2, 1),
-                size_hint=(1, None),
-                halign='left',
-                valign='top'
+                     f"Радиус: {default_radius:.2f} м | Площадь: {plot_area_m2_default:.1f} м² | {address_area_text}",
+                theme_text_color='Custom',
+                text_color=[1, 1, 1, 1],
+                adaptive_height=True
             )
-            address_text.bind(size=address_text.setter('text_size'))
             address_inner.add_widget(address_text)
             address_block.add_widget(address_inner)
             results_layout.add_widget(address_block)
@@ -7113,33 +6794,18 @@ class ExtendedMolodnikiTableScreen(Screen):
             # ============================================================
             # БОКС 2: ДЕТАЛИ УХОДА (#FFF8E6)
             # ============================================================
-            details_block = BoxLayout(orientation='vertical', size_hint_y=None, padding=[10, 10], spacing=8)
-            details_block.bind(minimum_height=details_block.setter('height'))
-            with details_block.canvas.before:
-                Color(rgba=get_color_from_hex('#FFF8E6'))
-                details_block.bg = RoundedRectangle(pos=details_block.pos, size=details_block.size, radius=[10])
-                details_block.bind(pos=lambda *args: setattr(details_block.bg, 'pos', details_block.pos),
-                                  size=lambda *args: setattr(details_block.bg, 'size', details_block.size))
-
-            details_title = Label(
-                text='📋 ДЕТАЛИ УХОДА',
-                font_name='Roboto',
-                bold=True,
-                font_size='14sp',
-                color=(0.6, 0.4, 0, 1),
-                size_hint=(1, None),
-                height=30,
-                halign='center'
+            details_block = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, adaptive_height=True, padding=Spacing.MD)
+            details_title = MDLabel(
+                text='ДЕТАЛИ УХОДА',
+                theme_text_color='Custom',
+                text_color=Colors.GREEN,
+                font_style='Title',
+                role='medium',
+                adaptive_height=True
             )
             details_block.add_widget(details_title)
 
-            details_inner = BoxLayout(orientation='vertical', size_hint_y=None, padding=[10, 10], spacing=5)
-            details_inner.bind(minimum_height=details_inner.setter('height'))
-            with details_inner.canvas.before:
-                Color(rgba=get_color_from_hex('#FFFFFF'))
-                details_inner.bg = RoundedRectangle(pos=details_inner.pos, size=details_inner.size, radius=[8])
-                details_inner.bind(pos=lambda *args: setattr(details_inner.bg, 'pos', details_inner.pos),
-                                  size=lambda *args: setattr(details_inner.bg, 'size', details_inner.size))
+            details_inner = MDBoxLayout(orientation='vertical', spacing=5, adaptive_height=True, padding=[10, 10])
 
             care_queue_val = self.project_data['details'].get('care_queue', '') or self.care_queue or 'Не указана'
             characteristics_val = self.project_data['details'].get('characteristics', '') or self.characteristics or 'Не указана'
@@ -7147,20 +6813,16 @@ class ExtendedMolodnikiTableScreen(Screen):
             care_date_val = self.project_data['details'].get('care_date', '') or self.care_date or 'Не указана'
             forest_purpose_val = self.project_data['details'].get('forest_purpose', '') or self.forest_purpose or 'Не указано'
 
-            details_text = Label(
+            details_text = MDLabel(
                 text=f"Очередь рубки: {care_queue_val}\n"
                      f"Дата рубки: {care_date_val}\n"
                      f"Назначение лесов: {forest_purpose_val}\n"
                      f"Характеристика: {characteristics_val[:80]}{'...' if len(characteristics_val) > 80 else ''}\n"
                      f"Технология: {technology_val[:60]}{'...' if len(technology_val) > 60 else ''}",
-                font_name='Roboto',
-                font_size='11sp',
-                color=(0.3, 0.3, 0.3, 1),
-                size_hint=(1, None),
-                halign='left',
-                valign='top'
+                theme_text_color='Custom',
+                text_color=[1, 1, 1, 1],
+                adaptive_height=True
             )
-            details_text.bind(size=details_text.setter('text_size'))
             details_inner.add_widget(details_text)
             details_block.add_widget(details_inner)
             results_layout.add_widget(details_block)
@@ -7168,33 +6830,18 @@ class ExtendedMolodnikiTableScreen(Screen):
             # ============================================================
             # БОКС 3: КОЭФФИЦИЕНТ СОСТАВА (#F3E5F5)
             # ============================================================
-            composition_block = BoxLayout(orientation='vertical', size_hint_y=None, padding=[10, 10], spacing=8)
-            composition_block.bind(minimum_height=composition_block.setter('height'))
-            with composition_block.canvas.before:
-                Color(rgba=get_color_from_hex('#F3E5F5'))
-                composition_block.bg = RoundedRectangle(pos=composition_block.pos, size=composition_block.size, radius=[10])
-                composition_block.bind(pos=lambda *args: setattr(composition_block.bg, 'pos', composition_block.pos),
-                                      size=lambda *args: setattr(composition_block.bg, 'size', composition_block.size))
-
-            composition_title = Label(
-                text='🌳 КОЭФФИЦИЕНТ СОСТАВА',
-                font_name='Roboto',
-                bold=True,
-                font_size='14sp',
-                color=(0.6, 0.2, 0.8, 1),
-                size_hint=(1, None),
-                height=30,
-                halign='center'
+            composition_block = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, adaptive_height=True, padding=Spacing.MD)
+            composition_title = MDLabel(
+                text='КОЭФФИЦИЕНТ СОСТАВА',
+                theme_text_color='Custom',
+                text_color=Colors.GREEN,
+                font_style='Title',
+                role='medium',
+                adaptive_height=True
             )
             composition_block.add_widget(composition_title)
 
-            composition_inner = BoxLayout(orientation='vertical', size_hint_y=None, padding=[10, 10], spacing=5)
-            composition_inner.bind(minimum_height=composition_inner.setter('height'))
-            with composition_inner.canvas.before:
-                Color(rgba=get_color_from_hex('#FFFFFF'))
-                composition_inner.bg = RoundedRectangle(pos=composition_inner.pos, size=composition_inner.size, radius=[8])
-                composition_inner.bind(pos=lambda *args: setattr(composition_inner.bg, 'pos', composition_inner.pos),
-                                      size=lambda *args: setattr(composition_inner.bg, 'size', composition_inner.size))
+            composition_inner = MDBoxLayout(orientation='vertical', spacing=5, adaptive_height=True, padding=[10, 10])
 
             total_densities = {}
             total_density_all = 0  # Общая густота всех пород (сумма средних)
@@ -7243,28 +6890,20 @@ class ExtendedMolodnikiTableScreen(Screen):
                         composition_parts.append(f"{coeffs[i]}{breed_letter}")
 
                 composition_text = ''.join(composition_parts) + "Др"
-                composition_label = Label(
+                composition_label = MDLabel(
                     text=f"Формула состава: {composition_text}",
-                    font_name='Roboto',
-                    font_size='14sp',
-                    color=(0, 0, 0, 1),
-                    size_hint=(1, None),
-                    halign='center',
-                    valign='middle'
+                    theme_text_color='Custom',
+                    text_color=[1, 1, 1, 1],
+                    adaptive_height=True
                 )
-                composition_label.bind(size=composition_label.setter('text_size'))
                 composition_inner.add_widget(composition_label)
             else:
-                no_composition = Label(
-                    text="⚠️ Коэффициент состава не определен (недостаточно данных)",
-                    font_name='Roboto',
-                    font_size='14sp',
-                    color=(0.8, 0.2, 0.2, 1),
-                    size_hint=(1, None),
-                    halign='center',
-                    valign='middle'
+                no_composition = MDLabel(
+                    text="Коэффициент состава не определен (недостаточно данных)",
+                    theme_text_color='Custom',
+                    text_color=[1, 0.3, 0.3, 1],
+                    adaptive_height=True
                 )
-                no_composition.bind(size=no_composition.setter('text_size'))
                 composition_inner.add_widget(no_composition)
 
             composition_block.add_widget(composition_inner)
@@ -7273,43 +6912,26 @@ class ExtendedMolodnikiTableScreen(Screen):
             # ============================================================
             # БОКС 4: ХВОЙНЫЕ ПОРОДЫ (#E8F5E9)
             # ============================================================
-            coniferous_block = BoxLayout(orientation='vertical', size_hint_y=None, padding=[10, 10], spacing=8)
-            coniferous_block.bind(minimum_height=coniferous_block.setter('height'))
-            with coniferous_block.canvas.before:
-                Color(rgba=get_color_from_hex('#E8F5E9'))
-                coniferous_block.bg = RoundedRectangle(pos=coniferous_block.pos, size=coniferous_block.size, radius=[10])
-                coniferous_block.bind(pos=lambda *args: setattr(coniferous_block.bg, 'pos', coniferous_block.pos),
-                                     size=lambda *args: setattr(coniferous_block.bg, 'size', coniferous_block.size))
-
-            coniferous_title = Label(
-                text='🌲 ХВОЙНЫЕ ПОРОДЫ',
-                font_name='Roboto',
-                bold=True,
-                font_size='14sp',
-                color=(0, 0.5, 0, 1),
-                size_hint=(1, None),
-                height=30,
-                halign='center'
+            coniferous_block = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, adaptive_height=True, padding=Spacing.MD)
+            coniferous_title = MDLabel(
+                text='ХВОЙНЫЕ ПОРОДЫ',
+                theme_text_color='Custom',
+                text_color=Colors.GREEN,
+                font_style='Title',
+                role='medium',
+                adaptive_height=True
             )
             coniferous_block.add_widget(coniferous_title)
 
-            coniferous_inner = BoxLayout(orientation='vertical', size_hint_y=None, padding=[5, 5], spacing=8)
-            coniferous_inner.bind(minimum_height=coniferous_inner.setter('height'))
-            with coniferous_inner.canvas.before:
-                Color(rgba=get_color_from_hex('#FFFFFF'))
-                coniferous_inner.bg = RoundedRectangle(pos=coniferous_inner.pos, size=coniferous_inner.size, radius=[8])
-                coniferous_inner.bind(pos=lambda *args: setattr(coniferous_inner.bg, 'pos', coniferous_inner.pos),
-                                     size=lambda *args: setattr(coniferous_inner.bg, 'size', coniferous_inner.size))
+            coniferous_inner = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, adaptive_height=True, padding=[5, 5])
 
             has_coniferous = False
             for breed_name, data in sorted(breeds_data.items()):
                 if data['type'] == 'coniferous' and data['plots']:
                     has_coniferous = True
                     zones = data.get('coniferous_zones', {})
-                    # Густота по градациям = общее кол-во деревьев в градации / общая площадь всех площадок в га
                     plot_area_ha = 3.14159 * (float(self.current_radius) if self.current_radius else 1.78) ** 2 / 10000
                     total_area_ha = plot_area_ha * total_plots_count
-                    # zones содержит сумму в шт/га, нужно перевести обратно в кол-во деревьев
                     total_do_05 = sum(p.get('do_05', 0) for p in data['plots'])
                     total_05_15 = sum(p.get('05_15', 0) for p in data['plots'])
                     total_bolee_15 = sum(p.get('bolee_15', 0) for p in data['plots'])
@@ -7317,38 +6939,28 @@ class ExtendedMolodnikiTableScreen(Screen):
                     avg_05_15 = total_05_15 / total_area_ha if total_area_ha > 0 else 0
                     avg_bolee_15 = total_bolee_15 / total_area_ha if total_area_ha > 0 else 0
 
-                    # Высота = средняя высота только на тех площадках, где есть высота (> 1.5м)
                     avg_heights_over_15 = [p['height'] for p in data['plots'] if p['height'] > 1.5]
                     avg_height_total = sum(avg_heights_over_15) / len(avg_heights_over_15) if avg_heights_over_15 else 0
-                    # Диаметр = средний диаметр только на тех площадках, где есть диаметр (> 0)
                     avg_diameters = [d for d in data['diameters'] if d > 0]
                     avg_diameter = sum(avg_diameters) / len(avg_diameters) if avg_diameters else 0
-                    # Возраст = средний возраст только на тех площадках, где есть возраст (> 0)
                     avg_ages = [p['age'] for p in data['plots'] if p['age'] > 0]
                     avg_age = sum(avg_ages) / len(avg_ages) if avg_ages else 0
 
-                    breed_label = Label(
-                        text=f"🌲 {breed_name}:\nдо 0.5м: {avg_do_05:.1f} шт/га | 0.5-1.5м: {avg_05_15:.1f} шт/га | >1.5м: {avg_bolee_15:.1f} шт/га\nСр. высота: {avg_height_total:.1f}м | Возраст: {avg_age:.1f} лет | Диаметр: {avg_diameter:.1f} см",
-                        font_name='Roboto',
-                        font_size='12sp',
-                        color=(0, 0.4, 0, 1),
-                        size_hint=(1, None),
-                        halign='left',
-                        valign='middle'
+                    breed_label = MDLabel(
+                        text=f"{breed_name}:\nдо 0.5м: {avg_do_05:.1f} шт/га | 0.5-1.5м: {avg_05_15:.1f} шт/га | >1.5м: {avg_bolee_15:.1f} шт/га\nСр. высота: {avg_height_total:.1f}м | Возраст: {avg_age:.1f} лет | Диаметр: {avg_diameter:.1f} см",
+                        theme_text_color='Custom',
+                        text_color=Colors.GREEN,
+                        adaptive_height=True
                     )
-                    breed_label.bind(size=breed_label.setter('text_size'))
                     coniferous_inner.add_widget(breed_label)
 
             if not has_coniferous:
-                no_coniferous = Label(
-                    text="🌲 Хвойные породы не найдены",
-                    font_name='Roboto',
-                    font_size='13sp',
-                    color=(0.5, 0.5, 0.5, 1),
-                    size_hint=(1, None),
-                    halign='center'
+                no_coniferous = MDLabel(
+                    text="Хвойные породы не найдены",
+                    theme_text_color='Custom',
+                    text_color=[0.5, 0.5, 0.5, 1],
+                    adaptive_height=True
                 )
-                no_coniferous.bind(size=no_coniferous.setter('text_size'))
                 coniferous_inner.add_widget(no_coniferous)
 
             coniferous_block.add_widget(coniferous_inner)
@@ -7357,77 +6969,49 @@ class ExtendedMolodnikiTableScreen(Screen):
             # ============================================================
             # БОКС 5: ЛИСТВЕННЫЕ ПОРОДЫ (#E3F2FD)
             # ============================================================
-            deciduous_block = BoxLayout(orientation='vertical', size_hint_y=None, padding=[10, 10], spacing=8)
-            deciduous_block.bind(minimum_height=deciduous_block.setter('height'))
-            with deciduous_block.canvas.before:
-                Color(rgba=get_color_from_hex('#E3F2FD'))
-                deciduous_block.bg = RoundedRectangle(pos=deciduous_block.pos, size=deciduous_block.size, radius=[10])
-                deciduous_block.bind(pos=lambda *args: setattr(deciduous_block.bg, 'pos', deciduous_block.pos),
-                                    size=lambda *args: setattr(deciduous_block.bg, 'size', deciduous_block.size))
-
-            deciduous_title = Label(
-                text='🍃 ЛИСТВЕННЫЕ ПОРОДЫ',
-                font_name='Roboto',
-                bold=True,
-                font_size='14sp',
-                color=(0, 0.4, 0.8, 1),
-                size_hint=(1, None),
-                height=30,
-                halign='center'
+            deciduous_block = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, adaptive_height=True, padding=Spacing.MD)
+            deciduous_title = MDLabel(
+                text='ЛИСТВЕННЫЕ ПОРОДЫ',
+                theme_text_color='Custom',
+                text_color=Colors.GREEN,
+                font_style='Title',
+                role='medium',
+                adaptive_height=True
             )
             deciduous_block.add_widget(deciduous_title)
 
-            deciduous_inner = BoxLayout(orientation='vertical', size_hint_y=None, padding=[5, 5], spacing=8)
-            deciduous_inner.bind(minimum_height=deciduous_inner.setter('height'))
-            with deciduous_inner.canvas.before:
-                Color(rgba=get_color_from_hex('#FFFFFF'))
-                deciduous_inner.bg = RoundedRectangle(pos=deciduous_inner.pos, size=deciduous_inner.size, radius=[8])
-                deciduous_inner.bind(pos=lambda *args: setattr(deciduous_inner.bg, 'pos', deciduous_inner.pos),
-                                    size=lambda *args: setattr(deciduous_inner.bg, 'size', deciduous_inner.size))
+            deciduous_inner = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, adaptive_height=True, padding=[5, 5])
 
             has_deciduous = False
             for breed_name, data in sorted(breeds_data.items()):
                 if data['type'] == 'deciduous' and data['plots']:
                     has_deciduous = True
-                    # Густота = общее количество деревьев / общая площадь всех площадок в га
                     total_trees = sum(p.get('density_raw', 0) for p in data['plots'])
-                    # Площадь одной площадки в га (при стандартном радиусе)
                     plot_area_ha = 3.14159 * (float(self.current_radius) if self.current_radius else 1.78) ** 2 / 10000
-                    # Общая площадь = площадь одной площадки * кол-во всех площадок
                     total_area_ha = plot_area_ha * total_plots_count
                     avg_density = total_trees / total_area_ha if total_area_ha > 0 else 0
-                    # Высота = средняя высота только на тех площадках, где есть высота (> 0)
                     avg_heights = [p['height'] for p in data['plots'] if p['height'] > 0]
                     avg_height = sum(avg_heights) / len(avg_heights) if avg_heights else 0
-                    # Возраст = средний возраст только на тех площадках, где есть возраст (> 0)
                     avg_ages = [p['age'] for p in data['plots'] if p['age'] > 0]
                     avg_age = sum(avg_ages) / len(avg_ages) if avg_ages else 0
-                    # Диаметр = средний диаметр только на тех площадках, где есть диаметр (> 0)
                     avg_diameters = [d for d in data['diameters'] if d > 0]
                     avg_diameter = sum(avg_diameters) / len(avg_diameters) if avg_diameters else 0
 
-                    breed_label = Label(
-                        text=f"🍃 {breed_name}:\nГустота: {avg_density:.1f} шт/га | Высота: {avg_height:.1f}м | Возраст: {avg_age:.1f} лет | Диаметр: {avg_diameter:.1f} см",
-                        font_name='Roboto',
-                        font_size='12sp',
-                        color=(0, 0.3, 0.6, 1),
-                        size_hint=(1, None),
-                        halign='left',
-                        valign='middle'
+                    breed_label = MDLabel(
+                        text=f"{breed_name}:\nГустота: {avg_density:.1f} шт/га | Высота: {avg_height:.1f}м | Возраст: {avg_age:.1f} лет | Диаметр: {avg_diameter:.1f} см",
+                        theme_text_color='Custom',
+                        text_color=[1, 1, 1, 1],
+                        adaptive_height=True
                     )
-                    breed_label.bind(size=breed_label.setter('text_size'))
                     deciduous_inner.add_widget(breed_label)
 
             if not has_deciduous:
-                no_deciduous = Label(
-                    text="🍃 Лиственные породы не найдены",
-                    font_name='Roboto',
-                    font_size='13sp',
-                    color=(0.5, 0.5, 0.5, 1),
-                    size_hint=(1, None),
-                    halign='center'
+                no_deciduous = MDLabel(
+                    text="Лиственные породы не найдены",
+                    theme_text_color='Custom',
+                    text_color=[0.5, 0.5, 0.5, 1],
+                    adaptive_height=True
                 )
-                no_deciduous.bind(size=no_deciduous.setter('text_size'))
                 deciduous_inner.add_widget(no_deciduous)
 
             deciduous_block.add_widget(deciduous_inner)
@@ -7436,74 +7020,53 @@ class ExtendedMolodnikiTableScreen(Screen):
             # ============================================================
             # БОКС 6: СРЕДНИЕ ДАННЫЕ (#FFF3E0)
             # ============================================================
-            overall_block = BoxLayout(orientation='vertical', size_hint_y=None, padding=[10, 10], spacing=8)
-            overall_block.bind(minimum_height=overall_block.setter('height'))
-            with overall_block.canvas.before:
-                Color(rgba=get_color_from_hex('#FFF3E0'))
-                overall_block.bg = RoundedRectangle(pos=overall_block.pos, size=overall_block.size, radius=[10])
-                overall_block.bind(pos=lambda *args: setattr(overall_block.bg, 'pos', overall_block.pos),
-                                  size=lambda *args: setattr(overall_block.bg, 'size', overall_block.size))
-
-            overall_title = Label(
-                text='📊 СРЕДНИЕ ДАННЫЕ',
-                font_name='Roboto',
-                bold=True,
-                font_size='14sp',
-                color=(0.8, 0.4, 0, 1),
-                size_hint=(1, None),
-                height=30,
-                halign='center'
+            overall_block = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, adaptive_height=True, padding=Spacing.MD)
+            overall_title = MDLabel(
+                text='СРЕДНИЕ ДАННЫЕ',
+                theme_text_color='Custom',
+                text_color=Colors.GREEN,
+                font_style='Title',
+                role='medium',
+                adaptive_height=True
             )
             overall_block.add_widget(overall_title)
 
-            overall_inner = BoxLayout(orientation='vertical', size_hint_y=None, padding=[10, 10], spacing=5)
-            overall_inner.bind(minimum_height=overall_inner.setter('height'))
-            with overall_inner.canvas.before:
-                Color(rgba=get_color_from_hex('#FFFFFF'))
-                overall_inner.bg = RoundedRectangle(pos=overall_inner.pos, size=overall_inner.size, radius=[8])
-                overall_inner.bind(pos=lambda *args: setattr(overall_inner.bg, 'pos', overall_inner.pos),
-                                  size=lambda *args: setattr(overall_inner.bg, 'size', overall_inner.size))
+            overall_inner = MDBoxLayout(orientation='vertical', spacing=5, adaptive_height=True, padding=[10, 10])
 
             all_densities = []
             all_heights = []
             all_ages = []
             all_diameters = []
 
-            # Собираем данные для расчёта средних показателей
-            total_trees_all = 0  # Общее количество всех деревьев
+            total_trees_all = 0
             for breed_name, data in breeds_data.items():
                 if data['plots']:
-                    # Суммируем исходное количество деревьев
                     total_trees_all += sum(p.get('density_raw', 0) for p in data['plots'])
-                    # Высота, возраст и диаметр собираем только с тех площадок, где они есть
                     all_heights.extend([p['height'] for p in data['plots'] if p['height'] > 0])
                     all_ages.extend([p['age'] for p in data['plots'] if p['age'] > 0])
                     all_diameters.extend([d for d in data['diameters'] if d > 0])
 
-            # Средняя густота = общее количество деревьев / общая площадь всех площадок в га
             plot_area_ha = 3.14159 * (float(self.current_radius) if self.current_radius else 1.78) ** 2 / 10000
             total_area_ha = plot_area_ha * total_plots_count
             avg_overall_density = total_trees_all / total_area_ha if total_area_ha > 0 else 0
-            # Средняя высота = сумма высот / количество площадок с высотой
             avg_overall_height = sum(all_heights) / len(all_heights) if all_heights else 0
-            # Средний возраст = сумма возрастов / количество площадок с возрастом
             avg_overall_age = sum(all_ages) / len(all_ages) if all_ages else 0
-            # Средний диаметр = сумма диаметров / количество площадок с диаметром
             avg_overall_diameter = sum(all_diameters) / len(all_diameters) if all_diameters else 0
 
-            overall_text = Label(
-                text=f"📊 Средняя густота: {avg_overall_density:.1f} шт/га\n"
-                     f"📊 Средняя высота: {avg_overall_height:.1f} м\n"
-                     f"📊 Средний возраст: {avg_overall_age:.1f} лет\n"
-                     f"📊 Средний диаметр: {avg_overall_diameter:.1f} см",
-                font_name='Roboto',
-                font_size='13sp',
-                color=(0.7, 0.35, 0, 1),
-                size_hint=(1, None),
-                halign='left',
-                valign='middle'
+            plot_area_from_address = self.project_data['address'].get('plot_area', '')
+            total_area_ha_input = float(plot_area_from_address) if plot_area_from_address else total_area_ha
+            total_density_entire = avg_overall_density * total_area_ha_input if total_area_ha_input > 0 else 0
+
+            overall_text = MDLabel(
+                text=f"Средняя густота: {avg_overall_density:.1f} шт/га\n"
+                     f"Общая густота на всю площадь ({total_area_ha_input:.2f} га): {total_density_entire:.0f} шт\n"
+                     f"Средняя высота: {avg_overall_height:.1f} м\n"
+                     f"Средний возраст: {avg_overall_age:.1f} лет\n"
+                     f"Средний диаметр: {avg_overall_diameter:.1f} см",
+                theme_text_color='Custom',
+                text_color=[1, 1, 1, 1],
+                adaptive_height=True
             )
-            overall_text.bind(size=overall_text.setter('text_size'))
             overall_inner.add_widget(overall_text)
             overall_block.add_widget(overall_inner)
             results_layout.add_widget(overall_block)
@@ -7511,33 +7074,18 @@ class ExtendedMolodnikiTableScreen(Screen):
             # ============================================================
             # БОКС 7: ПРЕДМЕТ УХОДА (#FCE4EC)
             # ============================================================
-            care_block = BoxLayout(orientation='vertical', size_hint_y=None, padding=[10, 10], spacing=8)
-            care_block.bind(minimum_height=care_block.setter('height'))
-            with care_block.canvas.before:
-                Color(rgba=get_color_from_hex('#FCE4EC'))
-                care_block.bg = RoundedRectangle(pos=care_block.pos, size=care_block.size, radius=[10])
-                care_block.bind(pos=lambda *args: setattr(care_block.bg, 'pos', care_block.pos),
-                               size=lambda *args: setattr(care_block.bg, 'size', care_block.size))
-
-            care_title = Label(
-                text='✂️ ПРЕДМЕТ УХОДА',
-                font_name='Roboto',
-                bold=True,
-                font_size='14sp',
-                color=(0.8, 0.2, 0.4, 1),
-                size_hint=(1, None),
-                height=30,
-                halign='center'
+            care_block = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, adaptive_height=True, padding=Spacing.MD)
+            care_title = MDLabel(
+                text='ПРЕДМЕТ УХОДА',
+                theme_text_color='Custom',
+                text_color=Colors.GREEN,
+                font_style='Title',
+                role='medium',
+                adaptive_height=True
             )
             care_block.add_widget(care_title)
 
-            care_inner = BoxLayout(orientation='vertical', size_hint_y=None, padding=[10, 10], spacing=5)
-            care_inner.bind(minimum_height=care_inner.setter('height'))
-            with care_inner.canvas.before:
-                Color(rgba=get_color_from_hex('#FFFFFF'))
-                care_inner.bg = RoundedRectangle(pos=care_inner.pos, size=care_inner.size, radius=[8])
-                care_inner.bind(pos=lambda *args: setattr(care_inner.bg, 'pos', care_inner.pos),
-                               size=lambda *args: setattr(care_inner.bg, 'size', care_inner.size))
+            care_inner = MDBoxLayout(orientation='vertical', spacing=5, adaptive_height=True, padding=[10, 10])
 
             care_data = []
             total_density_all = 0
@@ -7624,202 +7172,129 @@ class ExtendedMolodnikiTableScreen(Screen):
                     avg_care_text = ''.join(avg_care_parts)
                     short_text = ''.join(short_parts).replace('.', ',')
 
-                    care_label = Label(
-                        text=f"✂️ Средний предмет ухода: {avg_care_text} = {short_text}",
-                        font_name='Roboto',
-                        font_size='13sp',
-                        color=(0.6, 0.15, 0.3, 1),
-                        size_hint=(1, None),
-                        halign='left',
-                        valign='middle'
+                    care_label = MDLabel(
+                        text=f"Средний предмет ухода: {avg_care_text} = {short_text}",
+                        theme_text_color='Custom',
+                        text_color=[1, 1, 1, 1],
+                        adaptive_height=True
                     )
-                    care_label.bind(size=care_label.setter('text_size'))
                     care_inner.add_widget(care_label)
 
             if not care_data:
-                no_care = Label(
-                    text="ℹ️ Предмет ухода не указан или недостаточно данных",
-                    font_name='Roboto',
-                    font_size='13sp',
-                    color=(0.5, 0.5, 0.5, 1),
-                    size_hint=(1, None),
-                    halign='center',
-                    valign='middle'
+                no_care = MDLabel(
+                    text="Предмет ухода не указан или недостаточно данных",
+                    theme_text_color='Custom',
+                    text_color=[0.5, 0.5, 0.5, 1],
+                    adaptive_height=True
                 )
-                no_care.bind(size=no_care.setter('text_size'))
                 care_inner.add_widget(no_care)
 
             care_block.add_widget(care_inner)
             results_layout.add_widget(care_block)
 
             # ============================================================
-            # БОКС 8: ИНТЕНСИВНОСТЬ РУБКИ (#FFEBEE)
+            # БОКС 8: ИНТЕНСИВНОСТЬ РУБКИ
             # ============================================================
-            intensity_block = BoxLayout(orientation='vertical', size_hint_y=None, padding=[10, 10], spacing=8)
-            intensity_block.bind(minimum_height=intensity_block.setter('height'))
-            with intensity_block.canvas.before:
-                Color(rgba=get_color_from_hex('#FFEBEE'))
-                intensity_block.bg = RoundedRectangle(pos=intensity_block.pos, size=intensity_block.size, radius=[10])
-                intensity_block.bind(pos=lambda *args: setattr(intensity_block.bg, 'pos', intensity_block.pos),
-                                    size=lambda *args: setattr(intensity_block.bg, 'size', intensity_block.size))
-
-            intensity_title = Label(
-                text='🔴 ИНТЕНСИВНОСТЬ РУБКИ',
-                font_name='Roboto',
-                bold=True,
-                font_size='14sp',
-                color=(0.8, 0.2, 0.2, 1),
-                size_hint=(1, None),
-                height=30,
-                halign='center'
+            intensity_block = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, adaptive_height=True, padding=Spacing.MD)
+            intensity_title = MDLabel(
+                text='ИНТЕНСИВНОСТЬ РУБКИ',
+                theme_text_color='Custom',
+                text_color=Colors.GREEN,
+                font_style='Title',
+                role='medium',
+                adaptive_height=True
             )
             intensity_block.add_widget(intensity_title)
 
-            intensity_inner = BoxLayout(orientation='vertical', size_hint_y=None, padding=[10, 10], spacing=5)
-            intensity_inner.bind(minimum_height=intensity_inner.setter('height'))
-            with intensity_inner.canvas.before:
-                Color(rgba=get_color_from_hex('#FFFFFF'))
-                intensity_inner.bg = RoundedRectangle(pos=intensity_inner.pos, size=intensity_inner.size, radius=[8])
-                intensity_inner.bind(pos=lambda *args: setattr(intensity_inner.bg, 'pos', intensity_inner.pos),
-                                    size=lambda *args: setattr(intensity_inner.bg, 'size', intensity_inner.size))
+            intensity_inner = MDBoxLayout(orientation='vertical', spacing=5, adaptive_height=True, padding=[10, 10])
 
             if plot_count_with_care > 0 and plot_count_all > 0 and avg_overall_density > 0:
                 avg_remaining_density = total_remaining_density / plot_count_with_care
                 intensity = ((avg_overall_density - avg_remaining_density) / avg_overall_density) * 100
 
-                intensity_label = Label(
-                    text=f"🔴 Интенсивность рубки: {intensity:.1f}%\n(было {avg_overall_density:.0f} шт/га, останется {avg_remaining_density:.0f} шт/га)",
-                    font_name='Roboto',
-                    font_size='13sp',
-                    color=(0.8, 0.2, 0.2, 1),
-                    size_hint=(1, None),
-                    halign='left',
-                    valign='middle'
+                intensity_label = MDLabel(
+                    text=f"Интенсивность рубки: {intensity:.1f}%\n(было {avg_overall_density:.0f} шт/га, останется {avg_remaining_density:.0f} шт/га)",
+                    theme_text_color='Custom',
+                    text_color=[1, 1, 1, 1],
+                    adaptive_height=True
                 )
-                intensity_label.bind(size=intensity_label.setter('text_size'))
                 intensity_inner.add_widget(intensity_label)
             else:
-                no_intensity = Label(
-                    text="ℹ️ Недостаточно данных для расчета интенсивности",
-                    font_name='Roboto',
-                    font_size='13sp',
-                    color=(0.5, 0.5, 0.5, 1),
-                    size_hint=(1, None),
-                    halign='center',
-                    valign='middle'
+                no_intensity = MDLabel(
+                    text="Недостаточно данных для расчета интенсивности",
+                    theme_text_color='Custom',
+                    text_color=[0.5, 0.5, 0.5, 1],
+                    adaptive_height=True
                 )
-                no_intensity.bind(size=no_intensity.setter('text_size'))
                 intensity_inner.add_widget(no_intensity)
 
             intensity_block.add_widget(intensity_inner)
             results_layout.add_widget(intensity_block)
 
             # ============================================================
-            # БОКС 9: ИНФОРМАЦИЯ О ПЛОЩАДИ (#F5F5F5)
+            # БОКС 9: ИНФОРМАЦИЯ О ПЛОЩАДИ
             # ============================================================
-            plot_area_block = BoxLayout(orientation='vertical', size_hint_y=None, padding=[10, 10], spacing=8)
-            plot_area_block.bind(minimum_height=plot_area_block.setter('height'))
-            with plot_area_block.canvas.before:
-                Color(rgba=get_color_from_hex('#F5F5F5'))
-                plot_area_block.bg = RoundedRectangle(pos=plot_area_block.pos, size=plot_area_block.size, radius=[10])
-                plot_area_block.bind(pos=lambda *args: setattr(plot_area_block.bg, 'pos', plot_area_block.pos),
-                                    size=lambda *args: setattr(plot_area_block.bg, 'size', plot_area_block.size))
-
-            plot_area_title = Label(
-                text='📏 ИНФОРМАЦИЯ О ПЛОЩАДИ',
-                font_name='Roboto',
-                bold=True,
-                font_size='14sp',
-                color=(0.5, 0.5, 0.5, 1),
-                size_hint=(1, None),
-                height=30,
-                halign='center'
+            plot_area_block = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, adaptive_height=True, padding=Spacing.MD)
+            plot_area_title = MDLabel(
+                text='ИНФОРМАЦИЯ О ПЛОЩАДИ',
+                theme_text_color='Custom',
+                text_color=Colors.GREEN,
+                font_style='Title',
+                role='medium',
+                adaptive_height=True
             )
             plot_area_block.add_widget(plot_area_title)
 
-            plot_area_inner = BoxLayout(orientation='vertical', size_hint_y=None, padding=[10, 10], spacing=5)
-            plot_area_inner.bind(minimum_height=plot_area_inner.setter('height'))
-            with plot_area_inner.canvas.before:
-                Color(rgba=get_color_from_hex('#FFFFFF'))
-                plot_area_inner.bg = RoundedRectangle(pos=plot_area_inner.pos, size=plot_area_inner.size, radius=[8])
-                plot_area_inner.bind(pos=lambda *args: setattr(plot_area_inner.bg, 'pos', plot_area_inner.pos),
-                                    size=lambda *args: setattr(plot_area_inner.bg, 'size', plot_area_inner.size))
+            plot_area_inner = MDBoxLayout(orientation='vertical', spacing=5, adaptive_height=True, padding=[10, 10])
 
             plot_count = len([row for page in self.page_data.values() for row in page if any(cell for cell in row[:3] if cell)])
             total_plot_area_ha = plot_count * plot_area_ha_default
 
-            plot_area_label = Label(
-                text=f"📍 Радиус пробной площади: {default_radius:.2f} м\n"
-                     f"📍 Площадь одной площадки: {plot_area_ha_default:.4f} га ({plot_area_m2_default:.2f} м²)\n"
-                     f"📍 Всего площадок: {plot_count}\n"
-                     f"📍 Совокупная площадь перечета: {total_plot_area_ha:.4f} га ({total_plot_area_ha*10000:.0f} м²)",
-                font_name='Roboto',
-                font_size='12sp',
-                color=(0.4, 0.4, 0.4, 1),
-                size_hint=(1, None),
-                halign='left',
-                valign='middle'
+            plot_area_label = MDLabel(
+                text=f"Радиус пробной площади: {default_radius:.2f} м\n"
+                     f"Площадь одной площадки: {plot_area_ha_default:.4f} га ({plot_area_m2_default:.2f} м²)\n"
+                     f"Всего площадок: {plot_count}\n"
+                     f"Совокупная площадь перечета: {total_plot_area_ha:.4f} га ({total_plot_area_ha*10000:.0f} м²)",
+                theme_text_color='Custom',
+                text_color=[1, 1, 1, 1],
+                adaptive_height=True
             )
-            plot_area_label.bind(size=plot_area_label.setter('text_size'))
             plot_area_inner.add_widget(plot_area_label)
             plot_area_block.add_widget(plot_area_inner)
             results_layout.add_widget(plot_area_block)
 
             # ============================================================
-            # БОКС 10: ТИП ЛЕСА (#E0F7FA)
+            # БОКС 10: ТИП ЛЕСА
             # ============================================================
-            forest_type_block = BoxLayout(orientation='vertical', size_hint_y=None, padding=[10, 10], spacing=8)
-            forest_type_block.bind(minimum_height=forest_type_block.setter('height'))
-            with forest_type_block.canvas.before:
-                Color(rgba=get_color_from_hex('#E0F7FA'))
-                forest_type_block.bg = RoundedRectangle(pos=forest_type_block.pos, size=forest_type_block.size, radius=[10])
-                forest_type_block.bind(pos=lambda *args: setattr(forest_type_block.bg, 'pos', forest_type_block.pos),
-                                      size=lambda *args: setattr(forest_type_block.bg, 'size', forest_type_block.size))
-
-            forest_type_title = Label(
-                text='🌿 ТИП ЛЕСА',
-                font_name='Roboto',
-                bold=True,
-                font_size='14sp',
-                color=(0, 0.6, 0.6, 1),
-                size_hint=(1, None),
-                height=30,
-                halign='center'
+            forest_type_block = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, adaptive_height=True, padding=Spacing.MD)
+            forest_type_title = MDLabel(
+                text='ТИП ЛЕСА',
+                theme_text_color='Custom',
+                text_color=Colors.GREEN,
+                font_style='Title',
+                role='medium',
+                adaptive_height=True
             )
             forest_type_block.add_widget(forest_type_title)
 
-            forest_type_inner = BoxLayout(orientation='vertical', size_hint_y=None, padding=[10, 10], spacing=5)
-            forest_type_inner.bind(minimum_height=forest_type_inner.setter('height'))
-            with forest_type_inner.canvas.before:
-                Color(rgba=get_color_from_hex('#FFFFFF'))
-                forest_type_inner.bg = RoundedRectangle(pos=forest_type_inner.pos, size=forest_type_inner.size, radius=[8])
-                forest_type_inner.bind(pos=lambda *args: setattr(forest_type_inner.bg, 'pos', forest_type_inner.pos),
-                                      size=lambda *args: setattr(forest_type_inner.bg, 'size', forest_type_inner.size))
+            forest_type_inner = MDBoxLayout(orientation='vertical', spacing=5, adaptive_height=True, padding=[10, 10])
 
             if forest_types_set:
                 forest_types_text = ', '.join(sorted(forest_types_set))
-                forest_type_label = Label(
-                    text=f"🌿 Встречающиеся типы леса:\n{forest_types_text}",
-                    font_name='Roboto',
-                    font_size='13sp',
-                    color=(0, 0.5, 0.5, 1),
-                    size_hint=(1, None),
-                    halign='left',
-                    valign='middle'
+                forest_type_label = MDLabel(
+                    text=f"Встречающиеся типы леса:\n{forest_types_text}",
+                    theme_text_color='Custom',
+                    text_color=[1, 1, 1, 1],
+                    adaptive_height=True
                 )
-                forest_type_label.bind(size=forest_type_label.setter('text_size'))
                 forest_type_inner.add_widget(forest_type_label)
             else:
-                no_forest_type = Label(
-                    text="ℹ️ Тип леса не указан",
-                    font_name='Roboto',
-                    font_size='13sp',
-                    color=(0.5, 0.5, 0.5, 1),
-                    size_hint=(1, None),
-                    halign='center',
-                    valign='middle'
+                no_forest_type = MDLabel(
+                    text="Тип леса не указан",
+                    theme_text_color='Custom',
+                    text_color=[0.5, 0.5, 0.5, 1],
+                    adaptive_height=True
                 )
-                no_forest_type.bind(size=no_forest_type.setter('text_size'))
                 forest_type_inner.add_widget(no_forest_type)
 
             forest_type_block.add_widget(forest_type_inner)
@@ -7828,18 +7303,17 @@ class ExtendedMolodnikiTableScreen(Screen):
             scroll.add_widget(results_layout)
             content.add_widget(scroll)
 
-            close_btn = ModernButton(
-                text='Закрыть',
-                bg_color=get_color_from_hex('#808080'),
-                size_hint=(1, None),
-                height=50
-            )
+            close_btn = MDButton(style='outlined', line_color=Colors.DANGER, size_hint=(1, None), height=50)
+            close_btn.add_widget(MDButtonText(text='Закрыть', theme_text_color='Custom', text_color=Colors.DANGER))
             content.add_widget(close_btn)
 
             popup = Popup(
-                title="Таксационные показатели молодняков",
+                title='',
                 content=content,
-                size_hint=(0.98, 0.98)
+                size_hint=(0.98, 0.98),
+                separator_height=0,
+                background_color=[0,0,0,0.3],
+                overlay_color=[0,0,0,0.3]
             )
 
             close_btn.bind(on_press=popup.dismiss)
@@ -8132,15 +7606,17 @@ class ExtendedMolodnikiTableScreen(Screen):
 
                         cursor.execute('''
                             INSERT INTO molodniki_data
-                            (page_number, row_index, nn, gps_point, predmet_uhoda, primechanie, section_name)
-                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                            (page_number, row_index, nn, gps_point, predmet_uhoda, poroda, primechanie, radius, section_name)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ''', (
                             self.current_page,
                             row_idx,
                             row_data[0] or None,
                             row_data[1] or None,
                             row_data[2] or None,
+                            row_data[3] or None,
                             row_data[4] or None,
+                            radius,
                             self.current_section
                         ))
 
@@ -8201,23 +7677,24 @@ class ExtendedMolodnikiTableScreen(Screen):
         return success
 
     def show_save_dialog(self, instance=None):
-        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        content = MDBoxLayout(orientation='vertical', spacing=10, padding=10, md_bg_color=Colors.DARK_SURFACE)
 
-        title_label = Label(
+        title_label = MDLabel(
             text="Введите имя файла",
-            font_name='Roboto',
             bold=True,
             size_hint=(1, None),
-            height=30
+            height=30,
+            theme_text_color='Custom',
+            text_color=Colors.TEXT_ON_DARK
         )
         content.add_widget(title_label)
 
-        self.filename_input = TextInput(
+        self.filename_input = MDTextField(
             hint_text="Имя файла",
-            multiline=False,
+            mode="outlined",
             size_hint=(1, None),
             height=40,
-            font_name='Roboto'
+            line_color_focus=Colors.GREEN
         )
         timestamp = datetime.datetime.now().strftime('%M%S')  # Только минуты и секунды
         document_name = self.project_data.get('document_name', 'Проект')
@@ -8227,30 +7704,25 @@ class ExtendedMolodnikiTableScreen(Screen):
         self.filename_input.text = default_name
         content.add_widget(self.filename_input)
 
-        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
-        save_btn = ModernButton(
-            text='Сохранить',
-            bg_color=get_color_from_hex('#00FF00'),
-            size_hint=(0.5, 1),
-            height=50
-        )
-        cancel_btn = ModernButton(
-            text='Отмена',
-            bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(0.5, 1),
-            height=50
-        )
+        btn_layout = MDBoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50, md_bg_color=Colors.DARK_SURFACE)
+        save_btn = MDButton(style='filled', size_hint=(0.5, 1), height=50)
+        save_btn.add_widget(MDButtonText(text='Сохранить', theme_text_color='Custom', text_color=Colors.GREEN))
+        cancel_btn = MDButton(style='filled', size_hint=(0.5, 1), height=50)
+        cancel_btn.add_widget(MDButtonText(text='Отмена', theme_text_color='Custom', text_color=[1,0.3,0.3,1]))
         btn_layout.add_widget(save_btn)
         btn_layout.add_widget(cancel_btn)
         content.add_widget(btn_layout)
 
         self.save_popup = Popup(
-            title="Сохранение отчета Excel",
+            title="",
             content=content,
+            separator_height=0,
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3],
             size_hint=(0.7, 0.5)
         )
-        save_btn.bind(on_press=self.save_to_excel)
-        cancel_btn.bind(on_press=self.save_popup.dismiss)
+        save_btn.bind(on_release=self.save_to_excel)
+        cancel_btn.bind(on_release=self.save_popup.dismiss)
         self.save_popup.open()
 
     def save_to_excel(self, instance):
@@ -8622,119 +8094,99 @@ class ExtendedMolodnikiTableScreen(Screen):
             self.show_error("Папка reports не найдена!")
             return
 
-        content = FloatLayout()
+        content = MDBoxLayout(orientation='vertical', spacing=10, padding=10, md_bg_color=Colors.DARK_SURFACE)
 
-        title_label = Label(
+        title_label = MDLabel(
             text='Выберите файл JSON данных приложения:',
-            font_name='Roboto',
             font_size='18sp',
-            color=(1, 1, 1, 1),
-            pos_hint={'center_x': 0.5, 'center_y': 0.95},
-            size_hint=(None, None),
-            size=(400, 50)
+            theme_text_color='Custom',
+            text_color=Colors.TEXT_ON_DARK,
+            size_hint=(1, None),
+            height=50
         )
+        content.add_widget(title_label)
 
-        scroll = ScrollView(size_hint=(1, 0.75), pos_hint={'center_x': 0.5, 'center_y': 0.5})
-        files_layout = GridLayout(cols=1, spacing=5, size_hint_y=None)
+        scroll = ScrollView(size_hint=(1, 1))
+        files_layout = MDGridLayout(cols=1, spacing=5, size_hint_y=None, md_bg_color=Colors.DARK_SURFACE)
         files_layout.bind(minimum_height=files_layout.setter('height'))
 
         # Добавляем кнопку для ручного ввода пути
-        manual_input_layout = BoxLayout(orientation='vertical', size_hint_y=None, height=80, spacing=5)
-        manual_label = Label(
+        manual_input_layout = MDBoxLayout(orientation='vertical', size_hint_y=None, height=80, spacing=5, md_bg_color=Colors.DARK_SURFACE)
+        manual_label = MDLabel(
             text="Или введите полный путь к файлу:",
-            font_name='Roboto',
             size_hint=(1, None),
             height=30,
-            color=(1, 1, 1, 1)
+            theme_text_color='Custom',
+            text_color=Colors.TEXT_ON_DARK
         )
-        self.manual_file_input = TextInput(
+        self.manual_file_input = MDTextField(
             hint_text="Полный путь к JSON файлу",
-            multiline=False,
+            mode="outlined",
             size_hint=(1, None),
             height=40,
-            background_color=(1, 1, 1, 0.8),
-            font_name='Roboto'
+            line_color_focus=Colors.GREEN
         )
         manual_input_layout.add_widget(manual_label)
         manual_input_layout.add_widget(self.manual_file_input)
         files_layout.add_widget(manual_input_layout)
 
-        uploader_label = Label(
+        uploader_label = MDLabel(
             text="Доступные JSON файлы:",
-            font_name='Roboto',
             bold=True,
             size_hint=(1, None),
             height=30,
-            color=(1, 1, 1, 1)
+            theme_text_color='Custom',
+            text_color=Colors.TEXT_ON_DARK
         )
         files_layout.add_widget(uploader_label)
 
         # Получаем список JSON файлов
         json_files = [f for f in os.listdir(self.reports_dir) if f.endswith('.json')]
         if not json_files:
-            no_files_label = Label(
+            no_files_label = MDLabel(
                 text="JSON файлы не найдены в папке reports\nИспользуйте ручной ввод пути выше",
-                font_name='Roboto',
                 size_hint=(1, None),
                 height=50,
-                color=(0.8, 0.8, 0.8, 1),
+                theme_text_color='Custom',
+                text_color=[0.8,0.8,0.8,1],
                 valign='top'
             )
             no_files_label.bind(size=lambda *args: setattr(no_files_label, 'text_size', (no_files_label.width, None)))
             files_layout.add_widget(no_files_label)
         else:
             for filename in sorted(json_files):
-                btn = ModernButton(
-                    text=filename,
-                    bg_color=get_color_from_hex('#87CEEB'),
-                    size_hint=(1, None),
-                    height=50,
-                    font_size='13sp',
-                    auto_width=False,
-                    halign='left',
-                    valign='middle',
-                    padding=(15, 5)
-                )
-                btn.bind(on_press=lambda x, f=filename: self.select_json_file(os.path.join(self.reports_dir, f)))
+                btn = MDButton(style='filled', size_hint=(1, None), height=50)
+                btn.add_widget(MDButtonText(text=filename, theme_text_color='Custom', text_color=[0.7,0.7,0.7,1]))
+                btn.bind(on_release=lambda x, f=filename: self.select_json_file(os.path.join(self.reports_dir, f)))
                 files_layout.add_widget(btn)
 
         scroll.add_widget(files_layout)
+        content.add_widget(scroll)
 
-        btn_layout = BoxLayout(
+        btn_layout = MDBoxLayout(
             orientation='horizontal',
             spacing=10,
             size_hint=(1, None),
             height=60,
-            pos_hint={'center_x': 0.5, 'center_y': 0.08}
+            md_bg_color=Colors.DARK_SURFACE
         )
-        load_manual_btn = ModernButton(
-            text='Загрузить',
-            bg_color=get_color_from_hex('#00FF00'),
-            size_hint=(0.35, 1),
-            height=60
-        )
-        load_manual_btn.bind(on_press=self.load_manual_json)
-        cancel_btn = ModernButton(
-            text='Отмена',
-            bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(0.35, 1),
-            height=60
-        )
-        cancel_btn.bind(on_press=self.dismiss_json_popup)
+        load_manual_btn = MDButton(style='filled', size_hint=(0.35, 1), height=60)
+        load_manual_btn.add_widget(MDButtonText(text='Загрузить', theme_text_color='Custom', text_color=Colors.GREEN))
+        load_manual_btn.bind(on_release=self.load_manual_json)
+        cancel_btn = MDButton(style='filled', size_hint=(0.35, 1), height=60)
+        cancel_btn.add_widget(MDButtonText(text='Отмена', theme_text_color='Custom', text_color=[1,0.3,0.3,1]))
+        cancel_btn.bind(on_release=self.dismiss_json_popup)
         btn_layout.add_widget(load_manual_btn)
         btn_layout.add_widget(cancel_btn)
-
-        content.add_widget(title_label)
-        content.add_widget(scroll)
         content.add_widget(btn_layout)
 
         self.json_popup = Popup(
-            title='Загрузка данных приложения',
+            title="",
             content=content,
-            size_hint=(0.9, 0.9),
             separator_height=0,
-            background_color=(0.5, 0.5, 0.5, 1),
-            overlay_color=(0, 0, 0, 0.5)
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3],
+            size_hint=(0.9, 0.9)
         )
         self.json_popup.open()
 
@@ -8880,8 +8332,9 @@ class ExtendedMolodnikiTableScreen(Screen):
 
             self.load_page_data()
 
-            total_plots = sum(len(rows) for rows in self.page_data.values())
-            self.show_success(f"Данные приложения успешно загружены! Найдено {total_plots} площадок в {len(self.page_data)} страницах.")
+            total_plots = sum(1 for rows in self.page_data.values() for row in rows if any(row[:3]))
+            Clock.schedule_once(lambda dt: self.show_create_popup(), 0.2)
+            self.show_success(f"Загружено {total_plots} площадок в {len(self.page_data)} страницах")
         except Exception as e:
             import traceback
             error_details = traceback.format_exc()
@@ -8902,62 +8355,58 @@ class ExtendedMolodnikiTableScreen(Screen):
 
     def show_radius_popup(self, instance):
         """Показать popup для установки радиуса"""
-        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        content = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, padding=Spacing.MD,
+                              md_bg_color=Colors.DARK_SURFACE, adaptive_height=True)
 
-        title_label = Label(
+        title_label = MDLabel(
             text="Установка радиуса для расчета коэффициента состава",
-            font_name='Roboto',
-            bold=True,
-            size_hint=(1, None),
-            height=40
+            font_style='Title', role='medium',
+            theme_text_color='Custom', text_color=Colors.GREEN,
+            adaptive_height=True
         )
         content.add_widget(title_label)
 
-        self.radius_input = TextInput(
+        self.radius_input = MDTextField(
             hint_text="Радиус (метры)",
-            multiline=False,
-            size_hint=(1, None),
-            height=50,
-            font_name='Roboto',
+            mode='outlined',
+            size_hint_y=None, height=dp(52),
             input_filter='float',
             text=self.current_radius
         )
         self.radius_input.bind(text=self.update_radius_display)
         content.add_widget(self.radius_input)
 
-        info_label = Label(
+        info_label = MDLabel(
             text="Радиус используется для расчета площади круга:\n"
                  "Площадь = π × радиус²\n"
                  "Коэффициент состава = (густота × площадь) / 10000\n"
                  "Радиус применяется автоматически ко всем площадкам",
-            font_name='Roboto',
-            size_hint=(1, None),
-            height=100,
-            color=(0.3, 0.3, 0.3, 1)
+            theme_text_color='Custom', text_color=[0.8,0.8,0.8,1],
+            adaptive_height=True
         )
         content.add_widget(info_label)
 
-        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
-        save_btn = ModernButton(
-            text='Сохранить',
-            bg_color=get_color_from_hex('#00FF00'),
-            size_hint=(0.5, 1),
-            height=50
-        )
-        cancel_btn = ModernButton(
-            text='Отмена',
-            bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(0.5, 1),
-            height=50
-        )
+        btn_layout = MDBoxLayout(orientation='horizontal', spacing=Spacing.MD, adaptive_height=True)
+        save_btn = MDButton(style='filled', md_bg_color=Colors.BTN_SUCCESS,
+                            size_hint=(0.5, None), height=dp(48))
+        save_btn.add_widget(MDButtonText(text='Сохранить'))
+        cancel_btn = MDButton(style='outlined',
+                              size_hint=(0.5, None), height=dp(48),
+                              line_color=Colors.DANGER)
+        cancel_btn.add_widget(MDButtonText(text='Отмена',
+                              theme_text_color='Custom', text_color=Colors.DANGER))
         btn_layout.add_widget(save_btn)
         btn_layout.add_widget(cancel_btn)
         content.add_widget(btn_layout)
 
         popup = Popup(
-            title="Настройка радиуса",
+            title="",
             content=content,
-            size_hint=(0.8, 0.7)
+            size_hint=(0.85, None),
+            height=dp(360),
+            separator_height=0,
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3]
         )
 
         def apply_radius(btn):
@@ -8966,69 +8415,60 @@ class ExtendedMolodnikiTableScreen(Screen):
                 if radius <= 0:
                     self.show_error("Радиус должен быть положительным числом!")
                     return
-
                 self.current_radius = str(radius)
                 self.project_data['address']['radius'] = str(radius)
-                # Сохраняем настройки в базу данных
                 self.save_settings_to_db()
                 self.update_totals()
                 self.show_success(f"Радиус {radius} м сохранен для всех расчетов")
                 popup.dismiss()
                 self.update_address_popup_display()
-
             except ValueError:
                 self.show_error("Введите корректное числовое значение радиуса!")
 
-        save_btn.bind(on_press=apply_radius)
-        cancel_btn.bind(on_press=popup.dismiss)
+        save_btn.bind(on_release=apply_radius)
+        cancel_btn.bind(on_release=popup.dismiss)
 
         popup.open()
 
     def show_breed_choice_popup(self, instance, selected_breed):
         """Показать popup с выбором после добавления первой породы"""
-        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        content = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, padding=Spacing.MD,
+                              md_bg_color=Colors.DARK_SURFACE, adaptive_height=True)
 
-        title_label = Label(
-            text=f"Порода '{selected_breed}' добавлена!\nВыберите действие:",
-            font_name='Roboto',
-            bold=True,
-            size_hint=(1, None),
-            height=60,
-            color=(0, 0.5, 0, 1)
+        title_label = MDLabel(
+            text=f"Порода '{selected_breed}' добавлена!",
+            font_style='Title', role='medium',
+            theme_text_color='Custom', text_color=Colors.GREEN,
+            adaptive_height=True
         )
         content.add_widget(title_label)
 
-        # Информация о номере породы
-        info_label = Label(
+        info_label = MDLabel(
             text="Автоматически присвоен номер: 1 порода",
-            font_name='Roboto',
-            size_hint=(1, None),
-            height=30,
-            color=(0.3, 0.3, 0.3, 1)
+            theme_text_color='Custom', text_color=[0.8,0.8,0.8,1],
+            adaptive_height=True
         )
         content.add_widget(info_label)
 
-        btn_layout = BoxLayout(orientation='vertical', spacing=10, size_hint=(1, None), height=120)
-        add_more_btn = ModernButton(
-            text='Добавить еще породу',
-            bg_color=get_color_from_hex('#00FF00'),
-            size_hint=(1, None),
-            height=50
-        )
-        save_exit_btn = ModernButton(
-            text='Сохранить и выйти',
-            bg_color=get_color_from_hex('#32CD32'),
-            size_hint=(1, None),
-            height=50
-        )
+        btn_layout = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, adaptive_height=True)
+        add_more_btn = MDButton(style='filled', md_bg_color=Colors.BTN_SUCCESS,
+                                size_hint=(1, None), height=dp(48))
+        add_more_btn.add_widget(MDButtonText(text='Добавить еще породу'))
+        save_exit_btn = MDButton(style='filled', md_bg_color=Colors.BTN_SUCCESS,
+                                 size_hint=(1, None), height=dp(48))
+        save_exit_btn.add_widget(MDButtonText(text='Сохранить и выйти'))
         btn_layout.add_widget(add_more_btn)
         btn_layout.add_widget(save_exit_btn)
         content.add_widget(btn_layout)
 
         popup = Popup(
-            title="Выбор действия",
+            title="",
             content=content,
-            size_hint=(0.8, 0.5)
+            size_hint=(0.85, None),
+            height=dp(300),
+            separator_height=0,
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3]
         )
 
         def add_more_breed(btn):
@@ -9037,10 +8477,10 @@ class ExtendedMolodnikiTableScreen(Screen):
 
         def save_and_exit(btn):
             popup.dismiss()
-            self.show_success("Данные по площадке сохранены!")
+            self.table_screen.show_success("Данные по площадке сохранены!")
 
-        add_more_btn.bind(on_press=add_more_breed)
-        save_exit_btn.bind(on_press=save_and_exit)
+        add_more_btn.bind(on_release=add_more_breed)
+        save_exit_btn.bind(on_release=save_and_exit)
 
         popup.open()
 
@@ -9088,61 +8528,228 @@ class ExtendedMolodnikiTableScreen(Screen):
 
     def create_new_plot(self, instance=None):
         """Создать новую площадку с помощью всплывающего окна"""
-        # Создаем новую страницу если текущая полная
         if self.current_page not in self.page_data:
             self.page_data[self.current_page] = []
-
-        # Находим следующий доступный индекс (без создания пустой строки!)
         row_idx = len(self.page_data[self.current_page])
-
-        # НЕ добавляем пустую строку заранее - только при реальном сохранении
-        # Открываем popup для ввода данных площадки
         MolodnikiTreeDataInputPopup(self, row_idx).open()
 
+    def restore_last_plot(self, instance=None):
+        """Восстановить последнюю заполненную площадку"""
+        last_plot = None
+        for page_num in sorted(self.page_data.keys(), reverse=True):
+            for row_idx in range(len(self.page_data[page_num]) - 1, -1, -1):
+                row = self.page_data[page_num][row_idx]
+                if any(row):
+                    last_plot = {'page': page_num, 'row': row_idx, 'data': row.copy()}
+                    break
+            if last_plot:
+                break
+        if not last_plot:
+            self.show_error("Нет данных для восстановления!")
+            return
+        if self.current_page not in self.page_data:
+            self.page_data[self.current_page] = []
+        new_row_idx = len(self.page_data[self.current_page])
+        self.page_data[self.current_page].append(last_plot['data'])
+        self.save_current_page()
+        self.load_page_data()
+        MolodnikiTreeDataInputPopup(self, new_row_idx).open()
 
+    def show_create_popup(self, instance=None):
+        """Показать popup управления площадками (современный интерфейс)"""
+        content = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, padding=Spacing.MD,
+                              md_bg_color=Colors.DARK_SURFACE, adaptive_height=True)
 
-    def show_address_popup(self, instance):
-        """Показать popup с настройками адреса"""
-        content = BoxLayout(orientation='vertical', spacing=15, padding=15)
-
-        title_label = Label(
-            text="Настройки адреса",
-            font_name='Roboto',
-            font_size='20sp',
-            bold=True,
-            color=(0, 0.5, 0, 1),
-            size_hint=(1, None),
-            height=50
+        title_label = MDLabel(
+            text="Управление площадками",
+            font_style='Headline', role='medium',
+            theme_text_color='Custom', text_color=Colors.GREEN,
+            size_hint_y=None, height=dp(44)
         )
         content.add_widget(title_label)
 
-        # ScrollView для всего содержимого
+        scroll = ScrollView(size_hint_y=None, height=dp(450))
+        plots_grid = MDGridLayout(cols=1, spacing=Spacing.SM, adaptive_height=True,
+                                  size_hint_y=None, padding=[0, 0])
+
+        all_plots = []
+        for page_num in sorted(self.page_data.keys()):
+            for row_idx, row in enumerate(self.page_data[page_num]):
+                if any(row):
+                    all_plots.append({'page': page_num, 'row': row_idx, 'data': row})
+
+        if not all_plots:
+            empty_label = MDLabel(
+                text="Нет добавленных площадок.\nНажмите «Добавить» чтобы создать новую.",
+                theme_text_color='Custom', text_color=[0.6,0.6,0.6,1],
+                halign='center', size_hint_y=None, height=dp(80)
+            )
+            plots_grid.add_widget(empty_label)
+        else:
+            for idx, plot in enumerate(all_plots):
+                row = plot['data']
+                gps = row[1] if len(row) > 1 else ''
+                predmet = row[2] if len(row) > 2 else ''
+                breeds_raw = row[3] if len(row) > 3 else ''
+                notes = row[4] if len(row) > 4 else ''
+                forest_type = row[5] if len(row) > 5 else ''
+
+                breeds_list = self.parse_breeds_data(breeds_raw)
+                breeds_str = ', '.join(b.get('name', '?') for b in breeds_list[:3])
+                if len(breeds_list) > 3:
+                    breeds_str += f' … +{len(breeds_list) - 3}'
+
+                card = MDCard(style='elevated', size_hint=(1, None), height=dp(110),
+                              md_bg_color=get_color_from_hex('#2A2A2A'),
+                              padding=[Spacing.SM, Spacing.XS], spacing=Spacing.XS)
+                card_content = MDBoxLayout(orientation='vertical', spacing=Spacing.XS,
+                                           adaptive_height=True)
+
+                header = MDBoxLayout(orientation='horizontal', size_hint_y=None, height=dp(22))
+                header.add_widget(MDLabel(
+                    text=f"Площадка №{idx + 1}", font_style='Label', role='medium',
+                    theme_text_color='Custom', text_color=Colors.GREEN,
+                    size_hint=(0.4, 1), valign='middle'))
+                if gps:
+                    header.add_widget(MDLabel(
+                        text=f"GPS: {gps}", font_style='Body', role='small',
+                        theme_text_color='Custom', text_color=[0.7,0.7,0.7,1],
+                        size_hint=(0.6, 1), valign='middle'))
+                card_content.add_widget(header)
+
+                info_text = ''
+                if predmet:
+                    info_text += f"Предмет: {predmet}  "
+                if forest_type:
+                    info_text += f"Тип: {forest_type}  "
+                if breeds_str:
+                    info_text += f"Породы: {breeds_str}"
+                if not info_text and not notes:
+                    info_text = 'Нет данных'
+                card_content.add_widget(MDLabel(
+                    text=info_text, font_style='Body', role='small',
+                    theme_text_color='Custom', text_color=[0.8,0.8,0.8,1],
+                    adaptive_height=True))
+
+                if notes:
+                    card_content.add_widget(MDLabel(
+                        text=f"Прим: {notes[:60]}", font_style='Body', role='small',
+                        theme_text_color='Custom', text_color=[0.6,0.6,0.6,1],
+                        adaptive_height=True))
+
+                btn_row = MDBoxLayout(orientation='horizontal', spacing=Spacing.SM,
+                                      size_hint_y=None, height=dp(30))
+                edit_btn = MDButton(style='text', size_hint=(0.5, None), height=dp(28))
+                edit_btn.add_widget(MDButtonText(text='Редактировать', font_size='12sp'))
+                edit_btn.bind(on_release=lambda x, p=plot: self._edit_plot(p))
+                delete_btn = MDButton(style='text', size_hint=(0.5, None), height=dp(28))
+                delete_btn.add_widget(MDButtonText(text='Удалить', font_size='12sp',
+                                      theme_text_color='Custom', text_color=Colors.DANGER))
+                delete_btn.bind(on_release=lambda x, p=plot: self._delete_plot(p))
+                btn_row.add_widget(edit_btn)
+                btn_row.add_widget(delete_btn)
+                card_content.add_widget(btn_row)
+
+                card.add_widget(card_content)
+                plots_grid.add_widget(card)
+
+        scroll.add_widget(plots_grid)
+        content.add_widget(scroll)
+
+        btn_layout = MDBoxLayout(orientation='horizontal', spacing=Spacing.MD,
+                                 adaptive_height=True)
+        restore_btn = MDButton(style='filled', md_bg_color=Colors.BTN_WARNING,
+                               size_hint=(1/3, None), height=dp(48))
+        restore_btn.add_widget(MDButtonText(text='Восстановить'))
+        restore_btn.bind(on_release=self.restore_last_plot)
+        add_btn = MDButton(style='filled', md_bg_color=Colors.BTN_SUCCESS,
+                           size_hint=(1/3, None), height=dp(48))
+        add_btn.add_widget(MDButtonText(text='Добавить'))
+        add_btn.bind(on_release=self.create_new_plot)
+        close_btn = MDButton(style='outlined', size_hint=(1/3, None), height=dp(48),
+                             line_color=Colors.DANGER)
+        close_btn.add_widget(MDButtonText(text='Закрыть',
+                             theme_text_color='Custom', text_color=Colors.DANGER))
+        btn_layout.add_widget(restore_btn)
+        btn_layout.add_widget(add_btn)
+        btn_layout.add_widget(close_btn)
+        content.add_widget(btn_layout)
+
+        popup = Popup(
+            title="", content=content, size_hint=(0.9, None),
+            height=dp(600), separator_height=0,
+            background_color=[0,0,0,0.3], overlay_color=[0,0,0,0.3]
+        )
+        close_btn.bind(on_release=popup.dismiss)
+        popup.open()
+
+    def _edit_plot(self, plot_info):
+        """Открыть редактирование площадки"""
+        self.current_page = plot_info['page']
+        MolodnikiTreeDataInputPopup(self, plot_info['row']).open()
+
+    def _delete_plot(self, plot_info, popup_ref=None):
+        """Удалить площадку с подтверждением"""
+        content = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, padding=Spacing.MD,
+                              md_bg_color=Colors.DARK_SURFACE, adaptive_height=True)
+        content.add_widget(MDLabel(
+            text=f"Удалить площадку №{plot_info['row'] + 1}?",
+            theme_text_color='Custom', text_color=[1,1,1,1], halign='center',
+            size_hint_y=None, height=dp(50)))
+        btn_layout = MDBoxLayout(orientation='horizontal', spacing=Spacing.MD, adaptive_height=True)
+        yes_btn = MDButton(style='filled', md_bg_color=Colors.BTN_DANGER,
+                           size_hint=(0.5, None), height=dp(44))
+        yes_btn.add_widget(MDButtonText(text='Да, удалить'))
+        no_btn = MDButton(style='outlined', size_hint=(0.5, None), height=dp(44),
+                          line_color=Colors.GREEN)
+        no_btn.add_widget(MDButtonText(text='Отмена',
+                          theme_text_color='Custom', text_color=Colors.GREEN))
+        btn_layout.add_widget(yes_btn)
+        btn_layout.add_widget(no_btn)
+        content.add_widget(btn_layout)
+        popup = Popup(title="", content=content, size_hint=(0.7, None), height=dp(180),
+                      separator_height=0, background_color=[0,0,0,0.3], overlay_color=[0,0,0,0.3])
+        def do_delete(btn):
+            page, row = plot_info['page'], plot_info['row']
+            if page in self.page_data and row < len(self.page_data[page]):
+                self.page_data[page][row] = [''] * 6
+                self.save_current_page()
+                self.load_page_data()
+            self.show_success(f"Площадка №{plot_info['row'] + 1} удалена")
+            popup.dismiss()
+        yes_btn.bind(on_release=do_delete)
+        no_btn.bind(on_release=popup.dismiss)
+        popup.open()
+
+    def show_address_popup(self, instance):
+        """Показать popup с настройками адреса"""
+        content = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, padding=Spacing.MD,
+                              md_bg_color=Colors.DARK_SURFACE)
+
+        title_label = MDLabel(
+            text="Настройки адреса",
+            font_style='Headline', role='medium',
+            theme_text_color='Custom', text_color=Colors.GREEN,
+            size_hint_y=None, height=dp(50)
+        )
+        content.add_widget(title_label)
+
         scroll = ScrollView(size_hint=(1, 1))
-        scroll_content = GridLayout(cols=1, spacing=15, size_hint_y=None)
+        scroll_content = MDGridLayout(cols=1, spacing=Spacing.MD, size_hint_y=None, adaptive_height=True)
         scroll_content.bind(minimum_height=scroll_content.setter('height'))
 
-        # Отображение текущих значений
-        current_values = BoxLayout(orientation='vertical', spacing=8, size_hint=(1, None), height=200, padding=[15, 15])
-        with current_values.canvas.before:
-            Color(rgba=get_color_from_hex('#E8F4FD'))
-            current_values.bg = RoundedRectangle(pos=current_values.pos, size=current_values.size, radius=[10])
-            current_values.bind(pos=lambda *args: setattr(current_values.bg, 'pos', current_values.pos),
-                               size=lambda *args: setattr(current_values.bg, 'size', current_values.size))
+        current_values = MDBoxLayout(orientation='vertical', spacing=Spacing.SM, adaptive_height=True,
+                                     padding=Spacing.MD)
 
-        current_title = Label(
+        current_title = MDLabel(
             text='Текущие значения:',
-            font_name='Roboto',
-            font_size='18sp',
-            bold=True,
-            color=(0, 0, 0, 1),
-            size_hint=(1, None),
-            height=40,
-            halign='center'
+            font_style='Title', role='small',
+            theme_text_color='Custom', text_color=Colors.GREEN,
+            adaptive_height=True
         )
         current_values.add_widget(current_title)
 
-        # Сохраняем ссылку на label для обновления при каждом открытии
-        self.current_address_info = Label(
+        self.current_address_info = MDLabel(
             text=f"Название проекта: {self.project_data.get('document_name', 'Проект')}\n"
                  f"Квартал: {self.project_data['address'].get('quarter', 'Не указан')}\n"
                  f"Выдел: {self.project_data['address'].get('plot', 'Не указан')}\n"
@@ -9150,170 +8757,104 @@ class ExtendedMolodnikiTableScreen(Screen):
                  f"Участковое лесничество: {self.project_data['address'].get('district_forestry', 'Не указано')}\n"
                  f"Радиус: {self.project_data['address'].get('radius', 'Не указан')} м\n"
                  f"Площадь участка: {self.project_data['address'].get('plot_area', 'Не указана')} га",
-            font_name='Roboto',
-            font_size='16sp',
-            color=(0, 0, 0, 1),
-            size_hint=(1, None),
-            height=150,
-            halign='left',
-            valign='top'
+            theme_text_color='Custom', text_color=[0.8,0.8,0.8,1],
+            adaptive_height=True
         )
-        self.current_address_info.bind(size=lambda *args: setattr(self.current_address_info, 'text_size', (self.current_address_info.width, None)))
         current_values.add_widget(self.current_address_info)
-
         scroll_content.add_widget(current_values)
 
-        # Кнопки для настройки адреса
-        buttons_layout = GridLayout(cols=2, spacing=15, size_hint=(1, None), height=280)
+        buttons_layout = MDGridLayout(cols=2, spacing=Spacing.MD, adaptive_height=True, size_hint_y=None)
 
-        # Кнопка Квартал
-        quarter_btn = ModernButton(
-            text='Квартал',
-            bg_color=get_color_from_hex('#32CD32'),
-            size_hint=(1, None),
-            height=60,
-            font_size='18sp'
-        )
-        quarter_btn.bind(on_press=self.show_quarter_popup)
-        buttons_layout.add_widget(quarter_btn)
+        def make_addr_card(text, callback):
+            card = MDCard(style='elevated', size_hint=(1, None), height=dp(60),
+                          md_bg_color=Colors.CARD_BG, ripple_behavior=True,
+                          on_release=callback, focus_behavior=True)
+            card.add_widget(MDLabel(text=text, font_style='Label', role='medium',
+                                    theme_text_color='Custom', text_color=[1,1,1,1],
+                                    halign='center', valign='middle'))
+            return card
 
-        # Кнопка Выдел
-        plot_btn = ModernButton(
-            text='Выдел',
-            bg_color=get_color_from_hex('#32CD32'),
-            size_hint=(1, None),
-            height=60,
-            font_size='18sp'
-        )
-        plot_btn.bind(on_press=self.show_plot_popup)
-        buttons_layout.add_widget(plot_btn)
-
-        # Кнопка Лесничество
-        forestry_btn = ModernButton(
-            text='Лесничество',
-            bg_color=get_color_from_hex('#32CD32'),
-            size_hint=(1, None),
-            height=60,
-            font_size='18sp'
-        )
-        forestry_btn.bind(on_press=self.show_forestry_popup)
-        buttons_layout.add_widget(forestry_btn)
-
-        # Кнопка Радиус
-        radius_btn = ModernButton(
-            text='Радиус',
-            bg_color=get_color_from_hex('#32CD32'),
-            size_hint=(1, None),
-            height=60,
-            font_size='18sp'
-        )
-        radius_btn.bind(on_press=self.show_radius_popup)
-        buttons_layout.add_widget(radius_btn)
-
-        # Кнопка Площадь
-        plot_area_btn = ModernButton(
-            text='Площадь',
-            bg_color=get_color_from_hex('#32CD32'),
-            size_hint=(1, None),
-            height=60,
-            font_size='18sp'
-        )
-        plot_area_btn.bind(on_press=self.show_plot_area_input_popup)
-        buttons_layout.add_widget(plot_area_btn)
-
-        # Кнопка Название
-        doc_name_btn = ModernButton(
-            text='Название',
-            bg_color=get_color_from_hex('#32CD32'),
-            size_hint=(1, None),
-            height=60,
-            font_size='18sp'
-        )
-        doc_name_btn.bind(on_press=self.show_document_name_popup)
-        buttons_layout.add_widget(doc_name_btn)
+        buttons_layout.add_widget(make_addr_card('Квартал', lambda x: self.show_quarter_popup(x)))
+        buttons_layout.add_widget(make_addr_card('Выдел', lambda x: self.show_plot_popup(x)))
+        buttons_layout.add_widget(make_addr_card('Лесничество', lambda x: self.show_forestry_popup(x)))
+        buttons_layout.add_widget(make_addr_card('Радиус', lambda x: self.show_radius_popup(x)))
+        buttons_layout.add_widget(make_addr_card('Площадь', lambda x: self.show_plot_area_input_popup(x)))
+        buttons_layout.add_widget(make_addr_card('Название', lambda x: self.show_document_name_popup(x)))
 
         scroll_content.add_widget(buttons_layout)
-
         scroll.add_widget(scroll_content)
         content.add_widget(scroll)
 
-        # Кнопка закрытия
-        close_btn = ModernButton(
-            text='Закрыть',
-            bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(1, None),
-            height=60,
-            font_size='18sp'
-        )
-        content.add_widget(close_btn)
+        cancel_btn = MDButton(style='outlined', size_hint=(1, None), height=dp(48),
+                              line_color=Colors.DANGER)
+        cancel_btn.add_widget(MDButtonText(text='Закрыть',
+                              theme_text_color='Custom', text_color=Colors.DANGER))
+        content.add_widget(cancel_btn)
 
         self.address_popup = Popup(
-            title="Настройки адреса",
+            title="",
             content=content,
-            size_hint=(0.8, 0.9)
+            size_hint=(0.9, 0.9),
+            separator_height=0,
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3]
         )
 
-        # Обновляем данные перед открытием popup
         self.update_address_display()
         self.update_details_display()
 
-        close_btn.bind(on_press=self.address_popup.dismiss)
+        cancel_btn.bind(on_release=self.address_popup.dismiss)
         self.address_popup.open()
 
     def show_document_name_popup(self, instance):
         """Показать popup для ввода названия документа"""
-        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        content = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, padding=Spacing.MD,
+                              md_bg_color=Colors.DARK_SURFACE, adaptive_height=True)
 
-        title_label = Label(
+        title_label = MDLabel(
             text="Введите название документа",
-            font_name='Roboto',
-            bold=True,
-            size_hint=(1, None),
-            height=30
+            font_style='Title', role='medium',
+            theme_text_color='Custom', text_color=Colors.GREEN,
+            adaptive_height=True
         )
         content.add_widget(title_label)
 
-        self.document_name_input = TextInput(
+        self.document_name_input = MDTextField(
             hint_text="Название документа",
-            multiline=False,
-            size_hint=(1, None),
-            height=40,
-            font_name='Roboto',
+            mode='outlined',
+            size_hint_y=None, height=dp(52),
             text=self.project_data.get('document_name', 'Проект')
         )
         content.add_widget(self.document_name_input)
 
-        info_label = Label(
+        info_label = MDLabel(
             text="Это название будет использоваться в имени файла при сохранении",
-            font_name='Roboto',
-            font_size='14sp',
-            color=(0.5, 0.5, 0.5, 1),
-            size_hint=(1, None),
-            height=40
+            theme_text_color='Custom', text_color=[0.8,0.8,0.8,1],
+            adaptive_height=True
         )
         content.add_widget(info_label)
 
-        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint=(1, None), height=50)
-        save_btn = ModernButton(
-            text='Сохранить',
-            bg_color=get_color_from_hex('#00FF00'),
-            size_hint=(0.5, 1),
-            height=50
-        )
-        cancel_btn = ModernButton(
-            text='Отмена',
-            bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(0.5, 1),
-            height=50
-        )
+        btn_layout = MDBoxLayout(orientation='horizontal', spacing=Spacing.MD, adaptive_height=True)
+        save_btn = MDButton(style='filled', md_bg_color=Colors.BTN_SUCCESS,
+                            size_hint=(0.5, None), height=dp(48))
+        save_btn.add_widget(MDButtonText(text='Сохранить'))
+        cancel_btn = MDButton(style='outlined',
+                              size_hint=(0.5, None), height=dp(48),
+                              line_color=Colors.DANGER)
+        cancel_btn.add_widget(MDButtonText(text='Отмена',
+                              theme_text_color='Custom', text_color=Colors.DANGER))
         btn_layout.add_widget(save_btn)
         btn_layout.add_widget(cancel_btn)
         content.add_widget(btn_layout)
 
         popup = Popup(
-            title="Название документа",
+            title="",
             content=content,
-            size_hint=(0.6, 0.5)
+            size_hint=(0.85, None),
+            height=dp(300),
+            separator_height=0,
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3]
         )
 
         def save_document_name(btn):
@@ -9325,115 +8866,82 @@ class ExtendedMolodnikiTableScreen(Screen):
             else:
                 self.show_error("Название документа не может быть пустым!")
 
-        save_btn.bind(on_press=save_document_name)
-        cancel_btn.bind(on_press=popup.dismiss)
+        save_btn.bind(on_release=save_document_name)
+        cancel_btn.bind(on_release=popup.dismiss)
 
         popup.open()
 
     def show_file_popup(self, instance):
         """Показать popup с операциями над файлами"""
-        content = BoxLayout(orientation='vertical', spacing=15, padding=15)
+        content = MDBoxLayout(orientation='vertical', spacing=Spacing.MD, padding=Spacing.MD,
+                              md_bg_color=Colors.DARK_SURFACE, adaptive_height=True)
 
-        # Заголовок
-        title_label = Label(
+        title_label = MDLabel(
             text="Операции с файлами",
-            font_name='Roboto',
-            font_size='20sp',
-            bold=True,
-            color=(0, 0.5, 0, 1),
-            size_hint=(1, None),
-            height=50
+            font_style='Headline', role='medium',
+            theme_text_color='Custom', text_color=Colors.GREEN,
+            size_hint_y=None, height=dp(50)
         )
         content.add_widget(title_label)
 
-        # Кнопки для операций с файлами
-        buttons_layout = GridLayout(cols=2, spacing=15, size_hint=(1, None), height=380)
+        buttons_layout = MDGridLayout(cols=2, spacing=Spacing.MD, adaptive_height=True, size_hint_y=None)
 
-        # Кнопка Создать
-        create_plot_btn = ModernButton(
-            text='Создать',
-            bg_color=get_color_from_hex('#32CD32'),
-            size_hint=(1, None),
-            height=60,
-            font_size='16sp'
-        )
-        create_plot_btn.bind(on_press=self.create_new_plot)
+        create_plot_btn = MDButton(style='filled', md_bg_color=Colors.BTN_SUCCESS,
+                                   size_hint=(1, None), height=dp(48))
+        create_plot_btn.add_widget(MDButtonText(text='Создать'))
+        create_plot_btn.bind(on_release=self.show_create_popup)
         buttons_layout.add_widget(create_plot_btn)
 
-        # Кнопка Сохранить
-        save_btn = ModernButton(
-            text='Сохранить',
-            bg_color=get_color_from_hex('#FFD700'),
-            size_hint=(1, None),
-            height=60,
-            font_size='16sp'
-        )
-        save_btn.bind(on_press=self.save_all_formats)
+        save_btn = MDButton(style='filled', md_bg_color=Colors.WARNING,
+                            size_hint=(1, None), height=dp(48))
+        save_btn.add_widget(MDButtonText(text='Сохранить'))
+        save_btn.bind(on_release=self.save_all_formats)
         buttons_layout.add_widget(save_btn)
 
-        # Кнопка Загрузить
-        load_btn = ModernButton(
-            text='Загрузить',
-            bg_color=get_color_from_hex('#006400'),
-            size_hint=(1, None),
-            height=60,
-            font_size='16sp'
-        )
-        load_btn.bind(on_press=self.load_section)
+        load_btn = MDButton(style='filled', md_bg_color=Colors.PRIMARY,
+                            size_hint=(1, None), height=dp(48))
+        load_btn.add_widget(MDButtonText(text='Загрузить'))
+        load_btn.bind(on_release=self.load_section)
         buttons_layout.add_widget(load_btn)
 
-        # Кнопка Изменить
-        edit_btn = ModernButton(
-            text='Изменить',
-            bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(1, None),
-            height=60,
-            font_size='16sp'
-        )
-        edit_btn.bind(on_press=self.show_edit_plots_popup)
+        edit_btn = MDButton(style='outlined', size_hint=(1, None), height=dp(48),
+                            line_color=Colors.DANGER)
+        edit_btn.add_widget(MDButtonText(text='Изменить',
+                              theme_text_color='Custom', text_color=Colors.DANGER))
+        edit_btn.bind(on_release=self.show_edit_plots_popup)
         buttons_layout.add_widget(edit_btn)
 
-        # Кнопка Открыть
-        open_folder_btn = ModernButton(
-            text='Открыть',
-            bg_color=get_color_from_hex('#4169E1'),
-            size_hint=(1, None),
-            height=60,
-            font_size='16sp'
-        )
-        open_folder_btn.bind(on_press=self.open_excel_file)
+        open_folder_btn = MDButton(style='filled', md_bg_color=Colors.INFO,
+                                   size_hint=(1, None), height=dp(48))
+        open_folder_btn.add_widget(MDButtonText(text='Открыть'))
+        open_folder_btn.bind(on_release=self.open_excel_file)
         buttons_layout.add_widget(open_folder_btn)
 
-        # Кнопка Очистить
-        clear_btn = ModernButton(
-            text='Очистить',
-            bg_color=get_color_from_hex('#800000'),
-            size_hint=(1, None),
-            height=60,
-            font_size='16sp'
-        )
-        clear_btn.bind(on_press=self.clear_table_data)
+        clear_btn = MDButton(style='filled', md_bg_color=Colors.DARK,
+                             size_hint=(1, None), height=dp(48))
+        clear_btn.add_widget(MDButtonText(text='Очистить'))
+        clear_btn.bind(on_release=self.clear_table_data)
         buttons_layout.add_widget(clear_btn)
 
         content.add_widget(buttons_layout)
 
-        # Кнопка закрытия
-        close_btn = ModernButton(
-            text='Закрыть',
-            bg_color=get_color_from_hex('#FF6347'),
-            size_hint=(1, None),
-            height=60,
-            font_size='18sp'
-        )
-        content.add_widget(close_btn)
+        cancel_btn = MDButton(style='outlined', size_hint=(1, None), height=dp(48),
+                              line_color=Colors.DANGER)
+        cancel_btn.add_widget(MDButtonText(text='Закрыть',
+                              theme_text_color='Custom', text_color=Colors.DANGER))
+        content.add_widget(cancel_btn)
 
         popup = Popup(
-            title="Файловые операции",
+            title="",
             content=content,
-            size_hint=(0.8, 0.9)
+            size_hint=(0.85, None),
+            height=dp(420),
+            separator_height=0,
+            background_color=[0,0,0,0.3],
+            overlay_color=[0,0,0,0.3]
         )
 
-        close_btn.bind(on_press=popup.dismiss)
+        cancel_btn.bind(on_release=popup.dismiss)
         popup.open()
 
     def format_breeds_cell(self, breeds_text):
